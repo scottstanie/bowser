@@ -348,6 +348,13 @@ const initializeDatasets = () => {
       // Set the initial tile to be the first one
       const name0: string = Object.keys(state.datasetInfo)[0];
 
+      // Set the view
+      const { centerLat, centerLng } = computeCenter(name0)
+      map.setView([centerLat, centerLng], 9);
+      for (let marker of [state.markerTs, state.markerRef]) {
+        marker.setLatLng([centerLat, centerLng])
+      }
+
       setupDataset(name0);
 
       // Update the dropdown
@@ -358,14 +365,6 @@ const initializeDatasets = () => {
         option.textContent = dsName;
         datasetSelector.appendChild(option);
       });
-
-      // Set the view
-      const { centerLat, centerLng } = computeCenter(state.name)
-      map.setView([centerLat, centerLng], 9);
-      for (let marker of [state.markerTs, state.markerRef]) {
-        marker.setLatLng([centerLat, centerLng])
-      }
-
     })
 }
 
