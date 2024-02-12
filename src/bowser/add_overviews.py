@@ -14,10 +14,6 @@ gdal.UseExceptions()
 
 logger = logging.getLogger(__name__)
 
-raster_type_to_resampling = {
-    "unw": "average",
-}
-
 
 class Resampling(Enum):
     """GDAL resampling algorithm."""
@@ -32,7 +28,6 @@ def add_overviews(
     overview_levels: Sequence[int] = [4, 8, 16, 32, 64],
     resampling: Resampling = Resampling.NEAREST,
     external: bool = False,
-    overwrite: bool = False,
     compression: str = "LZW",
 ):
     """Add GDAL compressed overviews to an existing file.
@@ -48,21 +43,15 @@ def add_overviews(
         Default = "nearest"
     external : bool, default = False
         Use external overviews (.ovr files).
-    overwrite : bool, default = False
-        Overwrite existing overviews
     compression: str, default = "LZW"
         Compression algorithm to use for overviews.
         See https://gdal.org/programs/gdaladdo.html for options.
     """
-    ovr_path = Path(str(file_path) + ".ovr")
-    if ovr_path.exists():
-        if not overwrite:
-            logger.debug("Skipping %s, exists", ovr_path)
-            return
-        logger.info("Removing existing %s", ovr_path)
-        ovr_path.unlink()
-
     flags = gdal.GA_Update if not external else gdal.GA_ReadOnly
+    ds = gdal.Open(fspath(file_path), flags)
+    if ds.GetRasterBand(1).GetOverviewCount() > 0:
+        logger.info("%s already has overviews. Skipping.")
+        return
     raster = gdal.Open(fspath(file_path), flags)
     gdal.SetConfigOption("COMPRESS_OVERVIEW", compression)
     gdal.SetConfigOption("GDAL_NUM_THREADS", "2")
