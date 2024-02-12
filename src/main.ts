@@ -213,9 +213,12 @@ const updateRasterTile = () => {
 
   const shift = state.refValues[tileIdx]
   if (shift !== undefined) {
-    if (params.algorithm == 'shift') params.algorithm_params = `{"shift": ${shift}}`
-  } else {
-    console.log(`Error in updateRasterTile: shift=${shift} for ${name}`)
+    if (params.algorithm == 'shift') {
+      params.algorithm_params = `{"shift": ${shift}}`
+    } else {
+      console.log(`Error in updateRasterTile: shift=${shift} for ${name}`)
+      delete params['algorithm']
+    }
   }
 
   const url_params = Object.keys(params).map(i => `${i}=${params[i]}`).join('&')
