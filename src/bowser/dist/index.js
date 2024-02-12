@@ -24127,6 +24127,11 @@ const initializeDatasets = () => {
     state.datasetInfo = data;
     console.log("datasetInfo", state.datasetInfo);
     const name0 = Object.keys(state.datasetInfo)[0];
+    const { centerLat, centerLng } = computeCenter(name0);
+    map.setView([centerLat, centerLng], 9);
+    for (let marker of [state.markerTs, state.markerRef]) {
+      marker.setLatLng([centerLat, centerLng]);
+    }
     setupDataset(name0);
     datasetSelector.innerHTML = "";
     Object.keys(state.datasetInfo).forEach((dsName) => {
@@ -24135,11 +24140,6 @@ const initializeDatasets = () => {
       option.textContent = dsName;
       datasetSelector.appendChild(option);
     });
-    const { centerLat, centerLng } = computeCenter(state.name);
-    map.setView([centerLat, centerLng], 9);
-    for (let marker of [state.markerTs, state.markerRef]) {
-      marker.setLatLng([centerLat, centerLng]);
-    }
   });
 };
 const chartElem = document.querySelector("#chart");
