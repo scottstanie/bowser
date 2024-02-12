@@ -23994,7 +23994,7 @@ const loadPreferences = (name) => {
     return { colormap_name: null, vmin: null, vmax: null };
   }
   cmapNameSelect.value = colormap_name;
-  colormapImg.src = `http://localhost:8000/colorbar/${colormap_name}`;
+  colormapImg.src = `/colorbar/${colormap_name}`;
   vminSelect.value = vmin;
   vmaxSelect.value = vmax;
   return { colormap_name, vmin: parseFloat(vmin), vmax: parseFloat(vmax) };
@@ -24018,7 +24018,7 @@ const updateRasterTile = () => {
   if (vmax === null)
     vmax = parseFloat(vmaxSelect.value);
   setChartYLimits(vmin, vmax);
-  colormapImg.src = `http://localhost:8000/colorbar/${colormap_name}`;
+  colormapImg.src = `/colorbar/${colormap_name}`;
   const url = curDataset.file_list[tileIdx];
   let params = {
     url: encodeURIComponent(url),
@@ -24036,7 +24036,7 @@ const updateRasterTile = () => {
   const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
   console.log("url_params", url_params);
   fetch(
-    `http://localhost:8000/tilejson.json?${url_params}`
+    `/tilejson.json?${url_params}`
   ).then((response) => response.json()).then((tileInfo) => {
     let newTile = leafletSrcExports.tileLayer(tileInfo.tiles[0], {
       maxZoom: 19
@@ -24114,7 +24114,7 @@ const computeCenter = (name) => {
   return { centerLat, centerLng };
 };
 const initializeDatasets = () => {
-  fetch("http://localhost:8000/datasets").then((response) => response.json()).then((data) => {
+  fetch("/datasets").then((response) => response.json()).then((data) => {
     state.datasetInfo = data;
     console.log("datasetInfo", state.datasetInfo);
     const name0 = Object.keys(state.datasetInfo)[0];
@@ -24165,7 +24165,7 @@ async function getPointTimeSeries(lon, lat) {
     lat
   };
   const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
-  const endpoint = `http://localhost:8000/point?${url_params}`;
+  const endpoint = `/point?${url_params}`;
   console.log(endpoint);
   try {
     const response = await fetch(endpoint);
@@ -24185,7 +24185,7 @@ async function getChartTimeSeries(lon, lat, ref_lon = null, ref_lat = null) {
     params.ref_lon = ref_lon;
   }
   const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
-  const endpoint = `http://localhost:8000/chart_point?${url_params}`;
+  const endpoint = `/chart_point?${url_params}`;
   console.log(endpoint);
   try {
     const response = await fetch(endpoint);

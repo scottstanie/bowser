@@ -167,7 +167,7 @@ const loadPreferences = (name: string) => {
   }
 
   cmapNameSelect.value = colormap_name;
-  colormapImg.src = `http://localhost:8000/colorbar/${colormap_name}`
+  colormapImg.src = `/colorbar/${colormap_name}`
   vminSelect.value = vmin
   vmaxSelect.value = vmax
   return { colormap_name: colormap_name, vmin: parseFloat(vmin), vmax: parseFloat(vmax) }
@@ -198,7 +198,7 @@ const updateRasterTile = () => {
   setChartYLimits(vmin, vmax)
 
   // Save colormap preferences to localStorage
-  colormapImg.src = `http://localhost:8000/colorbar/${colormap_name}`
+  colormapImg.src = `/colorbar/${colormap_name}`
   const url = curDataset.file_list[tileIdx];
 
   let params: { [key: string]: string } = {
@@ -218,7 +218,7 @@ const updateRasterTile = () => {
 
   // TODO: do i like the loader?
   // document.getElementById('loader').classList.add('off')
-  fetch(`http://localhost:8000/tilejson.json?${url_params}`
+  fetch(`/tilejson.json?${url_params}`
   ).then(response => response.json())
     .then((tileInfo) => {
 
@@ -327,7 +327,7 @@ const computeCenter = (name: string) => {
 // {"unwrapped":{"name":"unwrapped","file_list":["./data2/20.tif", ...],"vmin":-10.0,"vmax":10.0,
 //     ??? "algorithm":null}}
 const initializeDatasets = () => {
-  fetch('http://localhost:8000/datasets')
+  fetch('/datasets')
     .then(response => response.json())
     .then((data) => {
       state.datasetInfo = data;
@@ -399,7 +399,7 @@ async function getPointTimeSeries(lon: number, lat: number) {
     lat: lat,
   }
   const url_params = Object.keys(params).map(i => `${i}=${params[i]}`).join('&')
-  const endpoint = `http://localhost:8000/point?${url_params}`
+  const endpoint = `/point?${url_params}`
   console.log(endpoint)
   // Get the data from the server using `fetch`, save it in a variable
   try {
@@ -422,7 +422,7 @@ async function getChartTimeSeries(lon: number, lat: number, ref_lon: number | nu
   }
 
   const url_params = Object.keys(params).map(i => `${i}=${params[i]}`).join('&')
-  const endpoint = `http://localhost:8000/chart_point?${url_params}`
+  const endpoint = `/chart_point?${url_params}`
   console.log(endpoint)
   // Get the data from the server using `fetch`, save it in a variable
   try {
@@ -434,7 +434,7 @@ async function getChartTimeSeries(lon: number, lat: number, ref_lon: number | nu
 }
 
 function updateChart() {
-  // const response = fetch(`http://localhost:8000/point?lon=${lon}&lat=${lat}`)
+  // const response = fetch(`/point?lon=${lon}&lat=${lat}`)
   // Get the current marker position
   const { lat, lng } = state.markerTs.getLatLng();
   // Get the reference marker position
