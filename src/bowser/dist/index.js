@@ -23920,7 +23920,7 @@ var state = {
   name: "unwrapped",
   tile: null,
   tileIdx: 0,
-  refValues: [0],
+  refValues: {},
   basemap: baseMaps.esriSatellite
 };
 const curUsesRef = () => state.datasetInfo[state.name].uses_spatial_ref;
@@ -23954,10 +23954,10 @@ map.on("click", function(e) {
   state.markerTs.setLatLng([lat, lon]);
   chartContainer.style.display !== "none" && updateChart();
 });
-const setRefValues = () => {
+const setRefValues = (datasetName) => {
   const { lat, lng } = state.markerRef.getLatLng();
   console.log("shifting", lat, lng);
-  getPointTimeSeries(lng, lat).then((values) => {
+  getPointTimeSeries(lng, lat, datasetName).then((values) => {
     console.log("getPointTimeSeries", values);
     if (values !== void 0) {
       state.refValues = values;
@@ -23973,7 +23973,7 @@ state.markerTs.on("moveend", function() {
 });
 state.markerRef.on("moveend", function() {
   chartContainer.style.display !== "none" && updateChart();
-  setRefValues();
+  setRefValues(state.name);
 });
 const showLatLngPopup = (event) => {
   const { lat, lng } = event.latlng;
@@ -24031,8 +24031,12 @@ const updateRasterTile = () => {
   if (curDataset.nodata !== null)
     params.nodata = curDataset.nodata.toString();
   const shift = state.refValues[tileIdx];
-  if (params.algorithm == "shift")
-    params.algorithm_params = `{"shift": ${shift}}`;
+  if (shift !== void 0) {
+    if (params.algorithm == "shift")
+      params.algorithm_params = `{"shift": ${shift}}`;
+  } else {
+    console.log(`Error in updateRasterTile: shift=${shift} for ${name}`);
+  }
   const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
   console.log("url_params", url_params);
   fetch(
@@ -24104,6 +24108,9 @@ const setupDataset = (name) => {
   const lastSegment = curDataset.file_list[0].split("/").pop();
   layerSliderText.textContent = lastSegment;
   state.name = name;
+  if (state.datasetInfo[name].uses_spatial_ref && state.refValues[name] === void 0) {
+    setRefValues(name);
+  }
   updateRasterTile();
 };
 const computeCenter = (name) => {
@@ -24158,9 +24165,9 @@ function setChartYLimits(min, max) {
   yAxis.suggestedMax = max;
   chart.update();
 }
-async function getPointTimeSeries(lon, lat) {
+async function getPointTimeSeries(lon, lat, name) {
   const params = {
-    dataset_name: state.name,
+    dataset_name: name,
     lon,
     lat
   };

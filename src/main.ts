@@ -25,7 +25,8 @@ interface State {
   tileIdx: number;
   tile: L.TileLayer | null;
   // The shifts from the reference point for all `tileIdx`s
-  refValues: number[];
+  // Maps from dataset name (like `datasetInfo`) to array of values
+  refValues: { [key: string]: number[] };
   // Background tiles
   basemap: BaseMapItem
 }
@@ -64,7 +65,7 @@ var state: State = {
   name: 'unwrapped',
   tile: null,
   tileIdx: 0,
-  refValues: [0],
+  refValues: {},
   basemap: baseMaps.esriSatellite,
 };
 
@@ -115,10 +116,10 @@ map.on('click', function (e) {
   chartContainer.style.display !== 'none' && updateChart()
 });
 
-const setRefValues = () => {
+const setRefValues = (datasetName: string) => {
   const { lat, lng } = state.markerRef.getLatLng()
   console.log('shifting', lat, lng)
-  getPointTimeSeries(lng, lat)
+  getPointTimeSeries(lng, lat, datasetName)
     .then((values) => {
       console.log('getPointTimeSeries', values)
       if (values !== undefined) {
@@ -138,7 +139,7 @@ state.markerTs.on('moveend', function () {
 state.markerRef.on('moveend', function () {
   chartContainer.style.display !== 'none' && updateChart()
   // Save these new values to the state
-  setRefValues()
+  setRefValues(state.name)
 });
 
 // Add a location pop up when you click on either marker
@@ -211,7 +212,11 @@ const updateRasterTile = () => {
   if (curDataset.nodata !== null) params.nodata = curDataset.nodata.toString()
 
   const shift = state.refValues[tileIdx]
-  if (params.algorithm == 'shift') params.algorithm_params = `{"shift": ${shift}}`
+  if (shift !== undefined) {
+    if (params.algorithm == 'shift') params.algorithm_params = `{"shift": ${shift}}`
+  } else {
+    console.log(`Error in updateRasterTile: shift=${shift} for ${name}`)
+  }
 
   const url_params = Object.keys(params).map(i => `${i}=${params[i]}`).join('&')
   console.log('url_params', url_params)
@@ -309,6 +314,10 @@ const setupDataset = (name: string) => {
   // Save to the state
   state.name = name;
 
+  if ((state.datasetInfo[name].uses_spatial_ref) && (state.refValues[name] === undefined)) {
+    setRefValues(name)
+  }
+
   updateRasterTile();
 }
 
@@ -392,9 +401,9 @@ function setChartYLimits(min: number, max: number) {
   chart.update()
 }
 
-async function getPointTimeSeries(lon: number, lat: number) {
+async function getPointTimeSeries(lon: number, lat: number, name: string) {
   const params: { [key: string]: any } = {
-    dataset_name: state.name,
+    dataset_name: name,
     lon: lon,
     lat: lat,
   }
