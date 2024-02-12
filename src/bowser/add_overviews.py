@@ -63,7 +63,6 @@ def process_files(
     levels: Sequence[int],
     resampling: Resampling,
     max_workers: int = 5,
-    overwrite: bool = False,
 ):
     """Process files to add GDAL overviews and compression.
 
@@ -78,15 +77,12 @@ def process_files(
         Default = "nearest"
     max_workers : int, default = 5
         Number of parallel threads to run.
-    overwrite : bool, default = False
-        Overwrite existing overviews
     """
     thread_map(
         lambda file_path: add_overviews(
             Path(file_path),
             overview_levels=list(levels),
             resampling=resampling,
-            overwrite=overwrite,
         ),
         file_paths,
         max_workers=max_workers,
@@ -119,17 +115,11 @@ def process_files(
     type=int,
     help="Number of parallel files to process",
 )
-@click.option(
-    "--overwrite",
-    is_flag=True,
-    help="Overwrite existing file. Otherwise, skips",
-)
-def addo(file_paths, levels, resampling, max_workers, overwrite):
+def addo(file_paths, levels, resampling, max_workers):
     """Add compressed GDAL overviews to files."""
     return process_files(
         file_paths=file_paths,
         levels=levels,
         resampling=Resampling(resampling),
         max_workers=max_workers,
-        overwrite=overwrite,
     )
