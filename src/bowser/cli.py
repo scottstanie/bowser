@@ -153,7 +153,7 @@ def setup_dolphin(dolphin_work_dir, output):
 @click.option(
     "--workers",
     "-w",
-    default=4,
+    default=1,
     type=int,
     help="Number of uvicorn workers to spawn",
     show_default=True,

@@ -123,7 +123,7 @@ const setRefValues = (datasetName: string) => {
     .then((values) => {
       console.log('getPointTimeSeries', values)
       if (values !== undefined) {
-        state.refValues = values
+        state.refValues[datasetName] = values
         // If the current dataset uses this, then re-render
         curUsesRef() && updateRasterTile()
       }
@@ -211,13 +211,17 @@ const updateRasterTile = () => {
   if (curDataset.algorithm !== null) params.algorithm = curDataset.algorithm
   if (curDataset.nodata !== null) params.nodata = curDataset.nodata.toString()
 
-  const shift = state.refValues[tileIdx]
-  if (shift !== undefined) {
-    if (params.algorithm == 'shift') {
-      params.algorithm_params = `{"shift": ${shift}}`
-    } else {
-      console.log(`Error in updateRasterTile: shift=${shift} for ${name}`)
-      delete params['algorithm']
+  if (state.refValues[name] !== undefined) {
+
+    const shift = state.refValues[name][tileIdx]
+    console.log(`updateRasterTile: shift=${shift} for ${name}`)
+    if (params.algorithm === 'shift') {
+      if (shift !== undefined) {
+        params.algorithm_params = `{"shift": ${shift}}`
+      } else {
+        console.log(`Error in updateRasterTile: shift=${shift} for ${name}`)
+        delete params['algorithm']
+      }
     }
   }
 
@@ -240,7 +244,7 @@ const updateRasterTile = () => {
       newTile.addTo(map)
       state.tile = newTile
 
-    }).catch(error => {
+    }, error => {
       console.error('Error in getting tile info:', error)
     });
 }

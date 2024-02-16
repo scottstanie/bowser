@@ -56,7 +56,7 @@ async def datasets():
 
 
 async def _get_point_values(name: str, lon: float, lat: float) -> np.ndarray:
-    return DATASETS[name]._reader.read_lonlat(lon, lat)
+    return np.atleast_1d(DATASETS[name]._reader.read_lonlat(lon, lat))
 
 
 @app.get(
