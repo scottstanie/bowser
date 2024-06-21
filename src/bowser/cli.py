@@ -139,6 +139,10 @@ def setup_dolphin(dolphin_work_dir, output):
             "name": "Amplitude dispersion",
             "file_list": [f"{wd}/interferograms/amp_dispersion_looked.tif"],
         },
+        {
+            "name": "SHP counts",
+            "file_list": [f"{wd}/interferograms/shp_counts.tif"],
+        },
     ]
     raster_groups = []
     for group in dolphin_outputs:
