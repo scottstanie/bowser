@@ -107,31 +107,47 @@ def setup_dolphin(dolphin_work_dir, output):
     wd = dolphin_work_dir.rstrip("/")
     dolphin_outputs = [
         {
+            "name": "time series",
+            "file_list": _find_files(f"{wd}/timeseries/2*.tif"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {"name": "velocity", "file_list": [f"{wd}/timeseries/velocity.tif"]},
+        {
             "name": "unwrapped",
             "file_list": _find_files(f"{wd}/unwrapped/*.unw.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
-            "name": "connected components",
+            "name": "Connected components",
             "file_list": _find_files(f"{wd}/unwrapped/*.unw.conncomp.tif"),
         },
         {
-            "name": "correlation",
+            "name": "Correlation",
             "file_list": _find_files(f"{wd}/interferograms/*.cor.tif"),
         },
         {
-            "name": "ps_mask",
+            "name": "PS mask",
             "file_list": [f"{wd}/interferograms/ps_mask_looked.tif"],
         },
         {
-            "name": "temporal_coherence",
+            "name": "Temporal coherence",
             "file_list": [f"{wd}/interferograms/temporal_coherence.tif"],
+        },
+        {
+            "name": "Amplitude dispersion",
+            "file_list": [f"{wd}/interferograms/amp_dispersion_looked.tif"],
         },
     ]
     raster_groups = []
     for group in dolphin_outputs:
-        raster_groups.append(RasterGroup(**group))
+        try:
+            rg = RasterGroup(**group)
+        except Exception as e:
+            print(e)
+            continue
+        raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
 
