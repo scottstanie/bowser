@@ -115,7 +115,7 @@ def setup_dolphin(dolphin_work_dir, output):
         {"name": "velocity", "file_list": [f"{wd}/timeseries/velocity.tif"]},
         {
             "name": "unwrapped",
-            "file_list": _find_files(f"{wd}/unwrapped/*.unw.tif"),
+            "file_list": _find_files(f"{wd}/unwrapped/2*[0-9].unw.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },

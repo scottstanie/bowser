@@ -165,7 +165,7 @@ def _find_files(glob_str: str) -> list[str]:
         # file_list = S3Path(pre).glob(glob_part)
         # # We'd need to split on a /, non trivial
     else:
-        file_list = glob(glob_str)
+        file_list = sorted(glob(glob_str))
     return file_list
 
 
