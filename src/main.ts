@@ -200,7 +200,12 @@ const updateRasterTile = () => {
 
   // Save colormap preferences to localStorage
   colormapImg.src = `/colorbar/${colormap_name}`
-  const url = curDataset.file_list[tileIdx];
+  // make sure we aren't passed the edge
+  // TODO: should probably record the last tileIdx per dataset?
+  // Otherwise, we should have one per "same length" lists
+  const curTileIdx = Math.max(0, Math.min(tileIdx, curDataset.file_list.length))
+  state.tileIdx = curTileIdx
+  const url = curDataset.file_list[curTileIdx];
 
   let params: { [key: string]: string } = {
     url: encodeURIComponent(url),
