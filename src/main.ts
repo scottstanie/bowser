@@ -203,7 +203,7 @@ const updateRasterTile = () => {
   // make sure we aren't passed the edge
   // TODO: should probably record the last tileIdx per dataset?
   // Otherwise, we should have one per "same length" lists
-  const curTileIdx = Math.max(0, Math.min(tileIdx, curDataset.file_list.length))
+  const curTileIdx = Math.max(0, Math.min(tileIdx, curDataset.file_list.length - 1))
   state.tileIdx = curTileIdx
   const url = curDataset.file_list[curTileIdx];
 
@@ -218,7 +218,7 @@ const updateRasterTile = () => {
 
   if (state.refValues[name] !== undefined) {
 
-    const shift = state.refValues[name][tileIdx]
+    const shift = state.refValues[name][curTileIdx]
     console.log(`updateRasterTile: shift=${shift} for ${name}`)
     if (params.algorithm === 'shift') {
       if (shift !== undefined) {
