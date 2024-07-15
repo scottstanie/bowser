@@ -6,6 +6,7 @@ dependencies:
   - pip>=21.3  # https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/#editable-installation
   - fastapi
   - pydantic>=2.1
+  - pydantic-settings
   - pyproj>=3.3
   - matplotlib-base
   - numpy>=1.22
@@ -15,5 +16,5 @@ dependencies:
   - typing_extensions>=3.10
   - uvicorn
   # # Optional for reading from S3:
-  # - s5cmd
-  # - boto3
+  - s5cmd
+  - boto3

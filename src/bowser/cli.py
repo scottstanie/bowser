@@ -104,28 +104,34 @@ def setup_dolphin(dolphin_work_dir, output):
     """
     from .titiler import Algorithm, RasterGroup, _find_files
 
+    def _glob(g):
+        try:
+            return _find_files(g.replace("'", "").replace('"', ""))
+        except RuntimeError:
+            return []
+
     wd = dolphin_work_dir.rstrip("/")
     dolphin_outputs = [
         {
             "name": "time series",
-            "file_list": _find_files(f"{wd}/timeseries/2*.tif"),
+            "file_list": _glob(f"{wd}/timeseries/2*.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {"name": "velocity", "file_list": [f"{wd}/timeseries/velocity.tif"]},
         {
             "name": "unwrapped",
-            "file_list": _find_files(f"{wd}/unwrapped/2*[0-9].unw.tif"),
+            "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Connected components",
-            "file_list": _find_files(f"{wd}/unwrapped/*.unw.conncomp.tif"),
+            "file_list": _glob(f"{wd}/unwrapped/*.unw.conncomp.tif"),
         },
         {
             "name": "Correlation",
-            "file_list": _find_files(f"{wd}/interferograms/*.cor.tif"),
+            "file_list": _glob(f"{wd}/interferograms/*.cor.tif"),
         },
         {
             "name": "PS mask",
