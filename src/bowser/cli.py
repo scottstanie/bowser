@@ -164,6 +164,11 @@ def setup_dolphin(dolphin_work_dir, output):
 
 @cli_app.command()
 @click.option(
+    "--rasters-file",
+    default="bowser_rasters.json",
+    help="Name of JSON file from `bowser set-data`.",
+)
+@click.option(
     "--port",
     "-p",
     default=8000,
@@ -191,12 +196,13 @@ def setup_dolphin(dolphin_work_dir, output):
     help="Logging verbosity level",
     show_default=True,
 )
-def run(port, reload, workers, log_level):
+def run(rasters_file, port, reload, workers, log_level):
     """Run the web server."""
     import uvicorn
 
     # https://developmentseed.org/titiler/advanced/performance_tuning/
     cfg = {
+        "DATASET_CONFIG_FILE": rasters_file,
         "GDAL_HTTP_MULTIPLEX": "YES",
         "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
         "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
@@ -208,6 +214,7 @@ def run(port, reload, workers, log_level):
     for k, v in cfg.items():
         os.environ[k] = v
 
+    print(f"Setting up on http://localhost:{port}")
     uvicorn.run(
         "bowser.main:app",
         port=port,

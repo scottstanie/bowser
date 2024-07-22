@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
 from enum import Enum
 from glob import glob
+from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
 import simplejson
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, field_validator
 from rio_tiler.models import ImageData
 from starlette import responses
 from titiler.core.algorithm import BaseAlgorithm
@@ -85,11 +87,16 @@ class RasterGroup(BaseModel):
     """A group of rasters to view."""
 
     name: str
-    file_list: list[str]
+    file_list: list[str | Path]
     nodata: float | None = None
     uses_spatial_ref: bool = False
     algorithm: str | None = None
     _reader: RasterStackReader
+
+    @field_validator("file_list")
+    @classmethod
+    def _ensure_string(cls, v: Any):
+        return list(map(os.fspath, v))
 
     def model_post_init(self, __context: Any) -> None:  # noqa: D102
         super().model_post_init(__context)
