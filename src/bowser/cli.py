@@ -186,7 +186,7 @@ def setup_dolphin(dolphin_work_dir, output):
 )
 @click.option(
     "--log-level",
-    default="info",
+    default="warning",
     type=click.Choice(["error", "warning", "info", "debug"]),
     help="Logging verbosity level",
     show_default=True,
