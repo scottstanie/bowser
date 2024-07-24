@@ -138,6 +138,7 @@ def setup_dolphin(dolphin_work_dir, output):
         {
             "name": "unwrapped",
             "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
+            "mask_file_list": _glob(f"{wd}/unwrapped/*.unw.conncomp.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
