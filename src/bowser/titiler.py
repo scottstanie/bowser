@@ -28,6 +28,7 @@ class Algorithm(str, Enum):
     PHASE = "phase"
     AMPLITUDE = "amplitude"
     SHIFT = "shift"
+    REWRAP = "rewrap"
 
 
 class Phase(BaseAlgorithm):
@@ -42,6 +43,20 @@ class Amplitude(BaseAlgorithm):
 
     def __call__(self, img: ImageData) -> ImageData:  # noqa: D102
         return _process_complex(img, np.abs)
+
+
+class Rewrap(BaseAlgorithm):
+    """Creation algorithm for re-wrapping unwrapped phase to (-pi, pi)."""
+
+    def __call__(self, img: ImageData) -> ImageData:  # noqa: D102
+        return ImageData(
+            np.ma.mod(np.pi + img.array, 2 * np.pi) - np.pi,
+            # img. - self.shift,
+            # np.ma.MaskedArray(data, mask=~mask),
+            assets=img.assets,
+            crs=img.crs,
+            bounds=img.bounds,
+        )
 
 
 def _process_complex(

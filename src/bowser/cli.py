@@ -57,7 +57,7 @@ def set_data(output):
             algorithm = Algorithm.SHIFT.value
 
         if algorithm is None and click.confirm(
-            "Do you want to apply `np.abs` or `np.angle` to the data?"
+            "Do you want to apply `np.abs`,`np.angle`, rewrap the data?"
         ):
             algorithm = click.prompt(
                 "Which algorithm?",

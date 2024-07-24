@@ -13,7 +13,7 @@ from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
 
 from .config import settings
-from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Shift
+from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
 from .utils import desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger(__name__)
@@ -142,7 +142,7 @@ app.add_middleware(
 
 
 algorithms = default_algorithms.register(
-    {"phase": Phase, "amplitude": Amplitude, "shift": Shift}
+    {"phase": Phase, "amplitude": Amplitude, "shift": Shift, "rewrap": Rewrap}
 )
 
 # Create a PostProcessParams dependency
