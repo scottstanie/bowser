@@ -162,6 +162,20 @@ def setup_dolphin(dolphin_work_dir, output):
     _dump_raster_groups(raster_groups, output=output)
 
 
+def _find_available_port(port_request: int = 8000):
+    import socket
+
+    port = port_request - 1
+    while (result := 0) == 0:
+        port += 1
+        # Check if the port is open
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            result = s.connect_ex(("127.0.0.1", port))
+
+        if result != 0:
+            return port
+
+
 @cli_app.command()
 @click.option(
     "--rasters-file",
@@ -171,7 +185,7 @@ def setup_dolphin(dolphin_work_dir, output):
 @click.option(
     "--port",
     "-p",
-    default=8000,
+    default=None,
     type=int,
     help="Port to run the web server on.",
     show_default=True,
@@ -199,6 +213,9 @@ def setup_dolphin(dolphin_work_dir, output):
 def run(rasters_file, port, reload, workers, log_level):
     """Run the web server."""
     import uvicorn
+
+    if port is None:
+        port = _find_available_port(8000)
 
     # https://developmentseed.org/titiler/advanced/performance_tuning/
     cfg = {
