@@ -103,9 +103,11 @@ class RasterGroup(BaseModel):
 
     name: str
     file_list: list[str | Path]
+    mask_file_list: list[str | Path] = []
     nodata: float | None = None
     uses_spatial_ref: bool = False
     algorithm: str | None = None
+    mask_min_value: float = 0.1
     _reader: RasterStackReader
 
     @field_validator("file_list")

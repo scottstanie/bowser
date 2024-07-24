@@ -13,6 +13,7 @@ from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
 
 from .config import settings
+from .readers import CustomReader
 from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
 from .utils import desensitize_mpl_case, generate_colorbar
 
@@ -148,7 +149,28 @@ algorithms = default_algorithms.register(
 # Create a PostProcessParams dependency
 PostProcessParams: Callable = algorithms.dependency
 
-cog_endpoints = TilerFactory(process_dependency=PostProcessParams)
+
+def InputDependency(
+    url: Annotated[str, Query(description="Dataset URL")],
+    mask: Annotated[str | None, Query(description="Mask URL")] = None,
+    mask_min_value: Annotated[float, Query(description="Mask Minimum Value")] = 0.1,
+) -> dict:
+    """Create dataset path from args."""
+    input_dict = {
+        "data": url,
+        "mask": mask,
+        "mask_min_value": mask_min_value,
+    }
+    return input_dict
+
+
+# Modify your TilerFactory to use the new CustomReader and InputDependency
+# cog_endpoints = TilerFactory(process_dependency=PostProcessParams)
+cog_endpoints = TilerFactory(
+    reader=CustomReader,
+    path_dependency=InputDependency,
+    process_dependency=PostProcessParams,
+)
 
 
 # Register the COG endpoints to the application

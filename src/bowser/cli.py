@@ -50,6 +50,7 @@ def set_data(output):
         name = click.prompt("Enter a name for the raster group", type=str)
         algorithm = None
         uses_spatial_ref = False
+        mask_file_list = []
         if click.confirm(
             "Does this dataset us a relative spatial reference? (e.g. unwrapped phase)"
         ):
@@ -63,9 +64,24 @@ def set_data(output):
                 "Which algorithm?",
                 type=click.Choice([a.value for a in Algorithm]),
             )
+        if click.confirm("Do you have .conncomp.tif files you want to mask on?"):
+            mask_file_list = [
+                f.replace("unw.tif", "unw.conncomp.tif") for f in file_list
+            ]
+        if not mask_file_list and click.confirm(
+            "Do you want to search for mask files?"
+        ):
+            g = click.prompt(
+                "Enter the filename or a glob pattern for the mask files", type=str
+            )
+            mask_file_list = _find_files(g.strip())
+            if not mask_file_list:
+                click.echo("No files found. Try again.")
+
         click.echo("Building raster group...")
         rg = RasterGroup(
             file_list=file_list,
+            mask_file_list=mask_file_list,
             name=name,
             algorithm=algorithm,
             uses_spatial_ref=uses_spatial_ref,

@@ -35,6 +35,8 @@ interface State {
 interface RasterGroup {
   name: string;
   file_list: string[];
+  mask_file_list: string[];
+  mask_min_value: number;
   nodata: number | null;
   uses_spatial_ref: boolean;
   algorithm: string | null;
@@ -206,6 +208,7 @@ const updateRasterTile = () => {
   const curTileIdx = Math.max(0, Math.min(tileIdx, curDataset.file_list.length - 1))
   state.tileIdx = curTileIdx
   const url = curDataset.file_list[curTileIdx];
+  const maskUrl = curDataset.mask_file_list[curTileIdx];
 
   let params: { [key: string]: string } = {
     url: encodeURIComponent(url),
@@ -213,6 +216,8 @@ const updateRasterTile = () => {
     colormap_name: colormap_name,
     // algorithm_params:
   }
+
+  if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
   if (curDataset.algorithm !== null) params.algorithm = curDataset.algorithm
   if (curDataset.nodata !== null) params.nodata = curDataset.nodata.toString()
 

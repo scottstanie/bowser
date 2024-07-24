@@ -24019,19 +24019,24 @@ const updateRasterTile = () => {
     vmax = parseFloat(vmaxSelect.value);
   setChartYLimits(vmin, vmax);
   colormapImg.src = `/colorbar/${colormap_name}`;
-  const url = curDataset.file_list[tileIdx];
+  const curTileIdx = Math.max(0, Math.min(tileIdx, curDataset.file_list.length - 1));
+  state.tileIdx = curTileIdx;
+  const url = curDataset.file_list[curTileIdx];
+  const maskUrl = curDataset.mask_file_list[curTileIdx];
   let params = {
     url: encodeURIComponent(url),
     rescale: `${vmin},${vmax}`,
     colormap_name
     // algorithm_params:
   };
+  if (maskUrl !== void 0)
+    params.mask = encodeURIComponent(maskUrl);
   if (curDataset.algorithm !== null)
     params.algorithm = curDataset.algorithm;
   if (curDataset.nodata !== null)
     params.nodata = curDataset.nodata.toString();
   if (state.refValues[name] !== void 0) {
-    const shift = state.refValues[name][tileIdx];
+    const shift = state.refValues[name][curTileIdx];
     console.log(`updateRasterTile: shift=${shift} for ${name}`);
     if (params.algorithm === "shift") {
       if (shift !== void 0) {
