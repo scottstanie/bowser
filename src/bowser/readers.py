@@ -532,15 +532,21 @@ class CustomReader(BaseReader):
                 **kwargs,
             )
 
+            # Combine the invalid pixels of `.mask` and `.img`
+            bad_image_pixels = img.mask == 0
             # img.mask has "valid" = 255, "invalid" = 0
             # need to convert it to numpy style
-            filled_mask_layer = mask_layer_img.array.filled(0)
+            filled_mask_layer = np.squeeze(mask_layer_img.array.filled(0))
             bad_mask_pixels = filled_mask_layer == 0
-            bad_image_pixels = img.mask == 0
+
+            # Also mask out the pixels which don't pass the threshold
             pixels_below_threshold = filled_mask_layer < self.input["mask_min_value"]
-            combined_mask = np.logical_or(
-                np.logical_or(bad_image_pixels, bad_mask_pixels),
-                pixels_below_threshold,
+            combined_mask = np.logical_or.reduce(
+                [
+                    bad_image_pixels,
+                    bad_mask_pixels,
+                    pixels_below_threshold,
+                ]
             )
             img = ImageData(
                 np.ma.MaskedArray(img.data, mask=combined_mask),
