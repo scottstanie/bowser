@@ -147,6 +147,11 @@ def setup_dolphin(dolphin_work_dir, output):
             "file_list": _glob(f"{wd}/unwrapped/*.unw.conncomp.tif"),
         },
         {
+            "name": "Re-wrapped phase",
+            "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
+            "algorithm": Algorithm.SHIFT.rewrap,
+        },
+        {
             "name": "Correlation",
             "file_list": _glob(f"{wd}/interferograms/*.cor.tif"),
         },
