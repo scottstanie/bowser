@@ -149,7 +149,7 @@ def setup_dolphin(dolphin_work_dir, output):
         {
             "name": "Re-wrapped phase",
             "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
-            "algorithm": Algorithm.SHIFT.rewrap,
+            "algorithm": Algorithm.REWRAP.value,
         },
         {
             "name": "Correlation",
