@@ -134,7 +134,12 @@ def setup_dolphin(dolphin_work_dir, output):
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
-        {"name": "velocity", "file_list": [f"{wd}/timeseries/velocity.tif"]},
+        {
+            "name": "velocity",
+            "file_list": [f"{wd}/timeseries/velocity.tif"],
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
         {
             "name": "unwrapped",
             "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
