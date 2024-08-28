@@ -289,7 +289,6 @@ def _find_available_port(port_request: int = 8000):
     "-o",
     "--output-dir",
     required=True,
-    type=click.Path(file_okay=False, dir_okay=True),
     help="Path to the output directory where VRT files will be saved.",
 )
 @click.option(
@@ -308,12 +307,14 @@ def prepare_disp_s1(input_files, output_dir, corrections: bool):
         process_netcdf_files,
     )
 
+    input_paths = [Path(f) for f in input_files]
+
     datasets_to_process = (
         CORE_DATASETS + CORRECTION_DATASETS if corrections else CORE_DATASETS
     )
 
     click.echo(f"Processing {len(input_files)} files into VRTS in {output_dir}")
-    process_netcdf_files(input_files, output_dir, datasets_to_process)
+    process_netcdf_files(input_paths, Path(output_dir), datasets_to_process)
 
 
 @cli_app.command()
@@ -334,63 +335,62 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
     """
     from .titiler import Algorithm, RasterGroup
 
-    def _glob(pattern: str) -> list[str]:
-        return [str(p) for p in Path(disp_s1_dir).glob(pattern)]
+    def _glob(pattern: str, subdir: str) -> list[str]:
+        return [str(p) for p in (Path(disp_s1_dir) / subdir).glob(pattern)]
 
     disp_s1_outputs = [
         {
             "name": "Displacement",
-            "file_list": _glob("*_displacement.vrt"),
+            "file_list": _glob("*.vrt", subdir="displacement"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
+            "mask_file_list": _glob("*.vrt", subdir="connected_component_labels"),
         },
         {
             "name": "Connected Component Labels",
-            "file_list": _glob("*.connected_component_labels.vrt"),
+            "file_list": _glob("*.vrt", subdir="connected_component_labels"),
+        },
+        {
+            "name": "Interferometric Correlation",
+            "file_list": _glob("*.vrt", subdir="interferometric_correlation"),
+        },
+        {
+            "name": "Persistent Scatterer Mask",
+            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
+        },
+        {
+            "name": "Short Wavelength Displacement",
+            "file_list": _glob("*.vrt", subdir="short_wavelength_displacement"),
+        },
+        {
+            "name": "Temporal Coherence",
+            "file_list": _glob("*.vrt", subdir="temporal_coherence"),
+        },
+        {
+            "name": "Unwrapper Mask",
+            "file_list": _glob("*.vrt", subdir="unwrapper_mask"),
         },
         {
             "name": "Ionospheric Delay",
-            "file_list": _glob("*.corrections_ionospheric_delay.vrt"),
+            "file_list": _glob("*vrt", subdir="corrections/ionospheric_delay"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Perpendicular Baseline",
-            "file_list": _glob("*.corrections_perpendicular_baseline.vrt"),
+            "file_list": _glob("*vrt", subdir="corrections/perpendicular_baseline"),
         },
         {
             "name": "Solid Earth Tide",
-            "file_list": _glob("*.corrections_solid_earth_tide.vrt"),
+            "file_list": _glob("*vrt", subdir="corrections/solid_earth_tide"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Tropospheric Delay",
-            "file_list": _glob("*.corrections_tropospheric_delay.vrt"),
+            "file_list": _glob("*vrt", subdir="corrections/tropospheric_delay"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
-        },
-        {
-            "name": "Interferometric Correlation",
-            "file_list": _glob("*.interferometric_correlation.vrt"),
-        },
-        {
-            "name": "Persistent Scatterer Mask",
-            "file_list": _glob("*.persistent_scatterer_mask.vrt"),
-        },
-        {
-            "name": "Short Wavelength Displacement",
-            "file_list": _glob("*.short_wavelength_displacement.vrt"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-        },
-        {
-            "name": "Temporal Coherence",
-            "file_list": _glob("*.temporal_coherence.vrt"),
-        },
-        {
-            "name": "Unwrapper Mask",
-            "file_list": _glob("*.unwrapper_mask.vrt"),
         },
     ]
 

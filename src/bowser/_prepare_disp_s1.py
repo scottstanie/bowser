@@ -6,6 +6,7 @@ from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
 
 CORE_DATASETS = [
+    "corrections/perpendicular_baseline",
     "connected_component_labels",
     "displacement",
     "interferometric_correlation",
@@ -32,8 +33,8 @@ def process_netcdf_files(
 
     Parameters
     ----------
-    input_dir : str
-        Path to the directory containing input NetCDF files.
+    netcdf_files : Sequence[Path]
+        Paths to input NetCDF files.
     output_dir : str
         Path to the directory where output VRT files will be saved.
     datasets : list[str]
@@ -54,7 +55,7 @@ def process_netcdf_files(
     """
     # Ensure output directory exists
     out_path = Path(output_dir)
-    out_path.mkdir(exist_ok=True)
+    out_path.mkdir(exist_ok=True, parents=True)
 
     thread_map(
         lambda f: process_single_file(f, output_dir, datasets),
@@ -87,10 +88,10 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
 
     fmt = "%Y%m%d"
     for dataset in tqdm(datasets):
-        vrt_filename = (
-            f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.{dataset}.vrt"
-        )
-        vrt_path = output_dir / vrt_filename
+        cur_output_dir = output_dir / dataset
+        cur_output_dir.mkdir(exist_ok=True, parents=True)
+        vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
+        vrt_path = cur_output_dir / vrt_filename
 
         # Create VRT file
         gdal_translate_cmd = [
