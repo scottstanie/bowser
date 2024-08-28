@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 import click
 
@@ -12,6 +13,81 @@ def cli_app():
 
 
 cli_app.add_command(addo)
+
+
+@cli_app.command()
+@click.option(
+    "--rasters-file",
+    default="bowser_rasters.json",
+    help="Name of JSON file from `bowser set-data`.",
+)
+@click.option(
+    "--port",
+    "-p",
+    default=None,
+    type=int,
+    help="Port to run the web server on.",
+    show_default=True,
+)
+@click.option(
+    "--reload",
+    is_flag=True,
+    help="Reload the server on file change.",
+)
+@click.option(
+    "--workers",
+    "-w",
+    default=1,
+    type=int,
+    help="Number of uvicorn workers to spawn",
+    show_default=True,
+)
+@click.option(
+    "--log-level",
+    default="warning",
+    type=click.Choice(["error", "warning", "info", "debug"]),
+    help="Logging verbosity level",
+    show_default=True,
+)
+@click.option(
+    "--ignore-sidecar-files",
+    is_flag=True,
+    help=(
+        "Tell GDAL to ignore extra files in the directory containing the files to"
+        " read. This is useful for S3 buckets with huge number of files (but not"
+        " for local reading)."
+    ),
+)
+def run(rasters_file, port, reload, workers, log_level, ignore_sidecar_files):
+    """Run the web server."""
+    import uvicorn
+
+    if port is None:
+        port = _find_available_port(8000)
+
+    # https://developmentseed.org/titiler/advanced/performance_tuning/
+    cfg = {
+        "DATASET_CONFIG_FILE": rasters_file,
+        "GDAL_HTTP_MULTIPLEX": "YES",
+        "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
+        "GDAL_CACHEMAX": "800",
+        "CPL_VSIL_CURL_CACHE_SIZE": "800",
+        "VSI_CACHE": "TRUE",
+        "VSI_CACHE_SIZE": "5000000",
+    }
+    for k, v in cfg.items():
+        os.environ[k] = v
+    if ignore_sidecar_files:
+        os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
+
+    print(f"Setting up on http://localhost:{port}")
+    uvicorn.run(
+        "bowser.main:app",
+        port=port,
+        reload=reload,
+        workers=workers,
+        log_level=log_level,
+    )
 
 
 @cli_app.command()
@@ -204,65 +280,127 @@ def _find_available_port(port_request: int = 8000):
 
 
 @cli_app.command()
-@click.option(
-    "--rasters-file",
-    default="bowser_rasters.json",
-    help="Name of JSON file from `bowser set-data`.",
+@click.argument(
+    "input_files",
+    nargs=-1,
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
 )
 @click.option(
-    "--port",
-    "-p",
-    default=None,
-    type=int,
-    help="Port to run the web server on.",
-    show_default=True,
+    "-o",
+    "--output-dir",
+    required=True,
+    type=click.Path(file_okay=False, dir_okay=True),
+    help="Path to the output directory where VRT files will be saved.",
 )
 @click.option(
-    "--reload",
-    is_flag=True,
-    help="Reload the server on file change.",
+    "--corrections/--no-corrections",
+    default=False,
+    help="Include corrections in addition to core datasets.",
 )
-@click.option(
-    "--workers",
-    "-w",
-    default=1,
-    type=int,
-    help="Number of uvicorn workers to spawn",
-    show_default=True,
-)
-@click.option(
-    "--log-level",
-    default="warning",
-    type=click.Choice(["error", "warning", "info", "debug"]),
-    help="Logging verbosity level",
-    show_default=True,
-)
-def run(rasters_file, port, reload, workers, log_level):
-    """Run the web server."""
-    import uvicorn
+def prepare_disp_s1(input_files, output_dir, corrections: bool):
+    """Process NetCDF files to create VRT files with overviews.
 
-    if port is None:
-        port = _find_available_port(8000)
-
-    # https://developmentseed.org/titiler/advanced/performance_tuning/
-    cfg = {
-        "DATASET_CONFIG_FILE": rasters_file,
-        "GDAL_HTTP_MULTIPLEX": "YES",
-        "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
-        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
-        "GDAL_CACHEMAX": "800",
-        "CPL_VSIL_CURL_CACHE_SIZE": "800",
-        "VSI_CACHE": "TRUE",
-        "VSI_CACHE_SIZE": "5000000",
-    }
-    for k, v in cfg.items():
-        os.environ[k] = v
-
-    print(f"Setting up on http://localhost:{port}")
-    uvicorn.run(
-        "bowser.main:app",
-        port=port,
-        reload=reload,
-        workers=workers,
-        log_level=log_level,
+    INPUT_FILES: Paths to input NetCDF files.
+    """
+    from bowser._prepare_disp_s1 import (
+        CORE_DATASETS,
+        CORRECTION_DATASETS,
+        process_netcdf_files,
     )
+
+    datasets_to_process = (
+        CORE_DATASETS + CORRECTION_DATASETS if corrections else CORE_DATASETS
+    )
+
+    click.echo(f"Processing {len(input_files)} files into VRTS in {output_dir}")
+    process_netcdf_files(input_files, output_dir, datasets_to_process)
+
+
+@cli_app.command()
+@click.argument(
+    "disp_s1_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(writable=True),
+    default="bowser_rasters.json",
+    show_default=True,
+)
+def setup_disp_s1(disp_s1_dir: str, output: str):
+    """Set up output data configuration for OPERA L3 DISP-S1 products.
+
+    Saves to `output` JSON file.
+    """
+    from .titiler import Algorithm, RasterGroup
+
+    def _glob(pattern: str) -> list[str]:
+        return [str(p) for p in Path(disp_s1_dir).glob(pattern)]
+
+    disp_s1_outputs = [
+        {
+            "name": "Displacement",
+            "file_list": _glob("*_displacement.vrt"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Connected Component Labels",
+            "file_list": _glob("*.connected_component_labels.vrt"),
+        },
+        {
+            "name": "Ionospheric Delay",
+            "file_list": _glob("*.corrections_ionospheric_delay.vrt"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Perpendicular Baseline",
+            "file_list": _glob("*.corrections_perpendicular_baseline.vrt"),
+        },
+        {
+            "name": "Solid Earth Tide",
+            "file_list": _glob("*.corrections_solid_earth_tide.vrt"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Tropospheric Delay",
+            "file_list": _glob("*.corrections_tropospheric_delay.vrt"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Interferometric Correlation",
+            "file_list": _glob("*.interferometric_correlation.vrt"),
+        },
+        {
+            "name": "Persistent Scatterer Mask",
+            "file_list": _glob("*.persistent_scatterer_mask.vrt"),
+        },
+        {
+            "name": "Short Wavelength Displacement",
+            "file_list": _glob("*.short_wavelength_displacement.vrt"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Temporal Coherence",
+            "file_list": _glob("*.temporal_coherence.vrt"),
+        },
+        {
+            "name": "Unwrapper Mask",
+            "file_list": _glob("*.unwrapper_mask.vrt"),
+        },
+    ]
+
+    raster_groups = []
+    for group in disp_s1_outputs:
+        try:
+            rg = RasterGroup(**group)
+        except Exception as e:
+            print(f"Error processing {group['name']}: {e}")
+            continue
+        raster_groups.append(rg)
+
+    _dump_raster_groups(raster_groups, output=output)
