@@ -43,7 +43,7 @@ ssh -N -L 8000:localhost:8000 aurora
 ```
 after starting the web server.
 
-## Quickstart for dolphin
+## Quickstart for DISP-S1 NetCDFs
 
 Until GDAL puts work into the NetCDF driver, reading remote files has very poor support (also, there is no standard overview format. So `titiler` is very unhappy).
 
