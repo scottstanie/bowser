@@ -43,6 +43,52 @@ ssh -N -L 8000:localhost:8000 aurora
 ```
 after starting the web server.
 
+## Quickstart for dolphin
+
+Until GDAL puts work into the NetCDF driver, reading remote files has very poor support (also, there is no standard overview format. So `titiler` is very unhappy).
+
+So, the recommended way to view some timeseries of frames is
+
+1. Download the NetCDFs (hopefully on some server which has fast access to the S3 bucket).
+2. Run `bowser prepare-disp-s1` to create VRT files pointing in the `.nc` files, one per dataset we wish to browse.
+3. Run `bowser setup-disp-s1` to make a JSON file containing all the file metadata, so the browser knows where to look.
+4. `bowser run`
+
+In detail:
+
+1. Download
+I use [`s5cmd`](https://github.com/peak/s5cmd) for faster copying, but the `aws` CLI tool works too:
+
+```bash
+mkdir my_disp_files; cd my_disp-files
+s5cmd --numworkers 4 cp 's3://opera-bucket/OPERA_L3_DISP-S1_IW_F11115*/OPERA_L3_DISP-S1_IW_F11115*.nc' .
+```
+
+2. Extract VRTS
+
+```bash
+bowser prepare-disp-s1 -o vrts *.nc
+```
+
+3. Create `bowser_rasters.json` metadata
+
+```bash
+bowser setup-disp-s1 vrts
+```
+
+4. Run
+
+```bash
+bowser run
+```
+
+If this is on a server instead of your laptop, you'll need (on your laptop)
+
+```
+ssh -N -L 8000:localhost:8000 aurora
+```
+for whatever port pops up after `bowser run`
+
 
 ## CLI Usage
 
