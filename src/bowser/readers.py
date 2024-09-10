@@ -193,6 +193,7 @@ class RasterReader(DatasetReader):
         file_date_fmt: str = "%Y%m%d",
         **options,
     ) -> RasterReader:
+        """Create a RasterReader from a GDAL-readable filename."""
         dates = get_dates(filename, fmt=file_date_fmt)
         with rio.open(filename, "r", **options) as src:
             shape = (src.height, src.width)
@@ -354,6 +355,7 @@ class RasterStackReader(BaseStackReader):
     If `keep_open=True`, this class stores an open file object.
     Otherwise, the file is opened on-demand for reading or writing and closed
     immediately after each read/write operation.
+
     """
 
     readers: Sequence[RasterReader]
@@ -370,6 +372,7 @@ class RasterStackReader(BaseStackReader):
         keep_open: bool = False,
         num_threads: int = 1,
         nodata: Optional[float] = None,
+        num_parallel_open: int = 15,
     ) -> RasterStackReader:
         """Create a RasterStackReader from a list of files.
 
@@ -384,14 +387,19 @@ class RasterStackReader(BaseStackReader):
         keep_open : bool, optional (default False)
             If True, keep the rasterio file handles open for faster reading.
         num_threads : int, optional (default 1)
-            Number of threads to use for reading.
+            Number of threads to use for reading each timeseries pixel.
+            Default is 1.
         nodata : float, optional
             Manually set value to use for nodata pixels, by default None
+        num_parallel_open : int
+            Parallelism to use when opening files for the first time.
+            Default is 15.
 
         Returns
         -------
         RasterStackReader
             The RasterStackReader object.
+
         """
         if isinstance(bands, int):
             bands = [bands] * len(file_list)
@@ -403,7 +411,7 @@ class RasterStackReader(BaseStackReader):
         readers = thread_map(
             _read,
             list(zip(file_list, bands)),
-            max_workers=8,
+            max_workers=num_parallel_open,
             desc="Reading raster metadata",
         )
         # Check if nodata values were found in the files
