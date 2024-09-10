@@ -4,6 +4,7 @@
 
 ```bash
 mamba env create
+conda activate bowser-env
 pip install .
 ```
 
