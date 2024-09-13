@@ -206,7 +206,7 @@ def setup_dolphin(dolphin_work_dir, output):
     dolphin_outputs = [
         {
             "name": "time series",
-            "file_list": _glob(f"{wd}/timeseries/2*.tif"),
+            "file_list": _glob(f"{wd}/timeseries/2*[0-9].tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
