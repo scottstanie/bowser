@@ -24023,6 +24023,7 @@ const updateRasterTile = () => {
   state.tileIdx = curTileIdx;
   const url = curDataset.file_list[curTileIdx];
   const maskUrl = curDataset.mask_file_list[curTileIdx];
+  const maskMinValue = curDataset.mask_min_value;
   let params = {
     url: encodeURIComponent(url),
     rescale: `${vmin},${vmax}`,
@@ -24031,6 +24032,8 @@ const updateRasterTile = () => {
   };
   if (maskUrl !== void 0)
     params.mask = encodeURIComponent(maskUrl);
+  if (maskMinValue !== void 0)
+    params.mask_min_value = maskMinValue.toString();
   if (curDataset.algorithm !== null)
     params.algorithm = curDataset.algorithm;
   if (curDataset.nodata !== null)
