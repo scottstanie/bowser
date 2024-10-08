@@ -336,7 +336,7 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
     from .titiler import Algorithm, RasterGroup
 
     def _glob(pattern: str, subdir: str) -> list[str]:
-        return [str(p) for p in (Path(disp_s1_dir) / subdir).glob(pattern)]
+        return [str(p) for p in sorted((Path(disp_s1_dir) / subdir).glob(pattern))]
 
     disp_s1_outputs = [
         {
