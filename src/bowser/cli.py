@@ -252,6 +252,10 @@ def setup_dolphin(dolphin_work_dir, output):
             "name": "SHP counts",
             "file_list": [f"{wd}/interferograms/shp_counts.tif"],
         },
+        {
+            "name": "Phase cosine similarity",
+            "file_list": [f"{wd}/interferograms/similarity.tif"],
+        },
     ]
     raster_groups = []
     for group in dolphin_outputs:
