@@ -13,6 +13,7 @@ CORE_DATASETS = [
     "persistent_scatterer_mask",
     "short_wavelength_displacement",
     "temporal_coherence",
+    "phase_similarity",
     "unwrapper_mask",
 ]
 CORRECTION_DATASETS = [

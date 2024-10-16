@@ -245,6 +245,10 @@ def setup_dolphin(dolphin_work_dir, output):
             "file_list": [f"{wd}/interferograms/temporal_coherence.tif"],
         },
         {
+            "name": "Phase cosine similarity",
+            "file_list": [f"{wd}/interferograms/similarity.tif"],
+        },
+        {
             "name": "Amplitude dispersion",
             "file_list": [f"{wd}/interferograms/amp_dispersion_looked.tif"],
         },
@@ -381,6 +385,10 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
         {
             "name": "Temporal Coherence",
             "file_list": _glob("*.vrt", subdir="temporal_coherence"),
+        },
+        {
+            "name": "Phase Similarity",
+            "file_list": _glob("*.vrt", subdir="similarity"),
         },
         {
             "name": "Unwrapper Mask",
