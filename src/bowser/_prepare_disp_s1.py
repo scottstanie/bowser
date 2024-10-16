@@ -85,13 +85,22 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
     from opera_utils import get_dates
 
     dates = get_dates(netcdf_file)[:2]
+    import h5py
+    hf = h5py.File(netcdf_file)
 
     fmt = "%Y%m%d"
     for dataset in tqdm(datasets):
+        if dataset not in hf:
+            if dataset == 'displacement' and 'unwrapped_phase' in hf:
+                dataset = 'unwrapped_phase'
+            else:
+                continue
         cur_output_dir = output_dir / dataset
         cur_output_dir.mkdir(exist_ok=True, parents=True)
         vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
         vrt_path = cur_output_dir / vrt_filename
+
+        
 
         # Create VRT file
         gdal_translate_cmd = [
