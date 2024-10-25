@@ -233,32 +233,28 @@ def setup_dolphin(dolphin_work_dir, output):
             "algorithm": Algorithm.REWRAP.value,
         },
         {
-            "name": "Correlation",
+            "name": "(Pseudo) correlation",
             "file_list": _glob(f"{wd}/interferograms/*.cor.tif"),
         },
         {
             "name": "PS mask",
-            "file_list": [f"{wd}/interferograms/ps_mask_looked.tif"],
+            "file_list": _glob(f"{wd}/interferograms/ps_mask_looked*.tif"),
         },
         {
             "name": "Temporal coherence",
-            "file_list": [f"{wd}/interferograms/temporal_coherence.tif"],
+            "file_list": _glob(f"{wd}/interferograms/temporal_coherence*.tif"),
         },
         {
             "name": "Phase cosine similarity",
-            "file_list": [f"{wd}/interferograms/similarity.tif"],
+            "file_list": _glob(f"{wd}/interferograms/similarity*.tif"),
         },
         {
             "name": "Amplitude dispersion",
-            "file_list": [f"{wd}/interferograms/amp_dispersion_looked.tif"],
+            "file_list": _glob(f"{wd}/interferograms/amp_dispersion_looked*.tif"),
         },
         {
             "name": "SHP counts",
-            "file_list": [f"{wd}/interferograms/shp_counts.tif"],
-        },
-        {
-            "name": "Phase cosine similarity",
-            "file_list": [f"{wd}/interferograms/similarity.tif"],
+            "file_list": _glob(f"{wd}/interferograms/shp_counts*.tif"),
         },
     ]
     raster_groups = []
