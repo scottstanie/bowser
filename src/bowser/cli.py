@@ -177,7 +177,7 @@ def set_data(output):
 def _dump_raster_groups(raster_groups, output):
     out_dicts = [rg.model_dump() for rg in raster_groups]
     with open(output, "w") as f:
-        json.dump(out_dicts, f)
+        json.dump(out_dicts, f, indent=2)
 
 
 @cli_app.command()
