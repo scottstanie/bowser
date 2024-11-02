@@ -124,7 +124,7 @@ class RasterGroup(BaseModel):
         self._reader = RasterStackReader.from_file_list(
             self.file_list,
             bands=1,
-            keep_open=True,
+            keep_open=False,
             num_threads=3,
             nodata=self.nodata,
         )
