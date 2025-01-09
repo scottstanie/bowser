@@ -249,6 +249,14 @@ def setup_dolphin(dolphin_work_dir, output):
             "file_list": _glob(f"{wd}/interferograms/similarity*.tif"),
         },
         {
+            "name": "Time series residuals",
+            "file_list": _glob(f"{wd}/timeseries/residuals_2*[0-9].tif"),
+        },
+        {
+            "name": "Time series residuals (total sum)",
+            "file_list": _glob(f"{wd}/timeseries/unw_inversion_residuals.tif"),
+        },
+        {
             "name": "Amplitude dispersion",
             "file_list": _glob(f"{wd}/interferograms/amp_dispersion_looked*.tif"),
         },
