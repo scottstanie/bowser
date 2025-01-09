@@ -217,6 +217,14 @@ def setup_dolphin(dolphin_work_dir, output):
             "algorithm": Algorithm.SHIFT.value,
         },
         {
+            "name": "Filtered time series",
+            "file_list": _glob(f"{wd}/filtered_timeseries2/2*[0-9].tif"),
+        },
+        {
+            "name": "Filterd velocity",
+            "file_list": [f"{wd}/filtered_timeseries2/velocity.tif"],
+        },
+        {
             "name": "unwrapped",
             "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
             "mask_file_list": _glob(f"{wd}/unwrapped/*.unw.conncomp.tif"),
@@ -366,6 +374,10 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
             "mask_file_list": _glob("*.vrt", subdir="connected_component_labels"),
         },
         {
+            "name": "Short Wavelength Displacement",
+            "file_list": _glob("*.vrt", subdir="short_wavelength_displacement"),
+        },
+        {
             "name": "Connected Component Labels",
             "file_list": _glob("*.vrt", subdir="connected_component_labels"),
         },
@@ -375,16 +387,8 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
             "algorithm": Algorithm.REWRAP.value,
         },
         {
-            "name": "Interferometric Correlation",
-            "file_list": _glob("*.vrt", subdir="interferometric_correlation"),
-        },
-        {
-            "name": "Persistent Scatterer Mask",
-            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
-        },
-        {
-            "name": "Short Wavelength Displacement",
-            "file_list": _glob("*.vrt", subdir="short_wavelength_displacement"),
+            "name": "Estimated Phase quality",
+            "file_list": _glob("*.vrt", subdir="estimated_phase_quality"),
         },
         {
             "name": "Temporal Coherence",
@@ -392,7 +396,15 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
         },
         {
             "name": "Phase Similarity",
-            "file_list": _glob("*.vrt", subdir="similarity"),
+            "file_list": _glob("*.vrt", subdir="phase_similarity"),
+        },
+        {
+            "name": "Persistent Scatterer Mask",
+            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
+        },
+        {
+            "name": "Water Mask",
+            "file_list": _glob("*.vrt", subdir="water_mask"),
         },
         {
             "name": "Unwrapper Mask",
@@ -411,12 +423,6 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
         {
             "name": "Solid Earth Tide",
             "file_list": _glob("*vrt", subdir="corrections/solid_earth_tide"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-        },
-        {
-            "name": "Tropospheric Delay",
-            "file_list": _glob("*vrt", subdir="corrections/tropospheric_delay"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },

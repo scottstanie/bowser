@@ -2,25 +2,15 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
+from disp_s1.product_info import DISPLACEMENT_PRODUCTS
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
 
-CORE_DATASETS = [
-    "corrections/perpendicular_baseline",
-    "connected_component_labels",
-    "displacement",
-    "interferometric_correlation",
-    "persistent_scatterer_mask",
-    "short_wavelength_displacement",
-    "temporal_coherence",
-    "phase_similarity",
-    "unwrapper_mask",
-]
+CORE_DATASETS = DISPLACEMENT_PRODUCTS.names
 CORRECTION_DATASETS = [
     "corrections/ionospheric_delay",
     "corrections/perpendicular_baseline",
     "corrections/solid_earth_tide",
-    "corrections/tropospheric_delay",
 ]
 
 
@@ -100,8 +90,6 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
         cur_output_dir.mkdir(exist_ok=True, parents=True)
         vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
         vrt_path = cur_output_dir / vrt_filename
-
-        
 
         # Create VRT file
         gdal_translate_cmd = [
