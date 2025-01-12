@@ -199,7 +199,7 @@ def _dump_raster_groups(raster_groups, output):
 
 @cli_app.command()
 @click.argument("dolphin-work-dir", type=str)
-@click.argument(
+@click.option(
     "--timeseries-mask",
     type=Path,
     help="Binary mask to use on timeseries/velocity rasters",
@@ -279,12 +279,8 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
             "file_list": _glob(f"{wd}/interferograms/similarity*.tif"),
         },
         {
-            "name": "Time series residuals",
-            "file_list": _glob(f"{wd}/timeseries/residuals_2*[0-9].tif"),
-        },
-        {
-            "name": "Time series residuals (total sum)",
-            "file_list": _glob(f"{wd}/timeseries/unw_inversion_residuals.tif"),
+            "name": "Standard deviation of estimated CRLB",
+            "file_list": _glob(f"{wd}/interferograms/crlb_2*[0-9].tif"),
         },
         {
             "name": "Amplitude dispersion",
@@ -293,6 +289,14 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
         {
             "name": "SHP counts",
             "file_list": _glob(f"{wd}/interferograms/shp_counts*.tif"),
+        },
+        {
+            "name": "Time series residuals",
+            "file_list": _glob(f"{wd}/timeseries/residuals_2*[0-9].tif"),
+        },
+        {
+            "name": "Time series residuals (total sum)",
+            "file_list": _glob(f"{wd}/timeseries/unw_inversion_residuals.tif"),
         },
     ]
     if timeseries_mask is not None:
@@ -414,8 +418,8 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
             "algorithm": Algorithm.REWRAP.value,
         },
         {
-            "name": "Estimated Phase quality",
-            "file_list": _glob("*.vrt", subdir="estimated_phase_quality"),
+            "name": "Persistent Scatterer Mask",
+            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
         },
         {
             "name": "Temporal Coherence",
@@ -426,8 +430,16 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
             "file_list": _glob("*.vrt", subdir="phase_similarity"),
         },
         {
-            "name": "Persistent Scatterer Mask",
-            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
+            "name": "Timeseries Inversion Residuals",
+            "file_list": _glob("*.vrt", subdir="timeseries_inversion_residuals"),
+        },
+        {
+            "name": "Estimated Phase quality",
+            "file_list": _glob("*.vrt", subdir="estimated_phase_quality"),
+        },
+        {
+            "name": "SHP counts",
+            "file_list": _glob("*.vrt", subdir="shp_counts"),
         },
         {
             "name": "Water Mask",
