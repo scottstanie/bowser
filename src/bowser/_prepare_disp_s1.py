@@ -83,10 +83,7 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
     fmt = "%Y%m%d"
     for dataset in tqdm(datasets):
         if dataset not in hf:
-            if dataset == "displacement" and "unwrapped_phase" in hf:
-                dataset = "unwrapped_phase"
-            else:
-                continue
+            continue
         cur_output_dir = output_dir / dataset
         cur_output_dir.mkdir(exist_ok=True, parents=True)
         vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"

@@ -398,13 +398,6 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
             "mask_file_list": _glob("*.vrt", subdir="connected_component_labels"),
         },
         {
-            "name": "Displacement",
-            "file_list": _glob("*.vrt", subdir="unwrapped_phase"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-            "mask_file_list": _glob("*.vrt", subdir="connected_component_labels"),
-        },
-        {
             "name": "Short Wavelength Displacement",
             "file_list": _glob("*.vrt", subdir="short_wavelength_displacement"),
         },
