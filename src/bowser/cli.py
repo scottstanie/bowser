@@ -17,6 +17,7 @@ cli_app.add_command(addo)
 
 @cli_app.command()
 @click.option(
+    "-f",
     "--rasters-file",
     default="bowser_rasters.json",
     help="Name of JSON file from `bowser set-data`.",
@@ -127,6 +128,7 @@ def set_data(output):
         algorithm = None
         uses_spatial_ref = False
         mask_file_list = []
+        mask_min_value = 0.1
         if click.confirm(
             "Does this dataset us a relative spatial reference? (e.g. unwrapped phase)"
         ):
@@ -140,7 +142,9 @@ def set_data(output):
                 "Which algorithm?",
                 type=click.Choice([a.value for a in Algorithm]),
             )
-        if click.confirm("Do you have .conncomp.tif files you want to mask on?"):
+        if click.confirm(
+            "Do you have *matching* .conncomp.tif files you want to mask on?"
+        ):
             mask_file_list = [
                 f.replace("unw.tif", "unw.conncomp.tif") for f in file_list
             ]
@@ -153,6 +157,18 @@ def set_data(output):
             mask_file_list = _find_files(g.strip())
             if not mask_file_list:
                 click.echo("No files found. Try again.")
+            elif len(mask_file_list) == 1:
+                click.echo(
+                    f"Found 1 mask: replicating to mask all {len(file_list)} files"
+                )
+                mask_file_list = len(file_list) * mask_file_list
+            if mask_file_list:
+                mask_min_value = click.prompt(
+                    "What threshold value would you like to use on the mask values?",
+                    show_default=True,
+                    default=0.1,
+                    type=float,
+                )
 
         click.echo("Building raster group...")
         rg = RasterGroup(
@@ -161,6 +177,7 @@ def set_data(output):
             name=name,
             algorithm=algorithm,
             uses_spatial_ref=uses_spatial_ref,
+            mask_min_value=mask_min_value,
         )
         raster_groups.append(rg)
 
@@ -182,6 +199,11 @@ def _dump_raster_groups(raster_groups, output):
 
 @cli_app.command()
 @click.argument("dolphin-work-dir", type=str)
+@click.argument(
+    "--timeseries-mask",
+    type=Path,
+    help="Binary mask to use on timeseries/velocity rasters",
+)
 @click.option(
     "-o",
     "--output",
@@ -189,7 +211,7 @@ def _dump_raster_groups(raster_groups, output):
     default="bowser_rasters.json",
     show_default=True,
 )
-def setup_dolphin(dolphin_work_dir, output):
+def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
     """Set up output data configuration for a dolphin workflow.
 
     Saves to `output` JSON file.
@@ -273,6 +295,11 @@ def setup_dolphin(dolphin_work_dir, output):
             "file_list": _glob(f"{wd}/interferograms/shp_counts*.tif"),
         },
     ]
+    if timeseries_mask is not None:
+        # Timeseries
+        dolphin_outputs[0]["mask_file_list"] = timeseries_mask
+        # velocity
+        dolphin_outputs[1]["mask_file_list"] = timeseries_mask
     raster_groups = []
     for group in dolphin_outputs:
         try:

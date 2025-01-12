@@ -20,7 +20,7 @@ def process_netcdf_files(
     datasets: list[str],
     max_workers: int = 5,
 ) -> None:
-    """Process NetCDF files in the input directory, create VRT files, and build overviews.
+    """Process NetCDF files in the input directory, create VRT files, build overviews.
 
     Parameters
     ----------
@@ -77,13 +77,14 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
 
     dates = get_dates(netcdf_file)[:2]
     import h5py
+
     hf = h5py.File(netcdf_file)
 
     fmt = "%Y%m%d"
     for dataset in tqdm(datasets):
         if dataset not in hf:
-            if dataset == 'displacement' and 'unwrapped_phase' in hf:
-                dataset = 'unwrapped_phase'
+            if dataset == "displacement" and "unwrapped_phase" in hf:
+                dataset = "unwrapped_phase"
             else:
                 continue
         cur_output_dir = output_dir / dataset
