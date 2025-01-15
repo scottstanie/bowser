@@ -2,11 +2,22 @@ import subprocess
 from pathlib import Path
 from typing import Sequence
 
-from disp_s1.product_info import DISPLACEMENT_PRODUCTS
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import thread_map
 
-CORE_DATASETS = DISPLACEMENT_PRODUCTS.names
+CORE_DATASETS = [
+    "displacement",
+    "short_wavelength_displacement",
+    "recommended_mask",
+    "connected_component_labels",
+    "temporal_coherence",
+    "estimated_phase_quality",
+    "persistent_scatterer_mask",
+    "shp_counts",
+    "water_mask",
+    "phase_similarity",
+    "timeseries_inversion_residuals",
+]
 CORRECTION_DATASETS = [
     "corrections/ionospheric_delay",
     "corrections/perpendicular_baseline",
