@@ -470,3 +470,103 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
         raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
+
+
+@cli_app.command()
+@click.argument(
+    "hyp3_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(writable=True),
+    default="bowser_rasters.json",
+    show_default=True,
+)
+def setup_hyp3(hyp3_dir: str, output: str):
+    """Set up output data configuration for HyP3 Gamma InSAR products.
+
+    Saves to `output` JSON file.
+
+    HYP3_DIR should contain one or more directories with HyP3 Gamma InSAR products,
+    where each directory contains files like *_unw_phase.tif, *_corr.tif, etc.
+    """
+    from pathlib import Path
+
+    from .titiler import Algorithm, RasterGroup
+
+    def _glob_all_products(pattern: str) -> list[str]:
+        """Find all files matching pattern across all product directories."""
+        p = Path(hyp3_dir)
+        # Get all product directories (they should all be directories)
+        product_dirs = [d for d in p.iterdir() if d.is_dir()]
+        if not product_dirs:
+            raise click.UsageError(
+                f"No product directories found in {hyp3_dir}. "
+                "Expected directories containing HyP3 Gamma products."
+            )
+        # For each product directory, find files matching pattern
+        matching_files = []
+        for product_dir in product_dirs:
+            matches = list(product_dir.glob(pattern))
+            matching_files.extend(str(f) for f in matches)
+        return sorted(matching_files)
+
+    hyp3_outputs = [
+        {
+            "name": "Unwrapped Phase",
+            "file_list": _glob_all_products("*_unw_phase.tif"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+            "mask_file_list": _glob_all_products("*_conncomp.tif"),
+        },
+        {
+            "name": "Connected Components",
+            "file_list": _glob_all_products("*_conncomp.tif"),
+        },
+        {
+            "name": "Wrapped phase",
+            "file_list": _glob_all_products("*_wrapped_phase.tif"),
+        },
+        {
+            "name": "Re-wrapped phase",
+            "file_list": _glob_all_products("*_unw_phase.tif"),
+            "algorithm": Algorithm.REWRAP.value,
+        },
+        {
+            "name": "Correlation",
+            "file_list": _glob_all_products("*_corr.tif"),
+        },
+        {
+            "name": "Look Vector θ",
+            "file_list": _glob_all_products("*_lv_theta.tif"),
+        },
+        {
+            "name": "Look Vector φ",
+            "file_list": _glob_all_products("*_lv_phi.tif"),
+        },
+        {
+            "name": "DEM",
+            "file_list": _glob_all_products("*_dem.tif"),
+        },
+    ]
+
+    raster_groups = []
+    for group in hyp3_outputs:
+        try:
+            rg = RasterGroup(**group)
+        except Exception as e:
+            print(f"Error processing {group['name']}: {e}")
+            continue
+        if not rg.file_list:
+            print(f"No files found for {group['name']}, skipping.")
+            continue
+        raster_groups.append(rg)
+
+    if not raster_groups:
+        raise click.UsageError(
+            f"No valid raster groups created from {hyp3_dir}. "
+            "Check that the directory contains HyP3 Gamma products."
+        )
+
+    _dump_raster_groups(raster_groups, output=output)
