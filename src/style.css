@@ -81,6 +81,13 @@ body {
   text-align: center;
 }
 
+#layer-slider-value {
+  /* Allow text to wrap */
+  /* Break long words if necessary */
+  word-break: break-all;
+  background: rgb(250, 250, 250);
+}
+
 /* ********** */
 /* Map styles */
 #map-container {

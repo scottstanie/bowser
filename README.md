@@ -110,3 +110,12 @@ Commands:
 ```
 
 To manually specify a raster/set of rasters, use the interactive `bowser set-data`
+
+## Developer Setup
+
+`npm` is used to manage javascript dependencies.
+
+`npm install` will install all dependencies.
+
+After making HTML or CSS changes, run `npm run build` to build the project.
+Currently the `dist/` HTML and CSS files are checked in to git for easier deployment for non-javascript users.
