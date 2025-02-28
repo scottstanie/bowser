@@ -48,9 +48,11 @@ class Amplitude(BaseAlgorithm):
 class Rewrap(BaseAlgorithm):
     """Creation algorithm for re-wrapping unwrapped phase to (-pi, pi)."""
 
+    scale_factor: float = 1.0
+
     def __call__(self, img: ImageData) -> ImageData:  # noqa: D102
         return ImageData(
-            np.ma.mod(np.pi + img.array, 2 * np.pi) - np.pi,
+            np.ma.mod(np.pi + (self.scale_factor * img.array), 2 * np.pi) - np.pi,
             # img. - self.shift,
             # np.ma.MaskedArray(data, mask=~mask),
             assets=img.assets,
