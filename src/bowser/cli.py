@@ -101,7 +101,7 @@ def run(rasters_file, port, reload, workers, log_level, ignore_sidecar_files):
     default="bowser_rasters.json",
     show_default=True,
 )
-def set_data(output):
+def set_data(output: Path):
     """Specify what raster data to use.
 
     Saves to `output` JSON file.
@@ -240,11 +240,11 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
         },
         {
             "name": "Filtered time series",
-            "file_list": _glob(f"{wd}/filtered_timeseries2/2*[0-9].tif"),
+            "file_list": _glob(f"{wd}/filtered_timeseries*/2*[0-9].tif"),
         },
         {
-            "name": "Filterd velocity",
-            "file_list": [f"{wd}/filtered_timeseries2/velocity.tif"],
+            "name": "Filtered velocity",
+            "file_list": [f"{wd}/filtered_timeseries*/velocity.tif"],
         },
         {
             "name": "unwrapped",
@@ -256,6 +256,10 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
         {
             "name": "Connected components",
             "file_list": _glob(f"{wd}/unwrapped/*.unw.conncomp.tif"),
+        },
+        {
+            "name": "Nonzero connected component counts",
+            "file_list": _glob(f"{wd}/timeseries/nonzero_conncomp_count_*.tif"),
         },
         {
             "name": "Re-wrapped phase",
@@ -334,7 +338,7 @@ def _find_available_port(port_request: int = 8000):
 @click.argument(
     "input_files",
     nargs=-1,
-    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+    # type=click.Path(exists=True, file_okay=True, dir_okay=False),
 )
 @click.option(
     "-o",
@@ -358,7 +362,7 @@ def prepare_disp_s1(input_files, output_dir, corrections: bool):
         process_netcdf_files,
     )
 
-    input_paths = [Path(f) for f in input_files]
+    input_paths = list(input_files)
 
     datasets_to_process = (
         CORE_DATASETS + CORRECTION_DATASETS if corrections else CORE_DATASETS
@@ -506,7 +510,7 @@ def setup_hyp3(hyp3_dir: str, output: str):
                 "Expected directories containing HyP3 Gamma products."
             )
         # For each product directory, find files matching pattern
-        matching_files = []
+        matching_files: list[str] = []
         for product_dir in product_dirs:
             matches = list(product_dir.glob(pattern))
             matching_files.extend(str(f) for f in matches)
