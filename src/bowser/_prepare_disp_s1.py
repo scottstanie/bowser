@@ -1,9 +1,12 @@
 import subprocess
+from functools import partial
 from pathlib import Path
 from typing import Sequence
 
 from tqdm.auto import tqdm
-from tqdm.contrib.concurrent import thread_map
+from tqdm.contrib.concurrent import process_map
+
+from bowser.credentials import AWSCredentials
 
 CORE_DATASETS = [
     "displacement",
@@ -26,7 +29,7 @@ CORRECTION_DATASETS = [
 
 
 def process_netcdf_files(
-    netcdf_files: Sequence[Path],
+    netcdf_files: Sequence[Path | str],
     output_dir: str,
     datasets: list[str],
     max_workers: int = 5,
@@ -59,14 +62,28 @@ def process_netcdf_files(
     out_path = Path(output_dir)
     out_path.mkdir(exist_ok=True, parents=True)
 
-    thread_map(
-        lambda f: process_single_file(f, output_dir, datasets),
+    aws_credentials = credentials.get_earthaccess_s3_creds("opera-uat")
+    func = partial(
+        process_single_file,
+        output_dir=output_dir,
+        datasets=datasets,
+        aws_credentials=aws_credentials,
+    )
+
+    process_map(
+        func,
+        # lambda f: process_single_file(f, output_dir, datasets),
         netcdf_files,
         max_workers=max_workers,
     )
 
 
-def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) -> None:
+def process_single_file(
+    netcdf_file: str,
+    output_dir: str,
+    datasets: list[str],
+    aws_credentials: AWSCredentials | None,
+) -> None:
     """Create VRT files from subdatasets and build overviews.
 
     Parameters
@@ -84,12 +101,17 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
 
     """
     # Extract date information from the filename
+    import h5py
     from opera_utils import get_dates
+    from opera_utils._disp import get_remote_h5
 
     dates = get_dates(netcdf_file)[:2]
-    import h5py
 
-    hf = h5py.File(netcdf_file)
+    if str(netcdf_file).startswith("s3://"):
+        hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
+        print(f"Read remote {netcdf_file}")
+    else:
+        hf = h5py.File(netcdf_file)
 
     fmt = "%Y%m%d"
     for dataset in tqdm(datasets):
@@ -104,8 +126,8 @@ def process_single_file(netcdf_file: str, output_dir: str, datasets: list[str]) 
         gdal_translate_cmd = [
             "gdal_translate",
             "-q",
-            f"netcdf:{netcdf_file}:{dataset}",
-            vrt_path,
+            str(vrt_path),
+            f"netcdf:{netcdf_file.replace('s3://', '/vsis3/')}:{dataset}",
         ]
         subprocess.run(gdal_translate_cmd, check=True, stdout=subprocess.PIPE)
 
