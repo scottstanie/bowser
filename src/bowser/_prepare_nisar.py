@@ -67,14 +67,14 @@ def get_nisar_outputs(nisar_dir: Path | str):
         },
         {
             "name": "Along-Track Offset",
-            "file_list": _glob("*alongTrackOffset.vrt", subdir="pixelOffsets"),
+            "file_list": _glob("*.vrt", subdir="alongTrackOffset"),
         },
         {
             "name": "Slant Range Offset",
-            "file_list": _glob("*slantRangeOffset.vrt", subdir="pixelOffsets"),
+            "file_list": _glob("*.vrt", subdir="slantRangeOffset"),
         },
         {
             "name": "Correlation Surface Peak",
-            "file_list": _glob("*correlationSurfacePeak.vrt", subdir="pixelOffsets"),
+            "file_list": _glob("*.vrt", subdir="correlationSurfacePeak"),
         },
     ]
