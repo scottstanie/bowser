@@ -110,13 +110,15 @@ def process_single_file(
 
     try:
         fmt = "%Y%m%d"
+        # TODO: NISAR ifgs may have 4 dates in them
+        # Rethink how to make this filename here for multiple products
         dates = get_dates(netcdf_file, fmt=fmt)[:2]
         vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
     except IndexError:
         # Date parsing failed: just use stem
         # TODO: NISAR holds ref/secondary as
         # /science/LSAR/identification/secondaryZeroDopplerEndTime
-        vrt_filename = f"{Path(netcdf_file)}.vrt"
+        vrt_filename = f"{str(netcdf_file).replace('/', '_')}.vrt"
 
     if str(netcdf_file).startswith("s3://"):
         hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
