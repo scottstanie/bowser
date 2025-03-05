@@ -108,7 +108,13 @@ def process_single_file(
 
     from .credentials import get_remote_h5
 
-    dates = get_dates(netcdf_file)[:2]
+    try:
+        fmt = "%Y%m%d"
+        dates = get_dates(netcdf_file, fmt=fmt)[:2]
+        vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
+    except IndexError:
+        # Date parsing failed: just use stem
+        vrt_filename = f"{Path(netcdf_file).stem}.vrt"
 
     if str(netcdf_file).startswith("s3://"):
         hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
@@ -116,7 +122,6 @@ def process_single_file(
     else:
         hf = h5py.File(netcdf_file)
 
-    fmt = "%Y%m%d"
     for in_dataset in tqdm(datasets):
         if in_dataset not in hf:
             continue
@@ -124,7 +129,6 @@ def process_single_file(
         cur_output_dir = output_dir / out_dataset
         cur_output_dir.mkdir(exist_ok=True, parents=True)
 
-        vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
         vrt_path = cur_output_dir / vrt_filename
 
         # Create VRT file
