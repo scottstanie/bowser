@@ -6,7 +6,7 @@ from typing import Sequence
 from tqdm.auto import tqdm
 from tqdm.contrib.concurrent import process_map
 
-from bowser.credentials import AWSCredentials
+from bowser.credentials import AWSCredentials, get_earthaccess_s3_creds
 
 CORE_DATASETS = [
     "displacement",
@@ -33,6 +33,7 @@ def process_netcdf_files(
     output_dir: str,
     datasets: list[str],
     max_workers: int = 5,
+    credential_dataset: str | None = None,
 ) -> None:
     """Process NetCDF files in the input directory, create VRT files, build overviews.
 
@@ -47,6 +48,9 @@ def process_netcdf_files(
     max_workers : int
         Number of parallel files to process.
         Default is 5.
+    credential_dataset : str, optional
+        Argument for `get_earthaccess_s3_creds` to get temporary s3 credential
+        using earthaccess.
 
     Returns
     -------
@@ -62,7 +66,9 @@ def process_netcdf_files(
     out_path = Path(output_dir)
     out_path.mkdir(exist_ok=True, parents=True)
 
-    aws_credentials = credentials.get_earthaccess_s3_creds("opera-uat")
+    aws_credentials = (
+        get_earthaccess_s3_creds("opera-uat") if credential_dataset else None
+    )
     func = partial(
         process_single_file,
         output_dir=output_dir,
@@ -94,6 +100,9 @@ def process_single_file(
         Path to the directory where output VRT files will be saved.
     datasets : list[str]
         list of dataset names to process from the NetCDF file.
+    aws_credentials : AWSCredentials, optional
+        Object containing temporary S3 credentials for remote datasets.
+        Only usable on in-region EC2 instances.
 
     Returns
     -------

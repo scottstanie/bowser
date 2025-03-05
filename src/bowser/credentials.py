@@ -2,6 +2,7 @@ import os
 from datetime import datetime
 
 import boto3.s3
+import h5py
 from pydantic import BaseModel, Field
 
 ENDPOINTS = {
@@ -22,12 +23,13 @@ class AWSCredentials(BaseModel):
     session_token: str = Field(alias="sessionToken")
     expiration: datetime | None = None
 
-    def to_session(self) -> boto3.Session:
+    def to_session(self, region_name: str = "us-west-2") -> boto3.Session:
+        """Set up to a `boto3.Session` with these credentials."""
         return boto3.Session(
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
             aws_session_token=self.session_token,
-            region_name="us-west-2",
+            region_name=region_name,
         )
 
     def to_env(self) -> dict[str, str]:
@@ -130,6 +132,7 @@ def get_aws_session(
 def get_frozen_credentials(
     aws_credentials: AWSCredentials | None = None, dataset: str = "opera"
 ) -> tuple[str, str, str]:
+    """Generate a tuple of AWS credentials."""
     if aws_credentials is None:
         session = get_aws_session(dataset=dataset)
     else:
@@ -176,6 +179,54 @@ def print_export(dataset: str = "opera") -> None:
     creds = get_earthaccess_s3_creds(dataset)
     for env_name, val in creds.to_env().items():
         print(f"export {env_name}='{val}'")
+
+
+def get_remote_h5(
+    url: str,
+    aws_credentials=None,
+    page_size: int = 4 * 1024 * 1024,
+    rdcc_nbytes: int = 1024 * 1024 * 100,
+) -> h5py.File:
+    """Open a remote HDF5 file using the ROS3 driver.
+
+    Parameters
+    ----------
+    url : str
+        S3 URL to the HDF5 file.
+    aws_credentials : AWSCredentials, optional
+        AWS credentials for accessing S3.
+    page_size : int, optional
+        File system page size in bytes. Default is 4 MB.
+    rdcc_nbytes : int, optional
+        Raw data chunk cache size in bytes. Default is 100 MB.
+
+    Returns
+    -------
+    h5py.File
+        Opened HDF5 file.
+
+    """
+    secret_id, secret_key, session_token = get_frozen_credentials(
+        aws_credentials=aws_credentials
+    )
+    # ROS3 driver uses weirdly different names
+    ros3_kwargs = {
+        "aws_region": b"us-west-2",
+        "secret_id": secret_id.encode(),
+        "secret_key": secret_key.encode(),
+        "session_token": session_token.encode(),
+    }
+
+    # Set page size for cloud-optimized HDF5
+    cloud_kwargs = {"fs_page_size": page_size, "rdcc_nbytes": rdcc_nbytes}
+
+    return h5py.File(
+        url,
+        "r",
+        driver="ros3",
+        **ros3_kwargs,
+        **cloud_kwargs,
+    )
 
 
 if __name__ == "__main__":
