@@ -104,8 +104,9 @@ def process_single_file(
     # Extract date information from the filename
     import h5py
     from opera_utils import get_dates
-    from opera_utils._disp import get_remote_h5
     from osgeo import gdal
+
+    from .credentials import get_remote_h5
 
     dates = get_dates(netcdf_file)[:2]
 
