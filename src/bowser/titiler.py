@@ -110,6 +110,7 @@ class RasterGroup(BaseModel):
     uses_spatial_ref: bool = False
     algorithm: str | None = None
     mask_min_value: float = 0.1
+    file_date_fmt: str | None = "%Y%m%d"
     _reader: RasterStackReader
 
     @field_validator("file_list")
@@ -129,6 +130,7 @@ class RasterGroup(BaseModel):
             keep_open=False,
             num_threads=3,
             nodata=self.nodata,
+            file_date_fmt=self.file_date_fmt,
         )
 
     @computed_field
@@ -147,7 +149,7 @@ class RasterGroup(BaseModel):
         """Vales to use for the x axis of a time series plot."""
         # if len(self.file_list) == 1:
         dates = self._reader.dates
-        if not dates:
+        if not dates or any(d is None for d in dates):
             # otherwise, use the file names
             x_values = np.arange(len(self.file_list)).tolist()
         else:

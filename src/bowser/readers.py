@@ -132,6 +132,7 @@ class RasterReader(DatasetReader):
     immediately after each read/write operation.
     If passing the `RasterReader` to multiple spawned processes, it is recommended
     to set `keep_open=False` .
+
     """
 
     filename: PathOrStr
@@ -372,6 +373,7 @@ class RasterStackReader(BaseStackReader):
         keep_open: bool = False,
         num_threads: int = 1,
         nodata: Optional[float] = None,
+        file_date_fmt: str | None = "%Y%m%d",
         num_parallel_open: int = 15,
     ) -> RasterStackReader:
         """Create a RasterStackReader from a list of files.
@@ -391,6 +393,9 @@ class RasterStackReader(BaseStackReader):
             Default is 1.
         nodata : float, optional
             Manually set value to use for nodata pixels, by default None
+        file_date_fmt : str, optional
+            String format for date/datetimes in filenames.
+            If None, does no date parsing.
         num_parallel_open : int
             Parallelism to use when opening files for the first time.
             Default is 15.
@@ -406,7 +411,9 @@ class RasterStackReader(BaseStackReader):
 
         def _read(file_band):
             f, b = file_band
-            return RasterReader.from_file(f, band=b, keep_open=keep_open)
+            return RasterReader.from_file(
+                f, band=b, keep_open=keep_open, file_date_fmt=file_date_fmt
+            )
 
         readers = thread_map(
             _read,

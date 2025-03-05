@@ -555,7 +555,7 @@ def setup_nisar_gunw(nisar_dir: str, output: str):
     raster_groups = []
     for group in groups:
         try:
-            rg = RasterGroup(**group)
+            rg = RasterGroup(**group, file_date_fmt=None)
         except Exception as e:
             print(f"Error processing {group['name']}: {e}")
             continue
