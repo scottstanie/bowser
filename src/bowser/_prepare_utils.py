@@ -116,7 +116,7 @@ def process_single_file(
         # Date parsing failed: just use stem
         # TODO: NISAR holds ref/secondary as
         # /science/LSAR/identification/secondaryZeroDopplerEndTime
-        vrt_filename = f"{Path(netcdf_file).stem}.vrt"
+        vrt_filename = f"{Path(netcdf_file)}.vrt"
 
     if str(netcdf_file).startswith("s3://"):
         hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
