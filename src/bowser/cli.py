@@ -356,11 +356,8 @@ def prepare_disp_s1(input_files, output_dir, corrections: bool):
 
     INPUT_FILES: Paths to input NetCDF files.
     """
-    from bowser._prepare_disp_s1 import (
-        CORE_DATASETS,
-        CORRECTION_DATASETS,
-        process_netcdf_files,
-    )
+    from bowser._prepare_disp_s1 import CORE_DATASETS, CORRECTION_DATASETS
+    from bowser._prepare_utils import process_netcdf_files
 
     input_paths = list(input_files)
 
@@ -370,6 +367,34 @@ def prepare_disp_s1(input_files, output_dir, corrections: bool):
 
     click.echo(f"Processing {len(input_files)} files into VRTS in {output_dir}")
     process_netcdf_files(input_paths, Path(output_dir), datasets_to_process)
+
+
+# TODO: consolidate this with disp-s1
+@click.argument(
+    "input_files",
+    nargs=-1,
+    # type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    required=True,
+    help="Path to the output directory where VRT files will be saved.",
+)
+def prepare_nisar_gunw(input_files, output_dir):
+    """Process NetCDF files to create VRT files with overviews.
+
+    INPUT_FILES: Paths to input NetCDF files.
+    """
+    from bowser._prepare_nisar import NISAR_GUNW_DATASETS
+    from bowser._prepare_utils import process_netcdf_files
+
+    input_paths = list(input_files)
+
+    click.echo(f"Processing {len(input_files)} files into VRTS in {output_dir}")
+    process_netcdf_files(
+        input_paths, Path(output_dir), NISAR_GUNW_DATASETS, strip_group_path=True
+    )
 
 
 @cli_app.command()
@@ -388,81 +413,10 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
 
     Saves to `output` JSON file.
     """
-    from .titiler import Algorithm, RasterGroup
+    from ._prepare_disp_s1 import get_disp_s1_outputs
+    from .titiler import RasterGroup
 
-    def _glob(pattern: str, subdir: str) -> list[str]:
-        return [str(p) for p in sorted((Path(disp_s1_dir) / subdir).glob(pattern))]
-
-    disp_s1_outputs = [
-        {
-            "name": "Displacement",
-            "file_list": _glob("*.vrt", subdir="displacement"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-            "mask_file_list": _glob("*.vrt", subdir="connected_component_labels"),
-        },
-        {
-            "name": "Short Wavelength Displacement",
-            "file_list": _glob("*.vrt", subdir="short_wavelength_displacement"),
-        },
-        {
-            "name": "Connected Component Labels",
-            "file_list": _glob("*.vrt", subdir="connected_component_labels"),
-        },
-        {
-            "name": "Re-wrapped phase",
-            "file_list": _glob("*.vrt", subdir="displacement"),
-            "algorithm": Algorithm.REWRAP.value,
-        },
-        {
-            "name": "Persistent Scatterer Mask",
-            "file_list": _glob("*.vrt", subdir="persistent_scatterer_mask"),
-        },
-        {
-            "name": "Temporal Coherence",
-            "file_list": _glob("*.vrt", subdir="temporal_coherence"),
-        },
-        {
-            "name": "Phase Similarity",
-            "file_list": _glob("*.vrt", subdir="phase_similarity"),
-        },
-        {
-            "name": "Timeseries Inversion Residuals",
-            "file_list": _glob("*.vrt", subdir="timeseries_inversion_residuals"),
-        },
-        {
-            "name": "Estimated Phase quality",
-            "file_list": _glob("*.vrt", subdir="estimated_phase_quality"),
-        },
-        {
-            "name": "SHP counts",
-            "file_list": _glob("*.vrt", subdir="shp_counts"),
-        },
-        {
-            "name": "Water Mask",
-            "file_list": _glob("*.vrt", subdir="water_mask"),
-        },
-        {
-            "name": "Unwrapper Mask",
-            "file_list": _glob("*.vrt", subdir="unwrapper_mask"),
-        },
-        {
-            "name": "Ionospheric Delay",
-            "file_list": _glob("*vrt", subdir="corrections/ionospheric_delay"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-        },
-        {
-            "name": "Perpendicular Baseline",
-            "file_list": _glob("*vrt", subdir="corrections/perpendicular_baseline"),
-        },
-        {
-            "name": "Solid Earth Tide",
-            "file_list": _glob("*vrt", subdir="corrections/solid_earth_tide"),
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
-        },
-    ]
+    disp_s1_outputs = get_disp_s1_outputs(disp_s1_dir)
 
     raster_groups = []
     for group in disp_s1_outputs:
@@ -572,5 +526,38 @@ def setup_hyp3(hyp3_dir: str, output: str):
             f"No valid raster groups created from {hyp3_dir}. "
             "Check that the directory contains HyP3 Gamma products."
         )
+
+    _dump_raster_groups(raster_groups, output=output)
+
+
+@cli_app.command()
+@click.argument(
+    "disp_s1_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(writable=True),
+    default="bowser_rasters.json",
+    show_default=True,
+)
+def setup_nisar_gunw(disp_s1_dir: str, output: str):
+    """Set up output data configuration for NISAR L2 GUNW products.
+
+    Saves to `output` JSON file.
+    """
+    from ._prepare_nisar import get_nisar_outputs
+    from .titiler import RasterGroup
+
+    groups = get_nisar_outputs(disp_s1_dir)
+
+    raster_groups = []
+    for group in groups:
+        try:
+            rg = RasterGroup(**group)
+        except Exception as e:
+            print(f"Error processing {group['name']}: {e}")
+            continue
+        raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
