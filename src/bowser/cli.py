@@ -533,7 +533,7 @@ def setup_hyp3(hyp3_dir: str, output: str):
 
 @cli_app.command()
 @click.argument(
-    "disp_s1_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+    "nisar_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
 )
 @click.option(
     "-o",
@@ -542,7 +542,7 @@ def setup_hyp3(hyp3_dir: str, output: str):
     default="bowser_rasters.json",
     show_default=True,
 )
-def setup_nisar_gunw(disp_s1_dir: str, output: str):
+def setup_nisar_gunw(nisar_dir: str, output: str):
     """Set up output data configuration for NISAR L2 GUNW products.
 
     Saves to `output` JSON file.
@@ -550,7 +550,7 @@ def setup_nisar_gunw(disp_s1_dir: str, output: str):
     from ._prepare_nisar import get_nisar_outputs
     from .titiler import RasterGroup
 
-    groups = get_nisar_outputs(disp_s1_dir)
+    groups = get_nisar_outputs(nisar_dir)
 
     raster_groups = []
     for group in groups:

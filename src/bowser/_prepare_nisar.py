@@ -29,52 +29,52 @@ def get_nisar_outputs(nisar_dir: Path | str):
     return [
         {
             "name": "Unwrapped Phase",
-            "file_list": _glob("*.vrt", subdir="unwrapped_phase"),
+            "file_list": _glob("*.vrt", subdir="unwrappedPhase"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
-            "mask_file_list": _glob("*.vrt", subdir="connected_components"),
+            "mask_file_list": _glob("*.vrt", subdir="connectedComponents"),
         },
         {
             "name": "Coherence Magnitude",
-            "file_list": _glob("*.vrt", subdir="coherence_magnitude"),
+            "file_list": _glob("*.vrt", subdir="coherenceMagnitude"),
         },
         {
             "name": "Connected Components",
-            "file_list": _glob("*.vrt", subdir="connected_components"),
+            "file_list": _glob("*.vrt", subdir="connectedComponents"),
         },
         {
             "name": "Ionosphere Phase Screen",
-            "file_list": _glob("*.vrt", subdir="ionosphere_phase_screen"),
+            "file_list": _glob("*.vrt", subdir="ionospherePhaseScreen"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Ionosphere Phase Uncertainty",
-            "file_list": _glob("*.vrt", subdir="ionosphere_phase_uncertainty"),
+            "file_list": _glob("*.vrt", subdir="ionospherePhaseScreenUncertainty"),
         },
         {
             "name": "Wrapped Interferogram",
-            "file_list": _glob("*.vrt", subdir="wrapped_interferogram"),
+            "file_list": _glob("*.vrt", subdir="wrappedInterferogram"),
         },
         {
             "name": "Wrapped Coherence",
-            "file_list": _glob("*.vrt", subdir="wrapped_coherence"),
+            "file_list": _glob("*.vrt", subdir="coherenceMagnitude"),
         },
         {
             "name": "Re-wrapped Phase",
-            "file_list": _glob("*.vrt", subdir="unwrapped_phase"),
+            "file_list": _glob("*.vrt", subdir="unwrappedPhase"),
             "algorithm": Algorithm.REWRAP.value,
         },
         {
             "name": "Along-Track Offset",
-            "file_list": _glob("*along_track_offset.vrt", subdir="pixel_offsets"),
+            "file_list": _glob("*alongTrackOffset.vrt", subdir="pixelOffsets"),
         },
         {
             "name": "Slant Range Offset",
-            "file_list": _glob("*slant_range_offset.vrt", subdir="pixel_offsets"),
+            "file_list": _glob("*slantRangeOffset.vrt", subdir="pixelOffsets"),
         },
         {
             "name": "Correlation Surface Peak",
-            "file_list": _glob("*correlation_surface_peak.vrt", subdir="pixel_offsets"),
+            "file_list": _glob("*correlationSurfacePeak.vrt", subdir="pixelOffsets"),
         },
     ]

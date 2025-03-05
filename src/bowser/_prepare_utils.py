@@ -114,6 +114,8 @@ def process_single_file(
         vrt_filename = f"{dates[0].strftime(fmt)}_{dates[1].strftime(fmt)}.vrt"
     except IndexError:
         # Date parsing failed: just use stem
+        # TODO: NISAR holds ref/secondary as
+        # /science/LSAR/identification/secondaryZeroDopplerEndTime
         vrt_filename = f"{Path(netcdf_file).stem}.vrt"
 
     if str(netcdf_file).startswith("s3://"):
@@ -135,7 +137,7 @@ def process_single_file(
         gdal.Translate(
             str(vrt_path),
             f"netcdf:{netcdf_file.replace('s3://', '/vsis3/')}:{in_dataset}",
-            quiet=True,
+            callback=gdal.TermProgress_nocb,
         )
 
         # Build overviews
