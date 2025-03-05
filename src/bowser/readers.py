@@ -195,7 +195,10 @@ class RasterReader(DatasetReader):
         **options,
     ) -> RasterReader:
         """Create a RasterReader from a GDAL-readable filename."""
-        dates = get_dates(filename, fmt=file_date_fmt)
+        if file_date_fmt:
+            dates = get_dates(filename, fmt=file_date_fmt)
+        else:
+            dates = None
         with rio.open(filename, "r", **options) as src:
             shape = (src.height, src.width)
             dtype = np.dtype(src.dtypes[band - 1])
