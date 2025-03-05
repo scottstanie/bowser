@@ -370,6 +370,7 @@ def prepare_disp_s1(input_files, output_dir, corrections: bool):
 
 
 # TODO: consolidate this with disp-s1
+@cli_app.command()
 @click.argument(
     "input_files",
     nargs=-1,
