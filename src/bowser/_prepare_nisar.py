@@ -55,6 +55,7 @@ def get_nisar_outputs(nisar_dir: Path | str):
         {
             "name": "Wrapped Interferogram",
             "file_list": _glob("*.vrt", subdir="wrappedInterferogram"),
+            "algorithm": Algorithm.PHASE.value,
         },
         {
             "name": "Wrapped Coherence",

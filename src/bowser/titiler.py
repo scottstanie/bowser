@@ -145,12 +145,12 @@ class RasterGroup(BaseModel):
 
     # @functools.cached_property
     @computed_field
-    def x_values(self) -> list[str]:
+    def x_values(self) -> list[str | int]:
         """Vales to use for the x axis of a time series plot."""
         # if len(self.file_list) == 1:
         dates = self._reader.dates
         if not dates or any(d is None for d in dates):
-            # otherwise, use the file names
+            # otherwise, use indexes
             x_values = np.arange(len(self.file_list)).tolist()
         else:
             x_values = [_format_dates(*k) for k in dates]
