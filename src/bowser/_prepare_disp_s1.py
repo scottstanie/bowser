@@ -96,3 +96,68 @@ def get_disp_s1_outputs(disp_s1_dir: Path | str):
             "algorithm": Algorithm.SHIFT.value,
         },
     ]
+
+
+def get_aligned_disp_s1_outputs(aligned_dir: Path | str):
+    from glob import glob
+
+    return [
+        {
+            "name": "Displacement",
+            "file_list": glob(str(Path(aligned_dir) / "displacement*.tif")),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+            "mask_file_list": glob(
+                str(Path(aligned_dir) / "connected_component_labels*.tif")
+            ),
+        },
+        {
+            "name": "Short Wavelength Displacement",
+            "file_list": glob(
+                str(Path(aligned_dir) / "short_wavelength_displacement*.tif")
+            ),
+        },
+        {
+            "name": "Connected Component Labels",
+            "file_list": glob(
+                str(Path(aligned_dir) / "connected_component_labels*.tif")
+            ),
+        },
+        {
+            "name": "Re-wrapped phase",
+            "file_list": glob(str(Path(aligned_dir) / "displacement*.tif")),
+            "algorithm": Algorithm.REWRAP.value,
+        },
+        {
+            "name": "Persistent Scatterer Mask",
+            "file_list": glob(
+                str(Path(aligned_dir) / "persistent_scatterer_mask*.tif")
+            ),
+        },
+        {
+            "name": "Temporal Coherence",
+            "file_list": glob(str(Path(aligned_dir) / "temporal_coherence*.tif")),
+        },
+        {
+            "name": "Phase Similarity",
+            "file_list": glob(str(Path(aligned_dir) / "phase_similarity*.tif")),
+        },
+        {
+            "name": "Timeseries Inversion Residuals",
+            "file_list": glob(
+                str(Path(aligned_dir) / "timeseries_inversion_residuals*.tif")
+            ),
+        },
+        {
+            "name": "Estimated Phase quality",
+            "file_list": glob(str(Path(aligned_dir) / "estimated_phase_quality*.tif")),
+        },
+        {
+            "name": "SHP counts",
+            "file_list": glob(str(Path(aligned_dir) / "shp_counts*.tif")),
+        },
+        {
+            "name": "Water Mask",
+            "file_list": glob(str(Path(aligned_dir) / "water_mask.tif")),
+        },
+    ]
