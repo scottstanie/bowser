@@ -108,7 +108,7 @@ def get_aligned_disp_s1_outputs(aligned_dir: Path | str):
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
             "mask_file_list": glob(
-                str(Path(aligned_dir) / "connected_component_labels*.tif")
+                str(Path(aligned_dir) / "recommended_mask*.tif")
             ),
         },
         {

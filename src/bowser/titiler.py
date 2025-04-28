@@ -85,7 +85,7 @@ class Shift(BaseAlgorithm):
     """Apply a simple shift (to subtract a reference point."""
 
     # Parameters
-    shift: float
+    shift: float = 0
     nan_to_zero: bool = False
 
     def __call__(self, img: ImageData) -> ImageData:  # noqa: D102
