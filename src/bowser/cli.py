@@ -433,6 +433,39 @@ def setup_disp_s1(disp_s1_dir: str, output: str):
 
 @cli_app.command()
 @click.argument(
+    "disp_s1_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
+)
+@click.option(
+    "-o",
+    "--output",
+    type=click.Path(writable=True),
+    default="bowser_rasters.json",
+    show_default=True,
+)
+def setup_aligned_disp_s1(disp_s1_dir: str, output: str):
+    """Set up output data configuration for OPERA L3 DISP-S1 products.
+
+    Saves to `output` JSON file.
+    """
+    from ._prepare_disp_s1 import get_aligned_disp_s1_outputs
+    from .titiler import RasterGroup
+
+    disp_s1_outputs = get_aligned_disp_s1_outputs(disp_s1_dir)
+
+    raster_groups = []
+    for group in disp_s1_outputs:
+        try:
+            rg = RasterGroup(**group)
+        except Exception as e:
+            print(f"Error processing {group['name']}: {e}")
+            continue
+        raster_groups.append(rg)
+
+    _dump_raster_groups(raster_groups, output=output)
+
+
+@cli_app.command()
+@click.argument(
     "hyp3_dir", type=click.Path(exists=True, file_okay=False, dir_okay=True)
 )
 @click.option(
