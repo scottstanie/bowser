@@ -211,7 +211,7 @@ def _dump_raster_groups(raster_groups, output):
     default="bowser_rasters.json",
     show_default=True,
 )
-def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
+def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool = True):
     """Set up output data configuration for a dolphin workflow.
 
     Saves to `output` JSON file.
@@ -303,6 +303,14 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
             "file_list": _glob(f"{wd}/timeseries/unw_inversion_residuals.tif"),
         },
     ]
+    if include_ifgs:
+        dolphin_outputs.append(
+            {
+                "name": "Interferograms",
+                "file_list": _glob(f"{wd}/interferograms/[0-9]*.int.tif"),
+                "algorithm": Algorithm.PHASE.value,
+            }
+        )
     if timeseries_mask is not None:
         # Timeseries
         dolphin_outputs[0]["mask_file_list"] = timeseries_mask
@@ -313,7 +321,7 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output):
         try:
             rg = RasterGroup(**group)
         except Exception as e:
-            print(e)
+            print(f"Error processing {group['name']}: {e}")
             continue
         raster_groups.append(rg)
 

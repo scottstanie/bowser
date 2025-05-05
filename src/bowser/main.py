@@ -20,7 +20,9 @@ from .utils import desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger(__name__)
 # Lots of this get spewed... unclear whether it's fixable on my end, or Titiler
-warnings.filterwarnings("ignore", category=RuntimeWarning, message="invalid value encountered in cast")
+warnings.filterwarnings(
+    "ignore", category=RuntimeWarning, message="invalid value encountered in cast"
+)
 
 # TODO: Use a `RotatingFileHandler`
 h = logging.StreamHandler()
