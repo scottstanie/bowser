@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-import boto3.s3
+import boto3
 import h5py
 from pydantic import BaseModel, Field
 

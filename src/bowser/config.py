@@ -1,11 +1,13 @@
 # import secrets
 from typing import Union
 
-from pydantic import AnyHttpUrl, validator
+from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Settings for FastAPI app."""
+
     DATASET_CONFIG_FILE: str = "bowser_rasters.json"
     # DATA_FILES: List[str] = []
     # DATA_DIR: Optional[str] = None
@@ -21,8 +23,9 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[AnyHttpUrl] = []
     DOMAIN: str = "localhost"
 
-    @validator("BACKEND_CORS_ORIGINS", pre=True)
-    def assemble_cors_origins(cls, v: Union[str, list[str]]) -> Union[list[str], str]:
+    @classmethod
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    def _assemble_cors_origins(cls, v: Union[str, list[str]]) -> Union[list[str], str]:
         if isinstance(v, str) and not v.startswith("["):
             return [i.strip() for i in v.split(",")]
         elif isinstance(v, (str, list)):

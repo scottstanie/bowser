@@ -92,8 +92,6 @@ class Shift(BaseAlgorithm):
         shift = np.nan_to_num(self.shift) if self.nan_to_zero else self.shift
         return ImageData(
             img.array - shift,
-            # img. - self.shift,
-            # np.ma.MaskedArray(data, mask=~mask),
             assets=img.assets,
             crs=img.crs,
             bounds=img.bounds,
@@ -121,9 +119,6 @@ class RasterGroup(BaseModel):
     def model_post_init(self, __context: Any) -> None:  # noqa: D102
         super().model_post_init(__context)
 
-        # if len(self.file_list) == 1:
-        #     self._reader = RasterReader.from_file(self.file_list[0])
-        # else:
         self._reader = RasterStackReader.from_file_list(
             self.file_list,
             bands=1,
@@ -188,10 +183,6 @@ def _find_files(glob_str: str) -> list[str]:
     elif glob_str.startswith("s3://"):
         # Need to split the '*' from the rest of the path
         file_list = list_bucket(full_bucket_glob=glob_str)
-        # # TODO: If we want S3Paths, this is not really working
-        # pre, glob_part = _split_glob(glob_str)
-        # file_list = S3Path(pre).glob(glob_part)
-        # # We'd need to split on a /, non trivial
     else:
         file_list = sorted(glob(glob_str))
     return file_list
@@ -199,14 +190,6 @@ def _find_files(glob_str: str) -> list[str]:
 
 def _format_dates(*dates, fmt="%Y%m%d") -> str:
     return "_".join(f"{d.strftime(fmt)}" for d in dates)
-
-
-def _split_glob(glob_str: str) -> tuple[str, str]:
-    """Split a glob_str string into the part before the '*' and the part after."""
-    if "*" not in glob_str:
-        raise ValueError("Glob must contain a '*'.")
-    pre, glob_part = glob_str.split("*", 1)
-    return pre, glob_part
 
 
 # https://github.com/developmentseed/titiler/blob/0fddd7ed268557e82a5e1520cdd7fdf084afa1b8/src/titiler/core/titiler/core/resources/responses.py#L15

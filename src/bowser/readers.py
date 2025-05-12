@@ -19,7 +19,6 @@ from typing import (
 import attr
 import numpy as np
 import rasterio as rio
-import rasterio.transform
 import rasterio.warp
 import rasterio.windows
 from morecantile import TileMatrixSet
