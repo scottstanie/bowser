@@ -1,5 +1,7 @@
 # Bowser
 
+![](docs/demo-timeseries.jpg)
+
 ## Install
 
 ```bash
@@ -37,10 +39,10 @@ Click on the `http://127.0.0.1:8000` link to open the map.
 
 
 **Note for running over ssh**: you will need to run an ssh command creating a tunnel from your local computer to wherever the `bowser` server is.
-For example, if you machine is `aurora`, you would run in a local terminal
+For example, if you machine is `myserver`, you would run in a local terminal
 
 ```
-ssh -N -L 8000:localhost:8000 aurora
+ssh -N -L 8000:localhost:8000 myserver
 ```
 after starting the web server.
 
@@ -86,7 +88,7 @@ bowser run
 If this is on a server instead of your laptop, you'll need (on your laptop)
 
 ```
-ssh -N -L 8000:localhost:8000 aurora
+ssh -N -L 8000:localhost:8000 myserver
 ```
 for whatever port pops up after `bowser run`
 
