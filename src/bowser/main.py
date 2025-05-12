@@ -18,7 +18,7 @@ from .readers import CustomReader
 from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
 from .utils import desensitize_mpl_case, generate_colorbar
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("bowser")
 # Lots of this get spewed... unclear whether it's fixable on my end, or Titiler
 warnings.filterwarnings(
     "ignore", category=RuntimeWarning, message="invalid value encountered in cast"
@@ -156,7 +156,7 @@ algorithms = default_algorithms.register(
 PostProcessParams: Callable = algorithms.dependency
 
 
-def InputDependency(
+def InputDependency(  # noqa: N802
     url: Annotated[str, Query(description="Dataset URL")],
     mask: Annotated[str | None, Query(description="Mask URL")] = None,
     mask_min_value: Annotated[float, Query(description="Mask Minimum Value")] = 0.1,

@@ -4,6 +4,7 @@ channels:
 dependencies:
   - python>=3.10
   - pip>=21.3  # https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/#editable-installation
+  - earthaccess
   - fastapi
   - pydantic>=2.1
   - pydantic-settings

@@ -1,17 +1,22 @@
-import subprocess
+import logging
 from functools import partial
 from pathlib import Path
 from typing import Sequence
 
-from tqdm.auto import tqdm
+import h5py
+from opera_utils import get_dates
+from osgeo import gdal
 from tqdm.contrib.concurrent import process_map
 
-from bowser.credentials import AWSCredentials, get_earthaccess_s3_creds
+from bowser.add_overviews import add_overviews
+from bowser.credentials import AWSCredentials, get_earthaccess_s3_creds, get_remote_h5
+
+logger = logging.getLogger("bowser")
 
 
 def process_netcdf_files(
     netcdf_files: Sequence[Path | str],
-    output_dir: str,
+    output_dir: Path,
     datasets: list[str],
     max_workers: int = 5,
     credential_dataset: str | None = None,
@@ -23,7 +28,7 @@ def process_netcdf_files(
     ----------
     netcdf_files : Sequence[Path]
         Paths to input NetCDF files.
-    output_dir : str
+    output_dir : Path
         Path to the directory where output VRT files will be saved.
     datasets : list[str]
         list of dataset names to process from each NetCDF file.
@@ -65,7 +70,6 @@ def process_netcdf_files(
 
     process_map(
         func,
-        # lambda f: process_single_file(f, output_dir, datasets),
         netcdf_files,
         max_workers=max_workers,
     )
@@ -73,7 +77,7 @@ def process_netcdf_files(
 
 def process_single_file(
     netcdf_file: str,
-    output_dir: str,
+    output_dir: Path,
     datasets: list[str],
     aws_credentials: AWSCredentials | None,
     strip_group_path: bool = False,
@@ -84,7 +88,7 @@ def process_single_file(
     ----------
     netcdf_file : str
         Path to the input NetCDF file.
-    output_dir : str
+    output_dir : Path
         Path to the directory where output VRT files will be saved.
     datasets : list[str]
         list of dataset names to process from the NetCDF file.
@@ -102,11 +106,6 @@ def process_single_file(
 
     """
     # Extract date information from the filename
-    import h5py
-    from opera_utils import get_dates
-    from osgeo import gdal
-
-    from .credentials import get_remote_h5
 
     try:
         fmt = "%Y%m%d"
@@ -122,11 +121,11 @@ def process_single_file(
 
     if str(netcdf_file).startswith("s3://"):
         hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
-        print(f"Read remote {netcdf_file}")
+        logger.debug(f"Read remote {netcdf_file}")
     else:
         hf = h5py.File(netcdf_file)
 
-    for in_dataset in tqdm(datasets):
+    for in_dataset in datasets:
         if in_dataset not in hf:
             continue
         out_dataset = in_dataset if not strip_group_path else in_dataset.split("/")[-1]
@@ -142,6 +141,5 @@ def process_single_file(
             callback=gdal.TermProgress_nocb,
         )
 
-        # Build overviews
-        rio_overview_cmd = ["rio", "overview", "--build", "2^2..6", vrt_path]
-        subprocess.run(rio_overview_cmd, check=True)
+        # Build overviews using GDAL function with compression
+        add_overviews(vrt_path, external=True)

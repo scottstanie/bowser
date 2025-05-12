@@ -46,9 +46,9 @@ after starting the web server.
 
 ## Quickstart for DISP-S1 NetCDFs
 
-Until GDAL puts work into the NetCDF driver, reading remote files has very poor support (also, there is no standard overview format. So `titiler` is very unhappy).
+Until GDAL puts work into the NetCDF driver, reading remote HDF5/NetCDF files has very poor support. Additionally, there is no standard overview format as there is with GeoTIFFs, so `titiler` is very unhappy.
 
-So, the recommended way to view some timeseries of frames is
+We can get around this to some degree by creating [VRTs](https://gdal.org/drivers/raster/vrt.html) and [making external overviews](https://gdal.org/programs/gdaladdo.html) pointing at these VRTs.
 
 1. Download the NetCDFs (hopefully on some server which has fast access to the S3 bucket).
 2. Run `bowser prepare-disp-s1` to create VRT files pointing in the `.nc` files, one per dataset we wish to browse.

@@ -12,7 +12,7 @@ PathOrStr = Path | str
 
 gdal.UseExceptions()
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("bowser")
 
 
 class Resampling(Enum):
