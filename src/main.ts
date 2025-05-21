@@ -2,6 +2,7 @@ import './style.css'
 import Chart from 'chart.js/auto';
 import * as L from "leaflet";
 import { BaseMapItem, baseMaps } from "./basemap"
+import { mousePosition } from './mouse';
 
 // TODO
 /*
@@ -50,7 +51,7 @@ var map = L.map('map', {
   doubleClickZoom: false,
 })
 
-
+mousePosition().addTo(map);
 
 const fontAwesomeIcon = L.divIcon({
   // html: '<i class="fa-solid fa-asterisk fa-4x""></i>',

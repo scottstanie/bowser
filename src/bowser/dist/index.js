@@ -14337,6 +14337,9 @@ const registerables = [
 ];
 Chart.register(...registerables);
 var commonjsGlobal = typeof globalThis !== "undefined" ? globalThis : typeof window !== "undefined" ? window : typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : {};
+function getDefaultExportFromCjs(x) {
+  return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, "default") ? x["default"] : x;
+}
 var leafletSrc = { exports: {} };
 /* @preserve
  * Leaflet 1.9.4, a JS library for interactive maps. https://leafletjs.com
@@ -23888,6 +23891,7 @@ var leafletSrc = { exports: {} };
   });
 })(leafletSrc, leafletSrc.exports);
 var leafletSrcExports = leafletSrc.exports;
+const L$1 = /* @__PURE__ */ getDefaultExportFromCjs(leafletSrcExports);
 const baseMaps = {
   esriSatellite: {
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -23910,10 +23914,54 @@ const baseMaps = {
     attribution: "USGS"
   }
 };
+class MousePositionControl extends L$1.Control {
+  constructor(options) {
+    super(options);
+    __publicField(this, "_container", null);
+    // Make options public to match L.Control
+    __publicField(this, "options");
+    this.options = {
+      position: "bottomleft",
+      separator: " : ",
+      emptyString: "Unavailable",
+      lngFirst: false,
+      numDigits: 5,
+      lngFormatter: void 0,
+      latFormatter: void 0,
+      prefix: "",
+      ...options
+    };
+  }
+  onAdd(map2) {
+    this._container = L$1.DomUtil.create("div", "leaflet-control-mouseposition");
+    L$1.DomEvent.disableClickPropagation(this._container);
+    map2.on("mousemove", this._onMouseMove, this);
+    this._container.innerHTML = this.options.emptyString || "";
+    return this._container;
+  }
+  onRemove(map2) {
+    map2.off("mousemove", this._onMouseMove, this);
+  }
+  _onMouseMove(e) {
+    if (!this._container)
+      return;
+    const separator = this.options.separator || " : ";
+    const lng = this.options.lngFormatter ? this.options.lngFormatter(e.latlng.lng) : L$1.Util.formatNum(e.latlng.lng, this.options.numDigits || 5);
+    const lat = this.options.latFormatter ? this.options.latFormatter(e.latlng.lat) : L$1.Util.formatNum(e.latlng.lat, this.options.numDigits || 5);
+    const value = this.options.lngFirst ? lng + separator + lat : lat + separator + lng;
+    const prefixAndValue = this.options.prefix ? this.options.prefix + " " + value : value;
+    this._container.innerHTML = prefixAndValue;
+  }
+}
+L$1.control.mousePosition = function(options) {
+  return new MousePositionControl(options);
+};
+const mousePosition = L$1.control.mousePosition;
 var map = leafletSrcExports.map("map", {
   // https://leafletjs.com/reference.html#map-factory
   doubleClickZoom: false
 });
+mousePosition().addTo(map);
 const fontAwesomeIcon = leafletSrcExports.divIcon({
   // html: '<i class="fa-solid fa-asterisk fa-4x""></i>',
   html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
