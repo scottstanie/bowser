@@ -23945,11 +23945,10 @@ class MousePositionControl extends L$1.Control {
   _onMouseMove(e) {
     if (!this._container)
       return;
-    const separator = this.options.separator || " : ";
     const lng = this.options.lngFormatter ? this.options.lngFormatter(e.latlng.lng) : L$1.Util.formatNum(e.latlng.lng, this.options.numDigits || 5);
     const lat = this.options.latFormatter ? this.options.latFormatter(e.latlng.lat) : L$1.Util.formatNum(e.latlng.lat, this.options.numDigits || 5);
-    const value = this.options.lngFirst ? lng + separator + lat : lat + separator + lng;
-    const prefixAndValue = this.options.prefix ? this.options.prefix + " " + value : value;
+    const formattedText = `lon ${lng}    lat ${lat}`;
+    const prefixAndValue = this.options.prefix ? this.options.prefix + " " + formattedText : formattedText;
     this._container.innerHTML = prefixAndValue;
   }
 }
