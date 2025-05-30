@@ -65,10 +65,22 @@ def run(rasters_file, port, reload, workers, log_level, ignore_sidecar_files):
 
     if port is None:
         port = _find_available_port(8000)
+    _setup_gdal_env(ignore_sidecar_files)
+    os.environ["DATASET_CONFIG_FILE"] = rasters_file
 
+    print(f"Setting up on http://localhost:{port}")
+    uvicorn.run(
+        "bowser.main:app",
+        port=port,
+        reload=reload,
+        workers=workers,
+        log_level=log_level,
+    )
+
+
+def _setup_gdal_env(ignore_sidecar_files: bool = False):
     # https://developmentseed.org/titiler/advanced/performance_tuning/
     cfg = {
-        "DATASET_CONFIG_FILE": rasters_file,
         "GDAL_HTTP_MULTIPLEX": "YES",
         "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
         "GDAL_CACHEMAX": "800",
@@ -80,15 +92,6 @@ def run(rasters_file, port, reload, workers, log_level, ignore_sidecar_files):
         os.environ[k] = v
     if ignore_sidecar_files:
         os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
-
-    print(f"Setting up on http://localhost:{port}")
-    uvicorn.run(
-        "bowser.main:app",
-        port=port,
-        reload=reload,
-        workers=workers,
-        log_level=log_level,
-    )
 
 
 @cli_app.command()

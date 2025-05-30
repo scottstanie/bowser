@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated, Callable, Optional
 
 import numpy as np
+import rasterio
 import xarray
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -56,7 +57,6 @@ def load_dataset():
     )
     dps = disp.DispProductStack.from_file_list(nc_files)
     ds = disp.create_rebased_stack(dps, chunks={"time": 1})
-    ds = ds.rio.reproject("epsg:4326").rio.write_crs("epsg:4326")
 
     return ds
 
@@ -70,6 +70,16 @@ def create_dataset_info(ds: xarray.Dataset) -> dict:
     """Create dataset info structure from Xarray Dataset."""
     # Get bounds from the dataset
     bounds = ds.rio.bounds()
+    if ds.rio.crs != rasterio.crs.CRS.from_epsg(4326):
+        mdim_vars = [v for v in ds.data_vars.values() if ds[v].ndim >= 2][0]
+        # Get just one layer to reproject, and subsample for quick reprojecting
+        da = ds[mdim_vars][..., ::10, ::10]
+        if da.ndim == 3:
+            da = da[0]
+        latlon_bounds = da.rio.reproject("epsg:4326", subsample=10).rio.bounds()
+    else:
+        latlon_bounds = bounds
+    print(f"latlon_bounds: {latlon_bounds}, bounds: {bounds}, ds.rio.crs: {ds.rio.crs}")
 
     # Get time values formatted for frontend
     time_values = ds.time.dt.strftime("%Y-%m-%d").values.tolist()
@@ -90,7 +100,8 @@ def create_dataset_info(ds: xarray.Dataset) -> dict:
                 "nodata": None,
                 "uses_spatial_ref": "displacement" in var_name,
                 "algorithm": "shift" if "displacement" in var_name else None,
-                "latlon_bounds": [bounds[0], bounds[1], bounds[2], bounds[3]],
+                "bounds": list(bounds),
+                "latlon_bounds": list(latlon_bounds),
                 "x_values": time_values,
             }
 
