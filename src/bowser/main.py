@@ -11,6 +11,7 @@ import xarray
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from opera_utils import disp
+from pyproj import Transformer
 from rio_tiler.io.xarray import XarrayReader
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -64,6 +65,8 @@ def load_dataset():
 # Global dataset - load once at startup
 DATASET = load_dataset()
 
+transformer_from_lonlat = Transformer.from_crs(4326, DATASET.rio.crs, always_xy=True)
+
 
 # Create dataset info structure compatible with frontend
 def create_dataset_info(ds: xarray.Dataset) -> dict:
@@ -71,9 +74,9 @@ def create_dataset_info(ds: xarray.Dataset) -> dict:
     # Get bounds from the dataset
     bounds = ds.rio.bounds()
     if ds.rio.crs != rasterio.crs.CRS.from_epsg(4326):
-        mdim_vars = [v for v in ds.data_vars.values() if ds[v].ndim >= 2][0]
+        mdim_vars = [v for v in ds.data_vars.values() if v.ndim >= 2]
         # Get just one layer to reproject, and subsample for quick reprojecting
-        da = ds[mdim_vars][..., ::10, ::10]
+        da = mdim_vars[0][..., ::10, ::10]
         if da.ndim == 3:
             da = da[0]
         latlon_bounds = da.rio.reproject("epsg:4326", subsample=10).rio.bounds()
@@ -137,8 +140,10 @@ async def _get_point_values(variable_name: str, lon: float, lat: float) -> np.nd
             status_code=404, detail=f"Variable {variable_name} not found"
         )
 
+    x, y = transformer_from_lonlat.transform(lon, lat)
+
     # Use xarray's selection with nearest neighbor
-    point_data = DATASET[variable_name].sel(x=lon, y=lat, method="nearest")
+    point_data = DATASET[variable_name].sel(x=x, y=y, method="nearest")
     return np.atleast_1d(point_data.values)
 
 
