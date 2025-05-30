@@ -2,6 +2,7 @@ import './style.css'
 import Chart from 'chart.js/auto';
 import * as L from "leaflet";
 import { BaseMapItem, baseMaps } from "./basemap"
+import { mousePosition } from './mouse';
 
 interface State {
   datasetInfo: { [key: string]: RasterGroup };
@@ -33,6 +34,8 @@ interface RasterGroup {
 var map = L.map('map', {
   doubleClickZoom: false,
 })
+
+mousePosition().addTo(map);
 
 const fontAwesomeIcon = L.divIcon({
   html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
