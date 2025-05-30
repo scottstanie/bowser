@@ -24,7 +24,7 @@ from titiler.core.middleware import CacheControlMiddleware
 
 from .config import settings
 from .readers import CustomReader
-from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
+from .titiler import Amplitude, JSONResponse, Phase, Rewrap, Shift
 from .utils import desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger("bowser")
@@ -97,7 +97,6 @@ def create_dataset_info(ds: xarray.Dataset) -> dict:
                 "file_list": [
                     f"variable:{var_name}:time:{i}" for i in range(len(ds.time))
                 ],
-                # "mask_file_list": "recommended_mask" if "displacement" in var_name else [],
                 "mask_file_list": [],
                 "mask_min_value": 0.1,
                 "nodata": None,
