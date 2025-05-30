@@ -2,7 +2,6 @@ import logging
 import pathlib
 import time
 import warnings
-from pathlib import Path
 from typing import Annotated, Callable, Optional
 
 import numpy as np
@@ -53,9 +52,15 @@ app = FastAPI(title="Bowser")
 
 def load_dataset():
     """Load and prepare the Xarray dataset."""
-    nc_files = Path("/Users/staniewi/repos/opera-utils/subsets-nyc-f08622").glob(
-        "OPERA*.nc"
-    )
+    # nc_files = Path("/Users/staniewi/repos/opera-utils/subsets-nyc-f08622").glob(
+    #     "OPERA*.nc"
+    # )
+    # TODO: settings isn't working with a list of files, bad parsing
+    import os
+
+    nc_files = os.environ["BOWSER_NC_DATA_FILES"].split(",")
+    # nc_files = settings.BOWSER_NC_DATA_FILES
+    print(nc_files)
     dps = disp.DispProductStack.from_file_list(nc_files)
     ds = disp.create_rebased_stack(dps, chunks={"time": 1})
 
@@ -64,6 +69,7 @@ def load_dataset():
 
 # Global dataset - load once at startup
 DATASET = load_dataset()
+print(f"Dataset loading complete in {time.time() - t0:.1f} sec.")
 
 transformer_from_lonlat = Transformer.from_crs(4326, DATASET.rio.crs, always_xy=True)
 

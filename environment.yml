@@ -27,3 +27,4 @@ dependencies:
   - boto3
   - pip:
     - titiler.xarray[minimal,http]
+    - starlette-cramjam

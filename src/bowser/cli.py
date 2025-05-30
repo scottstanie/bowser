@@ -16,6 +16,12 @@ cli_app.add_command(addo)
 
 
 @cli_app.command()
+@click.argument(
+    "nc-file-list",
+    type=Path,
+    nargs=-1,
+    # help="Alternative: list of DISP-S1 files to operate on directly.",
+)
 @click.option(
     "-f",
     "--rasters-file",
@@ -59,14 +65,22 @@ cli_app.add_command(addo)
         " for local reading)."
     ),
 )
-def run(rasters_file, port, reload, workers, log_level, ignore_sidecar_files):
+def run(
+    nc_file_list, rasters_file, port, reload, workers, log_level, ignore_sidecar_files
+):
     """Run the web server."""
     import uvicorn
 
     if port is None:
         port = _find_available_port(8000)
     _setup_gdal_env(ignore_sidecar_files)
-    os.environ["DATASET_CONFIG_FILE"] = rasters_file
+    if nc_file_list:
+        os.environ["BOWSER_NC_DATA_FILES"] = (
+            # "[" + ",".join(map(str, nc_file_list)) + "]"
+            ",".join(map(str, nc_file_list))
+        )
+    else:
+        os.environ["BOWSER_DATASET_CONFIG_FILE"] = rasters_file
 
     print(f"Setting up on http://localhost:{port}")
     uvicorn.run(
