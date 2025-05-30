@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import time
 import warnings
 from pathlib import Path
 from typing import Annotated, Callable, Optional
@@ -29,6 +30,7 @@ warnings.filterwarnings(
     "ignore", category=RuntimeWarning, message="invalid value encountered in cast"
 )
 
+t0 = time.time()
 # Set up logging
 h = logging.StreamHandler()
 h.setLevel(settings.LOG_LEVEL)
@@ -52,7 +54,7 @@ def load_dataset():
     nc_files = Path("/Users/staniewi/repos/opera-utils/subsets-nyc-f08622").glob(
         "OPERA*.nc"
     )
-    dps = disp.DispProductStack.from_file_list(nc_files)[:6]
+    dps = disp.DispProductStack.from_file_list(nc_files)
     ds = disp.create_rebased_stack(dps, chunks={"time": 1})
     ds = ds.rio.reproject("epsg:4326").rio.write_crs("epsg:4326")
 
@@ -82,10 +84,11 @@ def create_dataset_info(ds: xarray.Dataset) -> dict:
                 "file_list": [
                     f"variable:{var_name}:time:{i}" for i in range(len(ds.time))
                 ],
+                # "mask_file_list": "recommended_mask" if "displacement" in var_name else [],
                 "mask_file_list": [],
                 "mask_min_value": 0.1,
                 "nodata": None,
-                "uses_spatial_ref": True,  # Most InSAR data benefits from reference points
+                "uses_spatial_ref": "displacement" in var_name,
                 "algorithm": "shift" if "displacement" in var_name else None,
                 "latlon_bounds": [bounds[0], bounds[1], bounds[2], bounds[3]],
                 "x_values": time_values,
@@ -259,16 +262,32 @@ app.include_router(
 )
 
 
-# Xarray path dependency, rather than passing `?url=https://....`
+# Xarray path dependency: rather than passing `?url=https://....`
 def XarrayPathDependency(
     variable: str = Query(..., description="Variable name"),
     time_idx: Optional[int] = Query(None, description="Time index"),
+    # TODO: make this UI-configurable
+    mask_variable: Optional[str] = Query(None, description="Mask variable"),
+    mask_min_value: float = Query(0.1, description="Mask minimum value"),
 ) -> xarray.DataArray:
     """Create a DataArray from query parameters."""
     da = DATASET[variable]
+    if mask_variable is not None:
+        mask_da = DATASET[mask_variable]
+    elif variable == "displacement":
+        mask_da = DATASET["recommended_mask"]
+    else:
+        mask_da = None
+
     if time_idx is None or "time" not in da.dims:
+        if mask_da is not None:
+            da = da.where(mask_da > mask_min_value)
         return da
-    return da.sel(time=DATASET.time[time_idx])
+    da = da.sel(time=DATASET.time[time_idx])
+    if mask_da is not None:
+        mask_da = mask_da.sel(time=DATASET.time[time_idx])
+        return da.where(mask_da > mask_min_value)
+    return da
 
 
 # Create Xarray tiler using standard TilerFactory
@@ -291,3 +310,4 @@ add_exception_handlers(app, DEFAULT_STATUS_CODES)
 # Serve static files
 dist_path = pathlib.Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
+print(f"Setup complete: time to load datasets: {time.time() - t0:.1f}")

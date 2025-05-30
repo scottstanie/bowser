@@ -196,6 +196,11 @@ const updateRasterTile = () => {
       params.algorithm_params = JSON.stringify({ "shift": shift })
     }
   }
+  // TODO: make the mask a dropdown as well? with a slider for the level
+  // const maskUrl = curDataset.mask_file_list[curTileIdx];
+  // const maskMinValue = curDataset.mask_min_value;
+  // if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
+  // if (maskMinValue !== undefined) params.mask_min_value = maskMinValue.toString()
 
   const url_params = Object.keys(params).map(i => `${i}=${encodeURIComponent(params[i])}`).join('&')
   console.log('Standard titiler url_params', url_params)
