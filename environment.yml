@@ -23,3 +23,5 @@ dependencies:
   # # Optional for reading from S3:
   - s5cmd
   - boto3
+  - pip:
+    - titiler.xarray[minimal,http]
