@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Can be overridden by environment variable:
     BOWSER_DATASET_CONFIG_FILE: str = "bowser_rasters.json"
-    # BOWSER_NC_DATA_FILES: list[str] = []
+    BOWSER_STACK_DATA_FILE: str = ""
     LOG_LEVEL: str = "WARNING"
 
     # SECRET_KEY: str = secrets.token_urlsafe(32)

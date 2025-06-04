@@ -1,16 +1,15 @@
 import logging
-import pathlib
 import time
 import warnings
+from pathlib import Path
 from typing import Annotated, Callable, Optional
 
 import numpy as np
 import rasterio
-import xarray
+import xarray as xr
 from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
-from opera_utils import disp
-from pyproj import Transformer
+from pyproj import CRS, Transformer
 from rio_tiler.io.xarray import XarrayReader
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -43,7 +42,7 @@ h.setFormatter(
 )
 logger.addHandler(h)
 
-template_dir = pathlib.Path(__file__).parent / "templates"
+template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=template_dir)
 desensitize_mpl_case()
 
@@ -52,17 +51,19 @@ app = FastAPI(title="Bowser")
 
 def load_dataset():
     """Load and prepare the Xarray dataset."""
-    # nc_files = Path("/Users/staniewi/repos/opera-utils/subsets-nyc-f08622").glob(
-    #     "OPERA*.nc"
-    # )
-    # TODO: settings isn't working with a list of files, bad parsing
     import os
 
-    nc_files = os.environ["BOWSER_NC_DATA_FILES"].split(",")
-    # nc_files = settings.BOWSER_NC_DATA_FILES
-    print(nc_files)
-    dps = disp.DispProductStack.from_file_list(nc_files)
-    ds = disp.create_rebased_stack(dps, chunks={"time": 1})
+    if settings.BOWSER_STACK_DATA_FILE:
+        stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
+        ds = (
+            xr.open_zarr(stack_file)
+            if stack_file.endswith(".zarr")
+            else xr.open_dataset(stack_file)
+        )
+        crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
+        ds.rio.write_crs(crs, inplace=True)
+    elif not Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
+        raise ValueError("No data files specified")
 
     return ds
 
@@ -75,7 +76,7 @@ transformer_from_lonlat = Transformer.from_crs(4326, DATASET.rio.crs, always_xy=
 
 
 # Create dataset info structure compatible with frontend
-def create_dataset_info(ds: xarray.Dataset) -> dict:
+def create_dataset_info(ds: xr.Dataset) -> dict:
     """Create dataset info structure from Xarray Dataset."""
     # Get bounds from the dataset
     bounds = ds.rio.bounds()
@@ -290,7 +291,7 @@ def XarrayPathDependency(
     # TODO: make this UI-configurable
     mask_variable: Optional[str] = Query(None, description="Mask variable"),
     mask_min_value: float = Query(0.1, description="Mask minimum value"),
-) -> xarray.DataArray:
+) -> xr.DataArray:
     """Create a DataArray from query parameters."""
     da = DATASET[variable]
     if mask_variable is not None:
@@ -329,6 +330,6 @@ app.include_router(
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
 # Serve static files
-dist_path = pathlib.Path(__file__).parent / "dist"
+dist_path = Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
 print(f"Setup complete: time to load datasets: {time.time() - t0:.1f}")
