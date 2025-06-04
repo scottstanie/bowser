@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 import warnings
@@ -22,7 +23,7 @@ from titiler.core.middleware import CacheControlMiddleware
 
 from .config import settings
 from .readers import CustomReader
-from .titiler import Amplitude, JSONResponse, Phase, Rewrap, Shift
+from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
 from .utils import desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger("bowser")
@@ -46,15 +47,21 @@ template_dir = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=template_dir)
 desensitize_mpl_case()
 
-app = FastAPI(title="Bowser")
+app = FastAPI(
+    title="Bowser",
+    openapi_url="/api",
+    docs_url="/api.html",
+)
 
 
-def load_dataset():
-    """Load and prepare the Xarray dataset."""
+def load_data_sources():
+    """Load data sources and determine which mode to use (MD or COG)."""
     import os
 
+    # Check for xarray stack file first (MD mode)
     if settings.BOWSER_STACK_DATA_FILE:
         stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
+        logger.info(f"Loading xarray dataset from {stack_file} (MD mode)")
         ds = (
             xr.open_zarr(stack_file)
             if stack_file.endswith(".zarr")
@@ -62,21 +69,39 @@ def load_dataset():
         )
         crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
         ds.rio.write_crs(crs, inplace=True)
-    elif not Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
-        raise ValueError("No data files specified")
+        transformer = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
+        return "md", ds, None, transformer
 
-    return ds
+    # Check for RasterGroup JSON config (COG mode)
+    elif Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
+        logger.info(
+            f"Loading RasterGroups from {settings.BOWSER_DATASET_CONFIG_FILE} (COG)"
+        )
+        data_js_list = json.loads(Path(settings.BOWSER_DATASET_CONFIG_FILE).read_text())
+        raster_groups = {}
+        for d in data_js_list:
+            rg = RasterGroup.model_validate(d)
+            raster_groups[rg.name] = rg
+        logger.info(
+            (
+                f"Found {len(raster_groups)} RasterGroup configs:"
+                " {list(raster_groups.keys())}"
+            )
+        )
+        return "cog", None, raster_groups, None
+
+    else:
+        raise ValueError(
+            "No data files specified - need either stack file or JSON config"
+        )
 
 
-# Global dataset - load once at startup
-DATASET = load_dataset()
-print(f"Dataset loading complete in {time.time() - t0:.1f} sec.")
-
-transformer_from_lonlat = Transformer.from_crs(4326, DATASET.rio.crs, always_xy=True)
+# Global data sources - load once at startup
+DATA_MODE, XARRAY_DATASET, RASTER_GROUPS, transformer_from_lonlat = load_data_sources()
+print(f"Data loading complete in {time.time() - t0:.1f} sec. Mode: {DATA_MODE}")
 
 
-# Create dataset info structure compatible with frontend
-def create_dataset_info(ds: xr.Dataset) -> dict:
+def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
     """Create dataset info structure from Xarray Dataset."""
     # Get bounds from the dataset
     bounds = ds.rio.bounds()
@@ -89,7 +114,9 @@ def create_dataset_info(ds: xr.Dataset) -> dict:
         latlon_bounds = da.rio.reproject("epsg:4326", subsample=10).rio.bounds()
     else:
         latlon_bounds = bounds
-    print(f"latlon_bounds: {latlon_bounds}, bounds: {bounds}, ds.rio.crs: {ds.rio.crs}")
+    logger.info(
+        f"latlon_bounds: {latlon_bounds}, bounds: {bounds}, ds.rio.crs: {ds.rio.crs}"
+    )
 
     # Get time values formatted for frontend
     time_values = ds.time.dt.strftime("%Y-%m-%d").values.tolist()
@@ -117,18 +144,48 @@ def create_dataset_info(ds: xr.Dataset) -> dict:
     return dataset_info
 
 
+def create_rastergroup_dataset_info(raster_groups: dict) -> dict:
+    """Create dataset info structure from RasterGroups."""
+    dataset_info = {}
+    for name, rg in raster_groups.items():
+        dataset_info[name] = {
+            "name": rg.name,
+            "file_list": [str(f) for f in rg.file_list],
+            "mask_file_list": [str(f) for f in rg.mask_file_list],
+            "mask_min_value": rg.mask_min_value,
+            "nodata": rg.nodata,
+            "uses_spatial_ref": rg.uses_spatial_ref,
+            "algorithm": rg.algorithm,
+            "bounds": list(rg.bounds),
+            "latlon_bounds": list(rg.latlon_bounds),
+            "x_values": rg.x_values,
+        }
+    return dataset_info
+
+
 @app.get("/datasets")
 async def datasets():
-    """Return the JSON describing the dataset variables."""
-    return create_dataset_info(DATASET)
+    """Return the JSON describing all available datasets."""
+    if DATA_MODE == "md":
+        return create_xarray_dataset_info(XARRAY_DATASET)
+    else:  # cog mode
+        return create_rastergroup_dataset_info(RASTER_GROUPS)
 
 
-# Variables endpoint for compatibility
+@app.get("/mode")
+async def get_mode():
+    """Return the current data mode (md or cog) for frontend routing."""
+    return {"mode": DATA_MODE}
+
+
 @app.get("/variables")
 async def get_variables():
-    """Get available variables in the dataset."""
+    """Get available variables (only for MD mode)."""
+    if DATA_MODE != "md":
+        return {"variables": {}}
+
     variables = {}
-    for var_name, var in DATASET.data_vars.items():
+    for var_name, var in XARRAY_DATASET.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
             variables[var_name] = {
                 "dimensions": list(var.dims),
@@ -139,18 +196,22 @@ async def get_variables():
     return {"variables": variables}
 
 
-async def _get_point_values(variable_name: str, lon: float, lat: float) -> np.ndarray:
-    """Get point values for a specific variable at lon/lat."""
-    if variable_name not in DATASET.data_vars:
-        raise HTTPException(
-            status_code=404, detail=f"Variable {variable_name} not found"
-        )
-
-    x, y = transformer_from_lonlat.transform(lon, lat)
-
-    # Use xarray's selection with nearest neighbor
-    point_data = DATASET[variable_name].sel(x=x, y=y, method="nearest")
-    return np.atleast_1d(point_data.values)
+async def _get_point_values(dataset_name: str, lon: float, lat: float) -> np.ndarray:
+    """Get point values for a dataset at lon/lat."""
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        x, y = transformer_from_lonlat.transform(lon, lat)
+        point_data = XARRAY_DATASET[dataset_name].sel(x=x, y=y, method="nearest")
+        return np.atleast_1d(point_data.values)
+    else:  # cog mode
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        return np.atleast_1d(RASTER_GROUPS[dataset_name]._reader.read_lonlat(lon, lat))
 
 
 @app.get(
@@ -185,15 +246,21 @@ async def chart_point(
     ] = None,
 ):
     """Fetch the Chart.js time series values for a point (relative to a reference)."""
-    if dataset_name not in DATASET.data_vars:
-        raise HTTPException(
-            status_code=404, detail=f"Variable {dataset_name} not found"
-        )
-
-    da = DATASET[dataset_name]
-
-    # Format time values for x-axis
-    x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+    # Get time values based on data mode
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = XARRAY_DATASET[dataset_name]
+        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+    else:  # cog mode
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = RASTER_GROUPS[dataset_name]
+        x_values = rg.x_values
 
     def values_to_chart_data(values):
         """Convert values to chart data."""
@@ -260,7 +327,9 @@ algorithms = default_algorithms.register(
 PostProcessParams: Callable = algorithms.dependency
 
 
-# Keep your existing COG endpoints for backward compatibility
+# Set up routing based on data mode
+# if DATA_MODE == "cog":
+# COG mode: use RasterGroup approach
 def InputDependency(
     url: Annotated[str, Query(description="Dataset URL")],
     mask: Annotated[str | None, Query(description="Mask URL")] = None,
@@ -275,6 +344,7 @@ def InputDependency(
 
 
 cog_endpoints = TilerFactory(
+    router_prefix="/cog",
     reader=CustomReader,
     path_dependency=InputDependency,
     process_dependency=PostProcessParams,
@@ -282,22 +352,22 @@ cog_endpoints = TilerFactory(
 app.include_router(
     cog_endpoints.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"]
 )
+logger.info("Configured COG endpoints at /cog/*")
 
 
-# Xarray path dependency: rather than passing `?url=https://....`
+# MD mode: use xarray approach
 def XarrayPathDependency(
     variable: str = Query(..., description="Variable name"),
     time_idx: Optional[int] = Query(None, description="Time index"),
-    # TODO: make this UI-configurable
     mask_variable: Optional[str] = Query(None, description="Mask variable"),
     mask_min_value: float = Query(0.1, description="Mask minimum value"),
 ) -> xr.DataArray:
     """Create a DataArray from query parameters."""
-    da = DATASET[variable]
+    da = XARRAY_DATASET[variable]
     if mask_variable is not None:
-        mask_da = DATASET[mask_variable]
-    elif variable == "displacement":
-        mask_da = DATASET["recommended_mask"]
+        mask_da = XARRAY_DATASET[mask_variable]
+    elif variable == "displacement" and "recommended_mask" in XARRAY_DATASET.data_vars:
+        mask_da = XARRAY_DATASET["recommended_mask"]
     else:
         mask_da = None
 
@@ -305,26 +375,22 @@ def XarrayPathDependency(
         if mask_da is not None:
             da = da.where(mask_da > mask_min_value)
         return da
-    da = da.sel(time=DATASET.time[time_idx])
+    da = da.sel(time=XARRAY_DATASET.time[time_idx])
     if mask_da is not None:
-        mask_da = mask_da.sel(time=DATASET.time[time_idx])
+        mask_da = mask_da.sel(time=XARRAY_DATASET.time[time_idx])
         return da.where(mask_da > mask_min_value)
     return da
 
 
-# Create Xarray tiler using standard TilerFactory
-xarray_endpoints = TilerFactory(
+md_endpoints = TilerFactory(
+    router_prefix="/md",
     reader=XarrayReader,
     path_dependency=XarrayPathDependency,
-    # Set the reader_dependency to `empty`
     reader_dependency=DefaultDependency,
     process_dependency=PostProcessParams,
 )
-app.include_router(
-    xarray_endpoints.router,
-    # prefix="/md",
-    tags=["Xarray Multi Dimensional"],
-)
+app.include_router(md_endpoints.router, prefix="/md", tags=["Xarray Multi Dimensional"])
+logger.info("Configured MD endpoints at /md/*")
 
 # Add exception handlers
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
@@ -332,4 +398,6 @@ add_exception_handlers(app, DEFAULT_STATUS_CODES)
 # Serve static files
 dist_path = Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
-print(f"Setup complete: time to load datasets: {time.time() - t0:.1f}")
+print(f"Setup complete: time to load datasets: {time.time() - t0:.1f} sec.")
+print(f"Mode: {DATA_MODE}")
+logger.info(f"Bowser started in {DATA_MODE.upper()} mode")

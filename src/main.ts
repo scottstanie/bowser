@@ -16,7 +16,9 @@ interface State {
   // The shifts from the reference point for all time indices
   refValues: { [key: string]: number[] };
   // Background tiles
-  basemap: BaseMapItem
+  basemap: BaseMapItem;
+  // Data mode (md or cog) for endpoint routing
+  dataMode: string;
 }
 
 interface RasterGroup {
@@ -52,6 +54,7 @@ var state: State = {
   tileIdx: 0,
   refValues: {},
   basemap: baseMaps.esriSatellite,
+  dataMode: 'md', // Will be updated from server
 };
 
 const curUsesRef = () => state.datasetInfo[state.name].uses_spatial_ref
@@ -208,10 +211,14 @@ const updateRasterTile = () => {
   const url_params = Object.keys(params).map(i => `${i}=${encodeURIComponent(params[i])}`).join('&')
   console.log('Standard titiler url_params', url_params)
 
-  // Use the standard WebMercatorQuad endpoint
-  fetch(`/WebMercatorQuad/tilejson.json?${url_params}`)
+  // Use the appropriate endpoint based on data mode
+  const endpoint = state.dataMode === 'md'
+    ? `/md/WebMercatorQuad/tilejson.json?${url_params}`
+    : `/cog/WebMercatorQuad/tilejson.json?${url_params}`;
+  fetch(endpoint)
     .then(response => response.json())
     .then((tileInfo) => {
+      console.log('Standard titiler tile info', tileInfo)
       // Create new tile layer
       let newTile = L.tileLayer(tileInfo.tiles[0], {
         maxZoom: 19,
@@ -302,7 +309,16 @@ const computeCenter = (name: string) => {
 
 // Initialize datasets from new endpoint
 const initializeDatasets = () => {
-  fetch('/datasets')
+  // First fetch the data mode to configure routing
+  fetch('/mode')
+    .then(response => response.json())
+    .then((modeData) => {
+      state.dataMode = modeData.mode;
+      console.log('Data mode:', state.dataMode);
+
+      // Then fetch the datasets
+      return fetch('/datasets');
+    })
     .then(response => response.json())
     .then((data) => {
       state.datasetInfo = data;
@@ -328,6 +344,9 @@ const initializeDatasets = () => {
         option.textContent = varName;
         datasetSelector.appendChild(option);
       });
+    })
+    .catch(error => {
+      console.error('Error initializing datasets:', error);
     })
 }
 

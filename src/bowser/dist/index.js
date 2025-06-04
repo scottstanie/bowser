@@ -23974,7 +23974,9 @@ var state = {
   tile: null,
   tileIdx: 0,
   refValues: {},
-  basemap: baseMaps.esriSatellite
+  basemap: baseMaps.esriSatellite,
+  dataMode: "md"
+  // Will be updated from server
 };
 const curUsesRef = () => state.datasetInfo[state.name].uses_spatial_ref;
 let baseMapTile = leafletSrcExports.tileLayer(state.basemap.url, {
@@ -24091,7 +24093,9 @@ const updateRasterTile = () => {
   }
   const url_params = Object.keys(params).map((i) => `${i}=${encodeURIComponent(params[i])}`).join("&");
   console.log("Standard titiler url_params", url_params);
-  fetch(`/WebMercatorQuad/tilejson.json?${url_params}`).then((response) => response.json()).then((tileInfo) => {
+  const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${url_params}` : `/cog/WebMercatorQuad/tilejson.json?${url_params}`;
+  fetch(endpoint).then((response) => response.json()).then((tileInfo) => {
+    console.log("Standard titiler tile info", tileInfo);
     let newTile = leafletSrcExports.tileLayer(tileInfo.tiles[0], {
       maxZoom: 19
     });
@@ -24168,7 +24172,11 @@ const computeCenter = (name) => {
   return { centerLat, centerLng };
 };
 const initializeDatasets = () => {
-  fetch("/datasets").then((response) => response.json()).then((data) => {
+  fetch("/mode").then((response) => response.json()).then((modeData) => {
+    state.dataMode = modeData.mode;
+    console.log("Data mode:", state.dataMode);
+    return fetch("/datasets");
+  }).then((response) => response.json()).then((data) => {
     state.datasetInfo = data;
     console.log("datasetInfo", state.datasetInfo);
     const name0 = Object.keys(state.datasetInfo)[0];
@@ -24185,6 +24193,8 @@ const initializeDatasets = () => {
       option.textContent = varName;
       datasetSelector.appendChild(option);
     });
+  }).catch((error) => {
+    console.error("Error initializing datasets:", error);
   });
 };
 const chartElem = document.querySelector("#chart");
