@@ -25,20 +25,17 @@ classifiers = [
 # see section: setuptools_scm
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata
 # dependencies will be read from text files
-dynamic = ["version", "dependencies", "optional-dependencies"]
+dynamic = ["version", "optional-dependencies"]
 
 # [project.urls]
-# Homepage = "https://github.com/isce-framework/bowser"
-# "Bug Tracker" = "https://github.com/isce-framework/bowser/issues"
-# Discussions = "https://github.com/isce-framework/bowser/discussions"
-# Changelog = "https://github.com/isce-framework/bowser/releases"
+# Homepage = "https://github.com/opera-adt/bowser"
+# "Bug Tracker" = "https://github.com/opera-adt/bowser/issues"
+# Discussions = "https://github.com/opera-adt/bowser/discussions"
+# Changelog = "https://github.com/opera-adt/bowser/releases"
 
 # Entry points for the command line interface
 [project.scripts]
 bowser = "bowser.cli:cli_app"
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements.txt"] }
 
 # extra requirements: `pip install .[docs]` or `pip install .[docs]`
 [tool.setuptools.dynamic.optional-dependencies.docs]
