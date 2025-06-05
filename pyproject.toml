@@ -3,7 +3,7 @@ requires = ["setuptools>=64.0", "setuptools_scm[toml]>=6.2"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "bowser"
+name = "bowser-insar"
 authors = [{ name = "Scott Staniewicz", email = "scott.stanie@gmail.com" }]
 description = "Web UI for browsing InSAR time series"
 readme = { file = "README.md", content-type = "text/markdown" }
