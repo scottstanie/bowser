@@ -202,11 +202,19 @@ const updateRasterTile = () => {
       params.algorithm_params = JSON.stringify({ "shift": shift })
     }
   }
+  // add the url parameter if we have cogs
+  if (state.dataMode === 'cog') {
+    console.log("COG!")
+    const url = curDataset.file_list[curTileIdx]
+    const maskUrl = curDataset.mask_file_list[curTileIdx];
+    const maskMinValue = curDataset.mask_min_value;
+    // params.url = encodeURIComponent(url)
+    params.url = url
+    if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
+    if (maskMinValue !== undefined) params.mask_min_value = maskMinValue.toString()
+    console.log(params)
+  }
   // TODO: make the mask a dropdown as well? with a slider for the level
-  // const maskUrl = curDataset.mask_file_list[curTileIdx];
-  // const maskMinValue = curDataset.mask_min_value;
-  // if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
-  // if (maskMinValue !== undefined) params.mask_min_value = maskMinValue.toString()
 
   const url_params = Object.keys(params).map(i => `${i}=${encodeURIComponent(params[i])}`).join('&')
   console.log('Standard titiler url_params', url_params)

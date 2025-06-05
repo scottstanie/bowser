@@ -24091,6 +24091,18 @@ const updateRasterTile = () => {
       params.algorithm_params = JSON.stringify({ "shift": shift });
     }
   }
+  if (state.dataMode === "cog") {
+    console.log("COG!");
+    const url = curDataset.file_list[curTileIdx];
+    const maskUrl = curDataset.mask_file_list[curTileIdx];
+    const maskMinValue = curDataset.mask_min_value;
+    params.url = url;
+    if (maskUrl !== void 0)
+      params.mask = encodeURIComponent(maskUrl);
+    if (maskMinValue !== void 0)
+      params.mask_min_value = maskMinValue.toString();
+    console.log(params);
+  }
   const url_params = Object.keys(params).map((i) => `${i}=${encodeURIComponent(params[i])}`).join("&");
   console.log("Standard titiler url_params", url_params);
   const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${url_params}` : `/cog/WebMercatorQuad/tilejson.json?${url_params}`;

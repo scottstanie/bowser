@@ -399,5 +399,4 @@ add_exception_handlers(app, DEFAULT_STATUS_CODES)
 dist_path = Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
 print(f"Setup complete: time to load datasets: {time.time() - t0:.1f} sec.")
-print(f"Mode: {DATA_MODE}")
 logger.info(f"Bowser started in {DATA_MODE.upper()} mode")
