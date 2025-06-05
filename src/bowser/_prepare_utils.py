@@ -5,11 +5,12 @@ from typing import Sequence
 
 import h5py
 from opera_utils import get_dates
+from opera_utils.credentials import ASFCredentialEndpoints, AWSCredentials
+from opera_utils.disp import open_h5
 from osgeo import gdal
 from tqdm.contrib.concurrent import process_map
 
 from bowser.add_overviews import add_overviews
-from bowser.credentials import AWSCredentials, get_earthaccess_s3_creds, get_remote_h5
 
 logger = logging.getLogger("bowser")
 
@@ -19,7 +20,6 @@ def process_netcdf_files(
     output_dir: Path,
     datasets: list[str],
     max_workers: int = 5,
-    credential_dataset: str | None = None,
     strip_group_path: bool = False,
 ) -> None:
     """Process NetCDF files in the input directory, create VRT files, build overviews.
@@ -35,9 +35,6 @@ def process_netcdf_files(
     max_workers : int
         Number of parallel files to process.
         Default is 5.
-    credential_dataset : str, optional
-        Argument for `get_earthaccess_s3_creds` to get temporary s3 credential
-        using earthaccess.
     strip_group_path : bool
         If True, the output directory for the VRTs is only one level deep.
         Otherwise, uses the full HDF5 path as VRT path.
@@ -57,9 +54,11 @@ def process_netcdf_files(
     out_path = Path(output_dir)
     out_path.mkdir(exist_ok=True, parents=True)
 
-    aws_credentials = (
-        get_earthaccess_s3_creds("opera-uat") if credential_dataset else None
-    )
+    if any(str(f).startswith("s3://") for f in netcdf_files):
+        aws_credentials = AWSCredentials.from_asf(endpoint=ASFCredentialEndpoints.OPERA)
+    else:
+        aws_credentials = None
+
     func = partial(
         process_single_file,
         output_dir=output_dir,
@@ -120,7 +119,7 @@ def process_single_file(
         vrt_filename = f"{str(netcdf_file).replace('/', '_')}.vrt"
 
     if str(netcdf_file).startswith("s3://"):
-        hf = get_remote_h5(netcdf_file, aws_credentials=aws_credentials)
+        hf = open_h5(netcdf_file, aws_credentials=aws_credentials)
         logger.debug(f"Read remote {netcdf_file}")
     else:
         hf = h5py.File(netcdf_file)

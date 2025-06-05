@@ -23,6 +23,11 @@ class Resampling(Enum):
     LANCZOS = "lanczos"
 
 
+# TODO: This thing can now be done with the 3.11 GDAL cli
+# https://gdal.org/en/stable/programs/gdal_raster_overview_add.html#gdal-raster-overview-add
+# gdal raster overview add --config COMPRESS_OVERVIEW=LZW data.tif 2 4 8 16
+
+
 def add_overviews(
     file_path: Path | str,
     overview_levels: Sequence[int] = [4, 8, 16, 32, 64],
