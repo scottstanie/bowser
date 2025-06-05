@@ -126,6 +126,10 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
 
     for var_name, var in ds.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
+            use_moving_reference = (
+                "displacement" in str(var_name).lower()
+                and "short_wave" not in str(var_name).lower()
+            )
             dataset_info[var_name] = {
                 "name": var_name,
                 "file_list": [
@@ -134,8 +138,8 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
                 "mask_file_list": [],
                 "mask_min_value": 0.1,
                 "nodata": None,
-                "uses_spatial_ref": "displacement" in var_name,
-                "algorithm": "shift" if "displacement" in var_name else None,
+                "uses_spatial_ref": use_moving_reference,
+                "algorithm": "shift" if use_moving_reference else None,
                 "bounds": list(bounds),
                 "latlon_bounds": list(latlon_bounds),
                 "x_values": time_values,
