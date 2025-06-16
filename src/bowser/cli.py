@@ -64,8 +64,28 @@ cli_app.add_command(addo)
         " for local reading)."
     ),
 )
+@click.option(
+    "--no-spatial-reference",
+    "--ns",
+    is_flag=True,
+    help="Don't add a moving spatial reference point for `displacement` ",
+)
+@click.option(
+    "--no-recommended-mask",
+    "--no-mask",
+    is_flag=True,
+    help="Don't use recommended mask for `displacement` ",
+)
 def run(
-    stack_file, rasters_file, port, reload, workers, log_level, ignore_sidecar_files
+    stack_file,
+    rasters_file,
+    port,
+    reload,
+    workers,
+    log_level,
+    ignore_sidecar_files,
+    no_spatial_reference,
+    no_recommended_mask,
 ):
     """Run the web server."""
     import uvicorn
@@ -77,6 +97,10 @@ def run(
         os.environ["BOWSER_STACK_DATA_FILE"] = stack_file
     else:
         os.environ["BOWSER_DATASET_CONFIG_FILE"] = rasters_file
+    os.environ["BOWSER_SPATIAL_REFERENCE_DISP"] = (
+        "NO" if no_spatial_reference else "YES"
+    )
+    os.environ["BOWSER_USE_RECOMMENDED_MASK"] = "NO" if no_recommended_mask else "YES"
 
     print(f"Setting up on http://localhost:{port}")
     uvicorn.run(
