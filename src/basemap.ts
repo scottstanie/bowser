@@ -2,10 +2,7 @@
 // https://leaflet-extras.github.io/leaflet-providers/preview/
 // https://github.com/geopandas/xyzservices/blob/main/provider_sources/leaflet-providers-parsed.json
 
-interface BaseMapItem {
-    url: string;
-    attribution: string;
-}
+import { BaseMapItem } from './types';
 
 const baseMaps: { [key: string]: BaseMapItem } = {
     esriSatellite: {
