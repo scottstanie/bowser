@@ -1,9 +1,6 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => {
-  __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-  return value;
-};
+var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
 var _a;
 (function polyfill() {
   const relList = document.createElement("link").relList;
@@ -26,16 +23,12 @@ var _a;
   }).observe(document, { childList: true, subtree: true });
   function getFetchOpts(link) {
     const fetchOpts = {};
-    if (link.integrity)
-      fetchOpts.integrity = link.integrity;
-    if (link.referrerPolicy)
-      fetchOpts.referrerPolicy = link.referrerPolicy;
+    if (link.integrity) fetchOpts.integrity = link.integrity;
+    if (link.referrerPolicy) fetchOpts.referrerPolicy = link.referrerPolicy;
     if (link.crossOrigin === "use-credentials")
       fetchOpts.credentials = "include";
-    else if (link.crossOrigin === "anonymous")
-      fetchOpts.credentials = "omit";
-    else
-      fetchOpts.credentials = "same-origin";
+    else if (link.crossOrigin === "anonymous") fetchOpts.credentials = "omit";
+    else fetchOpts.credentials = "same-origin";
     return fetchOpts;
   }
   function processPreload(link) {
@@ -47,9 +40,9 @@ var _a;
   }
 })();
 /*!
- * @kurkle/color v0.3.2
+ * @kurkle/color v0.3.4
  * https://github.com/kurkle/color#readme
- * (c) 2023 Jukka Kurkela
+ * (c) 2024 Jukka Kurkela
  * Released under the MIT License
  */
 function round(v) {
@@ -608,9 +601,9 @@ class Color {
   }
 }
 /*!
- * Chart.js v4.4.1
+ * Chart.js v4.4.9
  * https://www.chartjs.org
- * (c) 2023 Chart.js Contributors
+ * (c) 2025 Chart.js Contributors
  * Released under the MIT License
  */
 function noop() {
@@ -620,7 +613,7 @@ const uid = /* @__PURE__ */ (() => {
   return () => id++;
 })();
 function isNullOrUndef(value) {
-  return value === null || typeof value === "undefined";
+  return value === null || value === void 0;
 }
 function isArray(value) {
   if (Array.isArray && Array.isArray(value)) {
@@ -655,11 +648,7 @@ function each(loopable, fn, thisArg, reverse) {
   let i, len, keys;
   if (isArray(loopable)) {
     len = loopable.length;
-    if (reverse) {
-      for (i = len - 1; i >= 0; i--) {
-        fn.call(thisArg, loopable[i], i);
-      }
-    } else {
+    {
       for (i = 0; i < len; i++) {
         fn.call(thisArg, loopable[i], i);
       }
@@ -855,8 +844,11 @@ function _factorize(value) {
   result.sort((a, b) => a - b).pop();
   return result;
 }
+function isNonPrimitive(n) {
+  return typeof n === "symbol" || typeof n === "object" && n !== null && !(Symbol.toPrimitive in n || "toString" in n || "valueOf" in n);
+}
 function isNumber(n) {
-  return !isNaN(parseFloat(n)) && isFinite(n);
+  return !isNonPrimitive(n) && !isNaN(parseFloat(n)) && isFinite(n);
 }
 function almostWhole(x, epsilon) {
   const rounded = Math.round(x);
@@ -1074,24 +1066,35 @@ function _getStartAndCountOfVisiblePoints(meta, points, animationsDisabled) {
   let start = 0;
   let count = pointCount;
   if (meta._sorted) {
-    const { iScale, _parsed } = meta;
+    const { iScale, vScale, _parsed } = meta;
+    const spanGaps = meta.dataset ? meta.dataset.options ? meta.dataset.options.spanGaps : null : null;
     const axis = iScale.axis;
     const { min, max, minDefined, maxDefined } = iScale.getUserBounds();
     if (minDefined) {
-      start = _limitValue(Math.min(
+      start = Math.min(
         // @ts-expect-error Need to type _parsed
         _lookupByKey(_parsed, axis, min).lo,
         // @ts-expect-error Need to fix types on _lookupByKey
         animationsDisabled ? pointCount : _lookupByKey(points, axis, iScale.getPixelForValue(min)).lo
-      ), 0, pointCount - 1);
+      );
+      if (spanGaps) {
+        const distanceToDefinedLo = _parsed.slice(0, start + 1).reverse().findIndex((point) => !isNullOrUndef(point[vScale.axis]));
+        start -= Math.max(0, distanceToDefinedLo);
+      }
+      start = _limitValue(start, 0, pointCount - 1);
     }
     if (maxDefined) {
-      count = _limitValue(Math.max(
+      let end = Math.max(
         // @ts-expect-error Need to type _parsed
         _lookupByKey(_parsed, iScale.axis, max, true).hi + 1,
         // @ts-expect-error Need to fix types on _lookupByKey
         animationsDisabled ? 0 : _lookupByKey(points, axis, iScale.getPixelForValue(max), true).hi + 1
-      ), start, pointCount) - start;
+      );
+      if (spanGaps) {
+        const distanceToDefinedHi = _parsed.slice(end - 1).findIndex((point) => !isNullOrUndef(point[vScale.axis]));
+        end += Math.max(0, distanceToDefinedHi);
+      }
+      count = _limitValue(end, start, pointCount) - start;
     } else {
       count = pointCount - start;
     }
@@ -1605,6 +1608,9 @@ function _alignPixel(chart2, pixel, width) {
   return Math.round((pixel - halfWidth) * devicePixelRatio) / devicePixelRatio + halfWidth;
 }
 function clearCanvas(canvas, ctx) {
+  if (!ctx && !canvas) {
+    return;
+  }
   ctx = ctx || canvas.getContext("2d");
   ctx.save();
   ctx.resetTransform();
@@ -1922,25 +1928,13 @@ function toFont(options, fallback) {
   return font;
 }
 function resolve(inputs, context, index2, info) {
-  let cacheable = true;
   let i, ilen, value;
   for (i = 0, ilen = inputs.length; i < ilen; ++i) {
     value = inputs[i];
     if (value === void 0) {
       continue;
     }
-    if (context !== void 0 && typeof value === "function") {
-      value = value(context);
-      cacheable = false;
-    }
-    if (index2 !== void 0 && isArray(value)) {
-      value = value[index2 % value.length];
-      cacheable = false;
-    }
     if (value !== void 0) {
-      if (info && !cacheable) {
-        info.cacheable = false;
-      }
       return value;
     }
   }
@@ -2108,7 +2102,7 @@ function _descriptors(proxy, defaults2 = {
 const readKey = (prefix, name) => prefix ? prefix + _capitalize(name) : name;
 const needsSubResolver = (prop, value) => isObject(value) && prop !== "adapters" && (Object.getPrototypeOf(value) === null || value.constructor === Object);
 function _cached(target, prop, resolve2) {
-  if (Object.prototype.hasOwnProperty.call(target, prop)) {
+  if (Object.prototype.hasOwnProperty.call(target, prop) || prop === "constructor") {
     return target[prop];
   }
   const value = resolve2();
@@ -2503,7 +2497,7 @@ function getRelativePosition(event, chart2) {
 function getContainerSize(canvas, width, height) {
   let maxWidth, maxHeight;
   if (width === void 0 || height === void 0) {
-    const container = _getParentNode(canvas);
+    const container = canvas && _getParentNode(canvas);
     if (!container) {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
@@ -2976,10 +2970,38 @@ function styleChanged(style, prevStyle) {
   };
   return JSON.stringify(style, replacer) !== JSON.stringify(prevStyle, replacer);
 }
+function getSizeForArea(scale, chartArea, field) {
+  return scale.options.clip ? scale[field] : chartArea[field];
+}
+function getDatasetArea(meta, chartArea) {
+  const { xScale, yScale } = meta;
+  if (xScale && yScale) {
+    return {
+      left: getSizeForArea(xScale, chartArea, "left"),
+      right: getSizeForArea(xScale, chartArea, "right"),
+      top: getSizeForArea(yScale, chartArea, "top"),
+      bottom: getSizeForArea(yScale, chartArea, "bottom")
+    };
+  }
+  return chartArea;
+}
+function getDatasetClipArea(chart2, meta) {
+  const clip = meta._clip;
+  if (clip.disabled) {
+    return false;
+  }
+  const area = getDatasetArea(meta, chart2.chartArea);
+  return {
+    left: clip.left === false ? 0 : area.left - (clip.left === true ? 0 : clip.left),
+    right: clip.right === false ? chart2.width : area.right + (clip.right === true ? 0 : clip.right),
+    top: clip.top === false ? 0 : area.top - (clip.top === true ? 0 : clip.top),
+    bottom: clip.bottom === false ? chart2.height : area.bottom + (clip.bottom === true ? 0 : clip.bottom)
+  };
+}
 /*!
- * Chart.js v4.4.1
+ * Chart.js v4.4.9
  * https://www.chartjs.org
- * (c) 2023 Chart.js Contributors
+ * (c) 2025 Chart.js Contributors
  * Released under the MIT License
  */
 class Animator {
@@ -3409,9 +3431,11 @@ function applyStack(stack, value, dsIndex, options = {}) {
   if (value === null) {
     return;
   }
+  let found = false;
   for (i = 0, ilen = keys.length; i < ilen; ++i) {
     datasetIndex = +keys[i];
     if (datasetIndex === dsIndex) {
+      found = true;
       if (options.all) {
         continue;
       }
@@ -3422,17 +3446,23 @@ function applyStack(stack, value, dsIndex, options = {}) {
       value += otherValue;
     }
   }
+  if (!found && !options.all) {
+    return 0;
+  }
   return value;
 }
-function convertObjectDataToArray(data) {
+function convertObjectDataToArray(data, meta) {
+  const { iScale, vScale } = meta;
+  const iAxisKey = iScale.axis === "x" ? "x" : "y";
+  const vAxisKey = vScale.axis === "x" ? "x" : "y";
   const keys = Object.keys(data);
   const adata = new Array(keys.length);
   let i, ilen, key;
   for (i = 0, ilen = keys.length; i < ilen; ++i) {
     key = keys[i];
     adata[i] = {
-      x: key,
-      y: data[key]
+      [iAxisKey]: key,
+      [vAxisKey]: data[key]
     };
   }
   return adata;
@@ -3621,7 +3651,8 @@ class DatasetController {
     const data = dataset.data || (dataset.data = []);
     const _data = this._data;
     if (isObject(data)) {
-      this._data = convertObjectDataToArray(data);
+      const meta = this._cachedMeta;
+      this._data = convertObjectDataToArray(data, meta);
     } else if (_data !== data) {
       if (_data) {
         unlistenArrayEvents(_data, this);
@@ -3658,6 +3689,7 @@ class DatasetController {
     this._resyncElements(resetNewElements);
     if (stackChanged || oldStacked !== meta._stacked) {
       updateStacks(this, meta._parsed);
+      meta._stacked = isStacked(meta.vScale, meta);
     }
   }
   configure() {
@@ -4421,8 +4453,10 @@ class BarController extends DatasetController {
     const metasets = iScale.getMatchingVisibleMetas(this._type).filter((meta) => meta.controller.options.grouped);
     const stacked = iScale.options.stacked;
     const stacks = [];
+    const currentParsed = this._cachedMeta.controller.getParsed(dataIndex);
+    const iScaleValue = currentParsed && currentParsed[iScale.axis];
     const skipNull = (meta) => {
-      const parsed = meta.controller.getParsed(dataIndex);
+      const parsed = meta._parsed.find((item) => item[iScale.axis] === iScaleValue);
       const val = parsed && parsed[meta.vScale.axis];
       if (isNullOrUndef(val) || isNaN(val)) {
         return true;
@@ -4561,7 +4595,7 @@ class BarController extends DatasetController {
     const ilen = rects.length;
     let i = 0;
     for (; i < ilen; ++i) {
-      if (this.getParsed(i)[vScale.axis] !== null) {
+      if (this.getParsed(i)[vScale.axis] !== null && !rects[i].hidden) {
         rects[i].draw(this._ctx);
       }
     }
@@ -5576,10 +5610,20 @@ var adapters = {
 function binarySearch(metaset, axis, value, intersect) {
   const { controller, data, _sorted } = metaset;
   const iScale = controller._cachedMeta.iScale;
+  const spanGaps = metaset.dataset ? metaset.dataset.options ? metaset.dataset.options.spanGaps : null : null;
   if (iScale && axis === iScale.axis && axis !== "r" && _sorted && data.length) {
     const lookupMethod = iScale._reversePixels ? _rlookupByKey : _lookupByKey;
     if (!intersect) {
-      return lookupMethod(data, axis, value);
+      const result = lookupMethod(data, axis, value);
+      if (spanGaps) {
+        const { vScale } = controller._cachedMeta;
+        const { _parsed } = metaset;
+        const distanceToDefinedLo = _parsed.slice(0, result.lo + 1).reverse().findIndex((point) => !isNullOrUndef(point[vScale.axis]));
+        result.lo -= Math.max(0, distanceToDefinedLo);
+        const distanceToDefinedHi = _parsed.slice(result.hi).findIndex((point) => !isNullOrUndef(point[vScale.axis]));
+        result.hi += Math.max(0, distanceToDefinedHi);
+      }
+      return result;
     } else if (controller._sharedOptions) {
       const el = data[0];
       const range = typeof el.getRange === "function" && el.getRange(axis);
@@ -5709,7 +5753,7 @@ function getAxisItems(chart2, position, axis, intersect, useFinalPosition) {
   const rangeMethod = axis === "x" ? "inXRange" : "inYRange";
   let intersectsItem = false;
   evaluateInteractionItems(chart2, axis, position, (element, datasetIndex, index2) => {
-    if (element[rangeMethod](position[axis], useFinalPosition)) {
+    if (element[rangeMethod] && element[rangeMethod](position[axis], useFinalPosition)) {
       items.push({
         element,
         datasetIndex,
@@ -5724,7 +5768,6 @@ function getAxisItems(chart2, position, axis, intersect, useFinalPosition) {
   return items;
 }
 var Interaction = {
-  evaluateInteractionItems,
   modes: {
     index(chart2, e, options, useFinalPosition) {
       const position = getRelativePosition(e, chart2);
@@ -5986,7 +6029,6 @@ function placeBoxes(boxes, chartArea, params, stacks) {
   for (const layout of boxes) {
     const box = layout.box;
     const stack = stacks[layout.stack] || {
-      count: 1,
       placed: 0,
       weight: 1
     };
@@ -6207,10 +6249,14 @@ const eventListenerOptions = supportsEventListenerOptions ? {
   passive: true
 } : false;
 function addListener(node, type, listener) {
-  node.addEventListener(type, listener, eventListenerOptions);
+  if (node) {
+    node.addEventListener(type, listener, eventListenerOptions);
+  }
 }
 function removeListener(chart2, type, listener) {
-  chart2.canvas.removeEventListener(type, listener, eventListenerOptions);
+  if (chart2 && chart2.canvas) {
+    chart2.canvas.removeEventListener(type, listener, eventListenerOptions);
+  }
 }
 function fromNativeEvent(event, chart2) {
   const type = EVENT_TYPES[event.type] || event.type;
@@ -6403,7 +6449,7 @@ class DomPlatform extends BasePlatform {
     return getMaximumSize(canvas, width, height, aspectRatio);
   }
   isAttached(canvas) {
-    const container = _getParentNode(canvas);
+    const container = canvas && _getParentNode(canvas);
     return !!(container && container.isConnected);
   }
 }
@@ -8455,7 +8501,7 @@ function needContext(proxy, names2) {
   }
   return false;
 }
-var version = "4.4.1";
+var version = "4.4.9";
 const KNOWN_POSITIONS = [
   "top",
   "bottom",
@@ -8523,21 +8569,6 @@ function determineLastEvent(e, lastEvent, inChartArea, isClick) {
     return lastEvent;
   }
   return e;
-}
-function getSizeForArea(scale, chartArea, field) {
-  return scale.options.clip ? scale[field] : chartArea[field];
-}
-function getDatasetArea(meta, chartArea) {
-  const { xScale, yScale } = meta;
-  if (xScale && yScale) {
-    return {
-      left: getSizeForArea(xScale, chartArea, "left"),
-      right: getSizeForArea(xScale, chartArea, "right"),
-      top: getSizeForArea(yScale, chartArea, "top"),
-      bottom: getSizeForArea(yScale, chartArea, "bottom")
-    };
-  }
-  return chartArea;
 }
 class Chart {
   static register(...items) {
@@ -8980,8 +9011,8 @@ class Chart {
     let i;
     if (this._resizeBeforeDraw) {
       const { width, height } = this._resizeBeforeDraw;
-      this._resize(width, height);
       this._resizeBeforeDraw = null;
+      this._resize(width, height);
     }
     this.clear();
     if (this.width <= 0 || this.height <= 0) {
@@ -9031,27 +9062,20 @@ class Chart {
   }
   _drawDataset(meta) {
     const ctx = this.ctx;
-    const clip = meta._clip;
-    const useClip = !clip.disabled;
-    const area = getDatasetArea(meta, this.chartArea);
     const args = {
       meta,
       index: meta.index,
       cancelable: true
     };
+    const clip = getDatasetClipArea(this, meta);
     if (this.notifyPlugins("beforeDatasetDraw", args) === false) {
       return;
     }
-    if (useClip) {
-      clipArea(ctx, {
-        left: clip.left === false ? 0 : area.left - clip.left,
-        right: clip.right === false ? this.width : area.right + clip.right,
-        top: clip.top === false ? 0 : area.top - clip.top,
-        bottom: clip.bottom === false ? this.height : area.bottom + clip.bottom
-      });
+    if (clip) {
+      clipArea(ctx, clip);
     }
     meta.controller.draw();
-    if (useClip) {
+    if (clip) {
       unclipArea(ctx);
     }
     args.cancelable = false;
@@ -9567,7 +9591,8 @@ class ArcElement extends Element$1 {
     ], useFinalPosition);
     const rAdjust = (this.options.spacing + this.options.borderWidth) / 2;
     const _circumference = valueOrDefault(circumference, endAngle - startAngle);
-    const betweenAngles = _circumference >= TAU || _angleBetween(angle, startAngle, endAngle);
+    const nonZeroBetween = _angleBetween(angle, startAngle, endAngle) && startAngle !== endAngle;
+    const betweenAngles = _circumference >= TAU || nonZeroBetween;
     const withinRadius = _isBetween(distance, innerRadius + rAdjust, outerRadius + rAdjust);
     return betweenAngles && withinRadius;
   }
@@ -10250,6 +10275,9 @@ function containsColorsDefinitions(descriptors2) {
 function containsColorsDefinition(descriptor) {
   return descriptor && (descriptor.borderColor || descriptor.backgroundColor);
 }
+function containsDefaultColorsDefenitions() {
+  return defaults.borderColor !== "rgba(0,0,0,0.1)" || defaults.backgroundColor !== "rgba(0,0,0,0.1)";
+}
 var plugin_colors = {
   id: "colors",
   defaults: {
@@ -10262,7 +10290,8 @@ var plugin_colors = {
     }
     const { data: { datasets }, options: chartOptions } = chart2.config;
     const { elements: elements2 } = chartOptions;
-    if (!options.forceOverride && (containsColorsDefinitions(datasets) || containsColorsDefinition(chartOptions) || elements2 && containsColorsDefinitions(elements2))) {
+    const containsColorDefenition = containsColorsDefinitions(datasets) || containsColorsDefinition(chartOptions) || elements2 && containsColorsDefinitions(elements2) || containsDefaultColorsDefenitions();
+    if (!options.forceOverride && containsColorDefenition) {
       return;
     }
     const colorizer = getColorizer(chart2);
@@ -10853,11 +10882,13 @@ function computeCircularBoundary(source) {
 }
 function _drawfill(ctx, source, area) {
   const target = _getTarget(source);
-  const { line, scale, axis } = source;
+  const { chart: chart2, index: index2, line, scale, axis } = source;
   const lineOpts = line.options;
   const fillOption = lineOpts.fill;
   const color2 = lineOpts.backgroundColor;
   const { above = color2, below = color2 } = fillOption || {};
+  const meta = chart2.getDatasetMeta(index2);
+  const clip = getDatasetClipArea(chart2, meta);
   if (target && line.points.length) {
     clipArea(ctx, area);
     doFill(ctx, {
@@ -10867,13 +10898,14 @@ function _drawfill(ctx, source, area) {
       below,
       area,
       scale,
-      axis
+      axis,
+      clip
     });
     unclipArea(ctx);
   }
 }
 function doFill(ctx, cfg) {
-  const { line, target, above, below, area, scale } = cfg;
+  const { line, target, above, below, area, scale, clip } = cfg;
   const property = line._loop ? "angle" : cfg.axis;
   ctx.save();
   if (property === "x" && below !== above) {
@@ -10883,7 +10915,8 @@ function doFill(ctx, cfg) {
       target,
       color: above,
       scale,
-      property
+      property,
+      clip
     });
     ctx.restore();
     ctx.save();
@@ -10894,7 +10927,8 @@ function doFill(ctx, cfg) {
     target,
     color: below,
     scale,
-    property
+    property,
+    clip
   });
   ctx.restore();
 }
@@ -10928,14 +10962,14 @@ function clipVertical(ctx, target, clipY) {
   ctx.clip();
 }
 function fill(ctx, cfg) {
-  const { line, target, property, color: color2, scale } = cfg;
+  const { line, target, property, color: color2, scale, clip } = cfg;
   const segments = _segments(line, target, property);
   for (const { source: src, target: tgt, start, end } of segments) {
     const { style: { backgroundColor = color2 } = {} } = src;
     const notShape = target !== true;
     ctx.save();
     ctx.fillStyle = backgroundColor;
-    clipBounds(ctx, scale, notShape && _getBounds(property, start, end));
+    clipBounds(ctx, scale, clip, notShape && _getBounds(property, start, end));
     ctx.beginPath();
     const lineLoop = !!line.pathSegment(ctx, src);
     let loop;
@@ -10959,12 +10993,30 @@ function fill(ctx, cfg) {
     ctx.restore();
   }
 }
-function clipBounds(ctx, scale, bounds) {
-  const { top, bottom } = scale.chart.chartArea;
+function clipBounds(ctx, scale, clip, bounds) {
+  const chartArea = scale.chart.chartArea;
   const { property, start, end } = bounds || {};
-  if (property === "x") {
+  if (property === "x" || property === "y") {
+    let left, top, right, bottom;
+    if (property === "x") {
+      left = start;
+      top = chartArea.top;
+      right = end;
+      bottom = chartArea.bottom;
+    } else {
+      left = chartArea.left;
+      top = start;
+      right = chartArea.right;
+      bottom = end;
+    }
     ctx.beginPath();
-    ctx.rect(start, top, end - start, bottom - top);
+    if (clip) {
+      left = Math.max(left, clip.left);
+      right = Math.min(right, clip.right);
+      top = Math.max(top, clip.top);
+      bottom = Math.min(bottom, clip.bottom);
+    }
+    ctx.rect(left, top, right - left, bottom - top);
     ctx.clip();
   }
 }
@@ -11780,20 +11832,26 @@ const positioners = {
       return false;
     }
     let i, len;
-    let x = 0;
+    let xSet = /* @__PURE__ */ new Set();
     let y = 0;
     let count = 0;
     for (i = 0, len = items.length; i < len; ++i) {
       const el = items[i].element;
       if (el && el.hasValue()) {
         const pos = el.tooltipPosition();
-        x += pos.x;
+        xSet.add(pos.x);
         y += pos.y;
         ++count;
       }
     }
+    if (count === 0 || xSet.size === 0) {
+      return false;
+    }
+    const xAverage = [
+      ...xSet
+    ].reduce((a, b) => a + b) / xSet.size;
     return {
-      x: x / count,
+      x: xAverage,
       y: y / count
     };
   },
@@ -13535,7 +13593,7 @@ function drawRadiusLine(scale, gridLineOpts, radius, labelCount, borderOpts) {
   ctx.save();
   ctx.strokeStyle = color2;
   ctx.lineWidth = lineWidth;
-  ctx.setLineDash(borderOpts.dash);
+  ctx.setLineDash(borderOpts.dash || []);
   ctx.lineDashOffset = borderOpts.dashOffset;
   ctx.beginPath();
   pathRadiusLine(scale, radius, circular, labelCount);
@@ -13675,7 +13733,7 @@ class RadialLinearScale extends LinearScaleBase {
     }
     if (grid.display) {
       this.ticks.forEach((tick, index2) => {
-        if (index2 !== 0) {
+        if (index2 !== 0 || index2 === 0 && this.min < 0) {
           offset = this.getDistanceFromCenterForValue(tick.value);
           const context = this.getContext(index2);
           const optsAtIndex = grid.setContext(context);
@@ -13696,7 +13754,7 @@ class RadialLinearScale extends LinearScaleBase {
         ctx.strokeStyle = color2;
         ctx.setLineDash(optsAtIndex.borderDash);
         ctx.lineDashOffset = optsAtIndex.borderDashOffset;
-        offset = this.getDistanceFromCenterForValue(opts.ticks.reverse ? this.min : this.max);
+        offset = this.getDistanceFromCenterForValue(opts.reverse ? this.min : this.max);
         position = this.getPointPosition(i, offset);
         ctx.beginPath();
         ctx.moveTo(this.xCenter, this.yCenter);
@@ -13723,7 +13781,7 @@ class RadialLinearScale extends LinearScaleBase {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     this.ticks.forEach((tick, index2) => {
-      if (index2 === 0 && !opts.reverse) {
+      if (index2 === 0 && this.min >= 0 && !opts.reverse) {
         return;
       }
       const optsAtIndex = tickOpts.setContext(this.getContext(index2));
@@ -23943,8 +24001,7 @@ class MousePositionControl extends L$1.Control {
     map2.off("mousemove", this._onMouseMove, this);
   }
   _onMouseMove(e) {
-    if (!this._container)
-      return;
+    if (!this._container) return;
     const lng = this.options.lngFormatter ? this.options.lngFormatter(e.latlng.lng) : L$1.Util.formatNum(e.latlng.lng, this.options.numDigits || 5);
     const lat = this.options.latFormatter ? this.options.latFormatter(e.latlng.lat) : L$1.Util.formatNum(e.latlng.lat, this.options.numDigits || 5);
     const formattedText = `lon ${lng}    lat ${lat}`;
@@ -24065,12 +24122,9 @@ const updateRasterTile = () => {
   const { name, tileIdx } = state;
   const curDataset = state.datasetInfo[name];
   let { colormap_name, vmin, vmax } = loadPreferences(name);
-  if (colormap_name === null)
-    colormap_name = cmapNameSelect.value;
-  if (vmin === null)
-    vmin = parseFloat(vminSelect.value);
-  if (vmax === null)
-    vmax = parseFloat(vmaxSelect.value);
+  if (colormap_name === null) colormap_name = cmapNameSelect.value;
+  if (vmin === null) vmin = parseFloat(vminSelect.value);
+  if (vmax === null) vmax = parseFloat(vmaxSelect.value);
   setChartYLimits(vmin, vmax);
   colormapImg.src = `/colorbar/${colormap_name}`;
   const maxIdx = curDataset.x_values.length - 1;
@@ -24086,10 +24140,12 @@ const updateRasterTile = () => {
     params.algorithm = curDataset.algorithm;
   }
   if (state.refValues[name] !== void 0 && curDataset.algorithm === "shift") {
-    const shift = state.refValues[name][curTileIdx];
-    if (shift !== void 0) {
-      params.algorithm_params = JSON.stringify({ "shift": shift });
+    const originalShift = state.refValues[name][curTileIdx];
+    const shift = originalShift ?? 0;
+    if (originalShift == null) {
+      console.log(`Warning: shift value is null/undefined for time index ${curTileIdx}, using fallback value of 0`);
     }
+    params.algorithm_params = JSON.stringify({ "shift": shift });
   }
   if (state.dataMode === "cog") {
     console.log("COG!");
@@ -24097,10 +24153,8 @@ const updateRasterTile = () => {
     const maskUrl = curDataset.mask_file_list[curTileIdx];
     const maskMinValue = curDataset.mask_min_value;
     params.url = url;
-    if (maskUrl !== void 0)
-      params.mask = encodeURIComponent(maskUrl);
-    if (maskMinValue !== void 0)
-      params.mask_min_value = maskMinValue.toString();
+    if (maskUrl !== void 0) params.mask = maskUrl;
+    if (maskMinValue !== void 0) params.mask_min_value = maskMinValue.toString();
     console.log(params);
   }
   const url_params = Object.keys(params).map((i) => `${i}=${encodeURIComponent(params[i])}`).join("&");

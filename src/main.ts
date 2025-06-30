@@ -197,10 +197,12 @@ const updateRasterTile = () => {
 
   // Add shift for reference point if available
   if (state.refValues[name] !== undefined && curDataset.algorithm === 'shift') {
-    const shift = state.refValues[name][curTileIdx]
-    if (shift !== undefined) {
-      params.algorithm_params = JSON.stringify({ "shift": shift })
+    const originalShift = state.refValues[name][curTileIdx]
+    const shift = originalShift ?? 0
+    if (originalShift == null) {
+      console.log(`Warning: shift value is null/undefined for time index ${curTileIdx}, using fallback value of 0`)
     }
+    params.algorithm_params = JSON.stringify({ "shift": shift })
   }
   // add the url parameter if we have cogs
   if (state.dataMode === 'cog') {
@@ -210,7 +212,8 @@ const updateRasterTile = () => {
     const maskMinValue = curDataset.mask_min_value;
     // params.url = encodeURIComponent(url)
     params.url = url
-    if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
+    // if (maskUrl !== undefined) params.mask = encodeURIComponent(maskUrl)
+    if (maskUrl !== undefined) params.mask = maskUrl
     if (maskMinValue !== undefined) params.mask_min_value = maskMinValue.toString()
     console.log(params)
   }
