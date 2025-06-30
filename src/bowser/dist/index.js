@@ -24017,6 +24017,11 @@ var map = leafletSrcExports.map("map", {
   doubleClickZoom: false
 });
 mousePosition().addTo(map);
+leafletSrcExports.control.scale({
+  metric: true,
+  imperial: false,
+  position: "bottomleft"
+}).addTo(map);
 const fontAwesomeIcon = leafletSrcExports.divIcon({
   html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
   iconSize: [20, 20],
