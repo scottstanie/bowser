@@ -25,7 +25,14 @@ function MapEvents() {
 
   useMapEvents({
     click: (e) => {
-      dispatch({ type: 'SET_TS_MARKER_POSITION', payload: [e.latlng.lat, e.latlng.lng] });
+      // Add new time series point on map click
+      dispatch({ 
+        type: 'ADD_TIME_SERIES_POINT', 
+        payload: { 
+          position: [e.latlng.lat, e.latlng.lng],
+          name: `Point ${Date.now().toString().slice(-4)}` // Short unique name
+        } 
+      });
     },
   });
 
@@ -145,18 +152,27 @@ function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
   const map = useMap();
 
-  const handleMarkerClick = (position: [number, number]) => {
+  const handleMarkerClick = (position: [number, number], pointName?: string) => {
     const [lat, lng] = position;
+    const content = pointName 
+      ? `${pointName} (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`
+      : `Reference (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`;
     L.popup()
       .setLatLng([lat, lng])
-      .setContent(`Marker (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`)
+      .setContent(content)
       .openOn(map);
   };
 
-  const handleTsMarkerDragEnd = (e: L.DragEndEvent) => {
+  const handleTsMarkerDragEnd = (pointId: string) => (e: L.DragEndEvent) => {
     const marker = e.target;
     const position = marker.getLatLng();
-    dispatch({ type: 'SET_TS_MARKER_POSITION', payload: [position.lat, position.lng] });
+    dispatch({ 
+      type: 'UPDATE_TIME_SERIES_POINT', 
+      payload: { 
+        id: pointId, 
+        updates: { position: [position.lat, position.lng] } 
+      } 
+    });
   };
 
   const handleRefMarkerDragEnd = (e: L.DragEndEvent) => {
@@ -165,17 +181,50 @@ function MarkerEventHandlers() {
     dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [position.lat, position.lng] });
   };
 
+  const handleTsMarkerDoubleClick = (pointId: string) => () => {
+    // Double-click to remove point
+    dispatch({ type: 'REMOVE_TIME_SERIES_POINT', payload: pointId });
+  };
+
+  // Create custom colored icons for each point
+  const createColoredIcon = (color: string, isSelected: boolean = false) => {
+    const iconSize = isSelected ? 25 : 20;
+    return L.divIcon({
+      html: `<div style="
+        width: ${iconSize}px;
+        height: ${iconSize}px;
+        background-color: ${color};
+        border: ${isSelected ? '3px solid white' : '2px solid white'};
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      "></div>`,
+      iconSize: [iconSize, iconSize],
+      className: 'custom-colored-marker'
+    });
+  };
+
   return (
     <>
-      <Marker
-        position={state.tsMarkerPosition}
-        draggable
-        title="Time Series Point"
-        eventHandlers={{
-          click: () => handleMarkerClick(state.tsMarkerPosition),
-          dragend: handleTsMarkerDragEnd,
-        }}
-      />
+      {/* Time Series Points */}
+      {state.timeSeriesPoints.filter(p => p.visible).map((point) => (
+        <Marker
+          key={point.id}
+          position={point.position}
+          icon={createColoredIcon(point.color, state.selectedPointId === point.id)}
+          draggable
+          title={`${point.name} - Double-click to remove`}
+          eventHandlers={{
+            click: () => {
+              handleMarkerClick(point.position, point.name);
+              dispatch({ type: 'SET_SELECTED_POINT', payload: point.id });
+            },
+            dragend: handleTsMarkerDragEnd(point.id),
+            dblclick: handleTsMarkerDoubleClick(point.id),
+          }}
+        />
+      ))}
+      
+      {/* Reference Marker */}
       <Marker
         position={state.refMarkerPosition}
         icon={fontAwesomeIcon}
@@ -201,14 +250,28 @@ export default function MapContainer() {
       const centerLng = (bounds[0] + bounds[2]) / 2;
       return [centerLat, centerLng];
     }
+    
+    // If no current dataset, try to get bounds from any available dataset
+    const datasets = Object.values(state.datasetInfo);
+    if (datasets.length > 0) {
+      const bounds = datasets[0].latlon_bounds;
+      const centerLat = (bounds[1] + bounds[3]) / 2;
+      const centerLng = (bounds[0] + bounds[2]) / 2;
+      return [centerLat, centerLng];
+    }
+    
     return [0, 0];
   };
 
   const selectedBasemap = baseMaps[state.selectedBasemap] || baseMaps.esriSatellite;
 
+  const center = getInitialCenter();
+  const hasDatasets = Object.keys(state.datasetInfo).length > 0;
+
   return (
     <LeafletMapContainer
-      center={getInitialCenter()}
+      key={hasDatasets ? 'with-data' : 'no-data'} // Force re-render when data loads
+      center={center}
       zoom={9}
       style={{ height: '100%', width: '100%' }}
       doubleClickZoom={false}
