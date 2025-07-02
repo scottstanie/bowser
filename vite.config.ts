@@ -9,13 +9,11 @@ export default defineConfig({
 	base: './',
 	server: {
 		proxy: {
-			'/mode': 'http://localhost:8000',
-			'/datasets': 'http://localhost:8000',
-			'/colorbar': 'http://localhost:8000',
-			'/md': 'http://localhost:8000',
-			'/cog': 'http://localhost:8000',
-			'/point': 'http://localhost:8000',
-			'/chart_point': 'http://localhost:8000',
+			// Proxy all API routes to backend
+			'^/(mode|datasets|colorbar|md|cog|point|chart_point)': {
+				target: process.env.VITE_API_URL || 'http://localhost:8000',
+				changeOrigin: true
+			}
 		}
 	},
 	build: {
