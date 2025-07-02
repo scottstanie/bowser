@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi';
 import MapContainer from './MapContainer';
 import ControlPanel from './ControlPanel';
 import TimeSeriesChart from './TimeSeriesChart';
+import PointManagerPanel from './PointManagerPanel';
 import '../style.css';
 
 function AppContent() {
@@ -31,7 +32,7 @@ function AppContent() {
           const centerLat = (bounds[1] + bounds[3]) / 2;
           const centerLng = (bounds[0] + bounds[2]) / 2;
 
-          dispatch({ type: 'SET_TS_MARKER_POSITION', payload: [centerLat, centerLng] });
+          // Set reference marker position
           dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [centerLat, centerLng] });
         }
       } catch (error) {
@@ -47,6 +48,7 @@ function AppContent() {
       <ControlPanel />
       <div className="map-container">
         <MapContainer />
+        <PointManagerPanel />
         {state.showChart && <TimeSeriesChart />}
       </div>
     </div>

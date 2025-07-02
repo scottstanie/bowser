@@ -1,73 +1,263 @@
-import { useEffect, useState } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
+import { useEffect, useState, useCallback } from 'react';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
+import { MultiPointTimeSeriesData } from '../types';
 
+// Register Chart.js components
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function TimeSeriesChart() {
-  const { state } = useAppContext();
-  const { fetchChartTimeSeries } = useApi();
-  const [chartData, setChartData] = useState<any>(null);
+  const { state, dispatch } = useAppContext();
+  const { fetchMultiPointTimeSeries } = useApi();
+  const [chartData, setChartData] = useState<MultiPointTimeSeriesData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    if (!state.showChart || !state.currentDataset) {
+  const updateChart = useCallback(async () => {
+    if (!state.showChart || !state.currentDataset || state.timeSeriesPoints.length === 0) {
+      setChartData(null);
       return;
     }
 
-    const updateChart = async () => {
-      const [lat, lng] = state.tsMarkerPosition;
-      const currentDatasetInfo = state.datasetInfo[state.currentDataset];
+    setIsLoading(true);
+    const currentDatasetInfo = state.datasetInfo[state.currentDataset];
+    
+    // Filter visible points
+    const visiblePoints = state.timeSeriesPoints.filter(p => p.visible);
+    
+    if (visiblePoints.length === 0) {
+      setChartData(null);
+      setIsLoading(false);
+      return;
+    }
 
-      let tsData;
+    try {
+      // Format points for API
+      const apiPoints = visiblePoints.map(point => ({
+        id: point.id,
+        lat: point.position[0],
+        lon: point.position[1],
+        color: point.color,
+        name: point.name,
+      }));
+
+      // Fetch multi-point data
+      let refLon, refLat;
       if (currentDatasetInfo?.uses_spatial_ref) {
-        const [refLat, refLng] = state.refMarkerPosition;
-        tsData = await fetchChartTimeSeries(lng, lat, state.currentDataset, refLng, refLat);
-      } else {
-        tsData = await fetchChartTimeSeries(lng, lat, state.currentDataset);
+        [refLat, refLon] = state.refMarkerPosition;
       }
+
+      const tsData = await fetchMultiPointTimeSeries(
+        apiPoints,
+        state.currentDataset,
+        refLon,
+        refLat,
+        state.showTrends
+      );
 
       if (tsData) {
         setChartData(tsData);
+        
+        // Update trend data in state only if trends are being calculated
+        if (state.showTrends && tsData.datasets) {
+          // Use setTimeout to avoid re-render loop during state updates
+          setTimeout(() => {
+            tsData.datasets.forEach(dataset => {
+              if (dataset.trend) {
+                dispatch({
+                  type: 'SET_POINT_TREND_DATA',
+                  payload: {
+                    pointId: dataset.pointId,
+                    dataset: state.currentDataset,
+                    trend: {
+                      slope: dataset.trend.slope,
+                      intercept: dataset.trend.intercept,
+                      rSquared: dataset.trend.rSquared,
+                      mmPerYear: dataset.trend.mmPerYear,
+                    },
+                  },
+                });
+              }
+            });
+          }, 0);
+        }
       }
-    };
-
-    updateChart();
+    } catch (error) {
+      console.error('Error updating chart:', error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [
     state.showChart,
     state.currentDataset,
-    state.tsMarkerPosition,
+    JSON.stringify(state.timeSeriesPoints.map(p => ({ id: p.id, position: p.position, visible: p.visible }))), // Only track relevant point changes
     state.refMarkerPosition,
     state.datasetInfo,
-    fetchChartTimeSeries
+    state.showTrends,
+    fetchMultiPointTimeSeries,
   ]);
+
+  useEffect(() => {
+    updateChart();
+  }, [
+    updateChart,
+  ]);
+
+  const handleChartClick = useCallback((_event: any, elements: InteractionItem[]) => {
+    if (elements.length === 0 || !chartData) return;
+    
+    const element = elements[0];
+    const dataIndex = element.index;
+    
+    // Update the current time index to sync with the clicked point
+    if (dataIndex !== undefined && dataIndex < chartData.labels.length) {
+      dispatch({ type: 'SET_TIME_INDEX', payload: dataIndex });
+    }
+  }, [chartData, dispatch]);
 
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     animation: {
-      duration: 0,
+      duration: 300,
+    },
+    interaction: {
+      mode: 'index' as const,
+      intersect: false,
     },
     plugins: {
       legend: {
-        display: false,
+        display: true,
+        position: 'top' as const,
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          generateLabels: (_chart: any) => {
+            if (!chartData?.datasets) return [];
+            
+            return chartData.datasets.map((dataset, index) => ({
+              text: `${dataset.label}${dataset.trend && dataset.trend.mmPerYear !== undefined ? ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)` : ''}`,
+              pointStyle: 'circle' as const,
+              fillStyle: dataset.borderColor,
+              strokeStyle: dataset.borderColor,
+              lineWidth: 2,
+              datasetIndex: index,
+            }));
+          },
+        },
+      },
+      tooltip: {
+        callbacks: {
+          title: (context: any) => {
+            return `Time: ${context[0]?.label || ''}`;
+          },
+          label: (context: any) => {
+            const dataset = chartData?.datasets?.[context.datasetIndex];
+            if (!dataset) return '';
+            
+            let label = `${dataset.label}: ${context.parsed.y.toFixed(3)}`;
+            
+            if (dataset.trend && dataset.trend.mmPerYear !== undefined && state.showTrends) {
+              label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
+            }
+            
+            return label;
+          },
+        },
       },
     },
     scales: {
+      x: {
+        title: {
+          display: true,
+          text: 'Time',
+        },
+      },
       y: {
+        title: {
+          display: true,
+          text: 'Displacement (m)',
+        },
         suggestedMin: state.vmin,
         suggestedMax: state.vmax,
       },
     },
+    onClick: handleChartClick,
   };
 
-  if (!state.showChart || !chartData) {
+  if (!state.showChart) {
     return null;
   }
 
+  if (state.timeSeriesPoints.length === 0) {
+    return (
+      <div id="chart-container">
+        <div className="chart-placeholder">
+          <p>No time series points selected.</p>
+          <p><small>Click on the map to add points.</small></p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div id="chart-container">
+        <div className="chart-placeholder">
+          <p>Loading time series data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
+    return (
+      <div id="chart-container">
+        <div className="chart-placeholder">
+          <p>No data available for selected points.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Format data for Chart.js
+  const formattedChartData = {
+    labels: chartData.labels,
+    datasets: chartData.datasets.map(dataset => ({
+      label: dataset.label,
+      data: dataset.data,
+      borderColor: dataset.borderColor,
+      backgroundColor: dataset.backgroundColor,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.1,
+      fill: false,
+    })),
+  };
+
   return (
     <div id="chart-container">
-      <Line data={chartData} options={chartOptions} />
+      <div className="chart-header">
+        <h4>Time Series Analysis</h4>
+        <div className="chart-controls">
+          <button
+            className="pure-button"
+            onClick={() => dispatch({ type: 'TOGGLE_TRENDS' })}
+            title="Toggle trend analysis"
+          >
+            <i className={`fa-solid ${state.showTrends ? 'fa-chart-line' : 'fa-chart-simple'}`}></i>
+            {state.showTrends ? 'Hide' : 'Show'} Trends
+          </button>
+        </div>
+      </div>
+      <div className="chart-content">
+        <Line data={formattedChartData} options={chartOptions} />
+      </div>
+      <div className="chart-help">
+        <small>Click on chart points to sync map time • Trends show mm/year rates</small>
+      </div>
     </div>
   );
 }
