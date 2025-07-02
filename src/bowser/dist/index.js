@@ -7008,9 +7008,28 @@ var m = reactDomExports;
   client.createRoot = m.createRoot;
   client.hydrateRoot = m.hydrateRoot;
 }
+const POINT_COLORS = [
+  "#1f77b4",
+  "#ff7f0e",
+  "#2ca02c",
+  "#d62728",
+  "#9467bd",
+  "#8c564b",
+  "#e377c2",
+  "#7f7f7f",
+  "#bcbd22",
+  "#17becf"
+];
+function generatePointId() {
+  return `point_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+function getNextColor(existingPoints) {
+  const usedColors = new Set(existingPoints.map((p2) => p2.color));
+  return POINT_COLORS.find((color2) => !usedColors.has(color2)) || POINT_COLORS[existingPoints.length % POINT_COLORS.length];
+}
 const initialState = {
   datasetInfo: {},
-  tsMarkerPosition: [0, 0],
+  timeSeriesPoints: [],
   refMarkerPosition: [0, 0],
   currentDataset: "",
   currentTimeIndex: 0,
@@ -7021,14 +7040,104 @@ const initialState = {
   vmin: 0,
   vmax: 1,
   opacity: 1,
-  showChart: false
+  showChart: false,
+  selectedPointId: null,
+  showTrends: false
 };
 function appReducer(state, action) {
   switch (action.type) {
     case "SET_DATASETS":
       return { ...state, datasetInfo: action.payload };
-    case "SET_TS_MARKER_POSITION":
-      return { ...state, tsMarkerPosition: action.payload };
+    case "ADD_TIME_SERIES_POINT": {
+      const id2 = generatePointId();
+      const color2 = getNextColor(state.timeSeriesPoints);
+      const name = action.payload.name || `Point ${state.timeSeriesPoints.length + 1}`;
+      const newPoint = {
+        id: id2,
+        name,
+        position: action.payload.position,
+        color: color2,
+        visible: true,
+        data: {},
+        trendData: {}
+      };
+      return {
+        ...state,
+        timeSeriesPoints: [...state.timeSeriesPoints, newPoint],
+        selectedPointId: id2
+      };
+    }
+    case "REMOVE_TIME_SERIES_POINT":
+      return {
+        ...state,
+        timeSeriesPoints: state.timeSeriesPoints.filter((p2) => p2.id !== action.payload),
+        selectedPointId: state.selectedPointId === action.payload ? null : state.selectedPointId
+      };
+    case "UPDATE_TIME_SERIES_POINT":
+      return {
+        ...state,
+        timeSeriesPoints: state.timeSeriesPoints.map(
+          (p2) => p2.id === action.payload.id ? { ...p2, ...action.payload.updates } : p2
+        )
+      };
+    case "SET_POINT_DATA":
+      return {
+        ...state,
+        timeSeriesPoints: state.timeSeriesPoints.map(
+          (p2) => p2.id === action.payload.pointId ? {
+            ...p2,
+            data: {
+              ...p2.data,
+              [action.payload.dataset]: action.payload.data
+            }
+          } : p2
+        )
+      };
+    case "SET_POINT_TREND_DATA":
+      return {
+        ...state,
+        timeSeriesPoints: state.timeSeriesPoints.map(
+          (p2) => p2.id === action.payload.pointId ? {
+            ...p2,
+            trendData: {
+              ...p2.trendData,
+              [action.payload.dataset]: action.payload.trend
+            }
+          } : p2
+        )
+      };
+    case "SET_SELECTED_POINT":
+      return { ...state, selectedPointId: action.payload };
+    case "TOGGLE_TRENDS":
+      return { ...state, showTrends: !state.showTrends };
+    case "SET_TS_MARKER_POSITION": {
+      const existingPoint = state.timeSeriesPoints.find((p2) => p2.name === "Legacy Point");
+      if (existingPoint) {
+        return {
+          ...state,
+          timeSeriesPoints: state.timeSeriesPoints.map(
+            (p2) => p2.id === existingPoint.id ? { ...p2, position: action.payload } : p2
+          )
+        };
+      } else {
+        const id2 = generatePointId();
+        const color2 = getNextColor(state.timeSeriesPoints);
+        const newPoint = {
+          id: id2,
+          name: "Legacy Point",
+          position: action.payload,
+          color: color2,
+          visible: true,
+          data: {},
+          trendData: {}
+        };
+        return {
+          ...state,
+          timeSeriesPoints: [...state.timeSeriesPoints, newPoint],
+          selectedPointId: id2
+        };
+      }
+    }
     case "SET_REF_MARKER_POSITION":
       return { ...state, refMarkerPosition: action.payload };
     case "SET_CURRENT_DATASET":
@@ -7116,11 +7225,63 @@ function useApi() {
       return void 0;
     }
   }, []);
+  const fetchMultiPointTimeSeries = reactExports.useCallback(async (points, datasetName, refLon, refLat, calculateTrends = false) => {
+    const payload = {
+      points,
+      dataset_name: datasetName,
+      ref_lon: refLon,
+      ref_lat: refLat,
+      calculate_trends: calculateTrends
+    };
+    try {
+      const response = await fetch("/multi_point", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching multi-point time series:", error);
+      return void 0;
+    }
+  }, []);
+  const fetchTrendAnalysis = reactExports.useCallback(async (lon, lat, datasetName, refLon, refLat) => {
+    const params = {
+      lon: lon.toString(),
+      lat: lat.toString()
+    };
+    if (refLon !== void 0 && refLat !== void 0) {
+      params.ref_lat = refLat.toString();
+      params.ref_lon = refLon.toString();
+    }
+    const urlParams = new URLSearchParams(params);
+    try {
+      const response = await fetch(`/trend_analysis/${datasetName}?${urlParams}`);
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching trend analysis:", error);
+      return void 0;
+    }
+  }, []);
+  const fetchTimeBounds = reactExports.useCallback(async (datasetName) => {
+    try {
+      const response = await fetch(`/datasets/${datasetName}/time_bounds`);
+      return await response.json();
+    } catch (error) {
+      console.error("Error fetching time bounds:", error);
+      return void 0;
+    }
+  }, []);
   return {
     fetchDatasets,
     fetchDataMode,
     fetchPointTimeSeries,
-    fetchChartTimeSeries
+    fetchChartTimeSeries,
+    fetchMultiPointTimeSeries,
+    fetchTrendAnalysis,
+    fetchTimeBounds
   };
 }
 function useAttribution(map2, attribution) {
@@ -17016,7 +17177,14 @@ function MapEvents() {
   const { dispatch } = useAppContext();
   useMapEvents({
     click: (e) => {
-      dispatch({ type: "SET_TS_MARKER_POSITION", payload: [e.latlng.lat, e.latlng.lng] });
+      dispatch({
+        type: "ADD_TIME_SERIES_POINT",
+        payload: {
+          position: [e.latlng.lat, e.latlng.lng],
+          name: `Point ${Date.now().toString().slice(-4)}`
+          // Short unique name
+        }
+      });
     }
   });
   return null;
@@ -17103,34 +17271,66 @@ function RasterTileLayer() {
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
   const map2 = useMap();
-  const handleMarkerClick = (position) => {
+  const handleMarkerClick = (position, pointName) => {
     const [lat, lng] = position;
-    L$1.popup().setLatLng([lat, lng]).setContent(`Marker (lon, lat):
-(${lng.toFixed(6)}, ${lat.toFixed(6)})`).openOn(map2);
+    const content = pointName ? `${pointName} (lon, lat):
+(${lng.toFixed(6)}, ${lat.toFixed(6)})` : `Reference (lon, lat):
+(${lng.toFixed(6)}, ${lat.toFixed(6)})`;
+    L$1.popup().setLatLng([lat, lng]).setContent(content).openOn(map2);
   };
-  const handleTsMarkerDragEnd = (e) => {
+  const handleTsMarkerDragEnd = (pointId) => (e) => {
     const marker = e.target;
     const position = marker.getLatLng();
-    dispatch({ type: "SET_TS_MARKER_POSITION", payload: [position.lat, position.lng] });
+    dispatch({
+      type: "UPDATE_TIME_SERIES_POINT",
+      payload: {
+        id: pointId,
+        updates: { position: [position.lat, position.lng] }
+      }
+    });
   };
   const handleRefMarkerDragEnd = (e) => {
     const marker = e.target;
     const position = marker.getLatLng();
     dispatch({ type: "SET_REF_MARKER_POSITION", payload: [position.lat, position.lng] });
   };
+  const handleTsMarkerDoubleClick = (pointId) => () => {
+    dispatch({ type: "REMOVE_TIME_SERIES_POINT", payload: pointId });
+  };
+  const createColoredIcon = (color2, isSelected = false) => {
+    const iconSize = isSelected ? 25 : 20;
+    return L$1.divIcon({
+      html: `<div style="
+        width: ${iconSize}px;
+        height: ${iconSize}px;
+        background-color: ${color2};
+        border: ${isSelected ? "3px solid white" : "2px solid white"};
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      "></div>`,
+      iconSize: [iconSize, iconSize],
+      className: "custom-colored-marker"
+    });
+  };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
+    state.timeSeriesPoints.filter((p2) => p2.visible).map((point) => /* @__PURE__ */ jsxRuntimeExports.jsx(
       Marker,
       {
-        position: state.tsMarkerPosition,
+        position: point.position,
+        icon: createColoredIcon(point.color, state.selectedPointId === point.id),
         draggable: true,
-        title: "Time Series Point",
+        title: `${point.name} - Double-click to remove`,
         eventHandlers: {
-          click: () => handleMarkerClick(state.tsMarkerPosition),
-          dragend: handleTsMarkerDragEnd
+          click: () => {
+            handleMarkerClick(point.position, point.name);
+            dispatch({ type: "SET_SELECTED_POINT", payload: point.id });
+          },
+          dragend: handleTsMarkerDragEnd(point.id),
+          dblclick: handleTsMarkerDoubleClick(point.id)
         }
-      }
-    ),
+      },
+      point.id
+    )),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       Marker,
       {
@@ -17155,13 +17355,22 @@ function MapContainer() {
       const centerLng = (bounds[0] + bounds[2]) / 2;
       return [centerLat, centerLng];
     }
+    const datasets = Object.values(state.datasetInfo);
+    if (datasets.length > 0) {
+      const bounds = datasets[0].latlon_bounds;
+      const centerLat = (bounds[1] + bounds[3]) / 2;
+      const centerLng = (bounds[0] + bounds[2]) / 2;
+      return [centerLat, centerLng];
+    }
     return [0, 0];
   };
   const selectedBasemap = baseMaps[state.selectedBasemap] || baseMaps.esriSatellite;
+  const center = getInitialCenter();
+  const hasDatasets = Object.keys(state.datasetInfo).length > 0;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     MapContainer$1,
     {
-      center: getInitialCenter(),
+      center,
       zoom: 9,
       style: { height: "100%", width: "100%" },
       doubleClickZoom: false,
@@ -17179,7 +17388,8 @@ function MapContainer() {
         /* @__PURE__ */ jsxRuntimeExports.jsx(MapEvents, {}),
         /* @__PURE__ */ jsxRuntimeExports.jsx(MousePosition, {})
       ]
-    }
+    },
+    hasDatasets ? "with-data" : "no-data"
   );
 }
 const colormapOptions = [
@@ -28450,57 +28660,394 @@ function createTypedChart(type, registerables) {
 const Line = /* @__PURE__ */ createTypedChart("line", LineController);
 Chart$1.register(CategoryScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend);
 function TimeSeriesChart() {
-  const { state } = useAppContext();
-  const { fetchChartTimeSeries } = useApi();
+  const { state, dispatch } = useAppContext();
+  const { fetchMultiPointTimeSeries } = useApi();
   const [chartData, setChartData] = reactExports.useState(null);
-  reactExports.useEffect(() => {
-    if (!state.showChart || !state.currentDataset) {
+  const [isLoading, setIsLoading] = reactExports.useState(false);
+  const updateChart = reactExports.useCallback(async () => {
+    if (!state.showChart || !state.currentDataset || state.timeSeriesPoints.length === 0) {
+      setChartData(null);
       return;
     }
-    const updateChart = async () => {
-      const [lat, lng] = state.tsMarkerPosition;
-      const currentDatasetInfo = state.datasetInfo[state.currentDataset];
-      let tsData;
+    setIsLoading(true);
+    const currentDatasetInfo = state.datasetInfo[state.currentDataset];
+    const visiblePoints = state.timeSeriesPoints.filter((p2) => p2.visible);
+    if (visiblePoints.length === 0) {
+      setChartData(null);
+      setIsLoading(false);
+      return;
+    }
+    try {
+      const apiPoints = visiblePoints.map((point) => ({
+        id: point.id,
+        lat: point.position[0],
+        lon: point.position[1],
+        color: point.color,
+        name: point.name
+      }));
+      let refLon, refLat;
       if (currentDatasetInfo == null ? void 0 : currentDatasetInfo.uses_spatial_ref) {
-        const [refLat, refLng] = state.refMarkerPosition;
-        tsData = await fetchChartTimeSeries(lng, lat, state.currentDataset, refLng, refLat);
-      } else {
-        tsData = await fetchChartTimeSeries(lng, lat, state.currentDataset);
+        [refLat, refLon] = state.refMarkerPosition;
       }
+      const tsData = await fetchMultiPointTimeSeries(
+        apiPoints,
+        state.currentDataset,
+        refLon,
+        refLat,
+        state.showTrends
+      );
       if (tsData) {
         setChartData(tsData);
+        if (state.showTrends && tsData.datasets) {
+          setTimeout(() => {
+            tsData.datasets.forEach((dataset) => {
+              if (dataset.trend) {
+                dispatch({
+                  type: "SET_POINT_TREND_DATA",
+                  payload: {
+                    pointId: dataset.pointId,
+                    dataset: state.currentDataset,
+                    trend: {
+                      slope: dataset.trend.slope,
+                      intercept: dataset.trend.intercept,
+                      rSquared: dataset.trend.rSquared,
+                      mmPerYear: dataset.trend.mmPerYear
+                    }
+                  }
+                });
+              }
+            });
+          }, 0);
+        }
       }
-    };
-    updateChart();
+    } catch (error) {
+      console.error("Error updating chart:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, [
     state.showChart,
     state.currentDataset,
-    state.tsMarkerPosition,
+    JSON.stringify(state.timeSeriesPoints.map((p2) => ({ id: p2.id, position: p2.position, visible: p2.visible }))),
+    // Only track relevant point changes
     state.refMarkerPosition,
     state.datasetInfo,
-    fetchChartTimeSeries
+    state.showTrends,
+    fetchMultiPointTimeSeries
   ]);
+  reactExports.useEffect(() => {
+    updateChart();
+  }, [
+    updateChart
+  ]);
+  const handleChartClick = reactExports.useCallback((_event, elements) => {
+    if (elements.length === 0 || !chartData) return;
+    const element = elements[0];
+    const dataIndex = element.index;
+    if (dataIndex !== void 0 && dataIndex < chartData.labels.length) {
+      dispatch({ type: "SET_TIME_INDEX", payload: dataIndex });
+    }
+  }, [chartData, dispatch]);
   const chartOptions = {
     responsive: true,
+    maintainAspectRatio: false,
     animation: {
-      duration: 0
+      duration: 300
+    },
+    interaction: {
+      mode: "index",
+      intersect: false
     },
     plugins: {
       legend: {
-        display: false
+        display: true,
+        position: "top",
+        labels: {
+          usePointStyle: true,
+          padding: 20,
+          generateLabels: (_chart) => {
+            if (!(chartData == null ? void 0 : chartData.datasets)) return [];
+            return chartData.datasets.map((dataset, index) => ({
+              text: `${dataset.label}${dataset.trend && dataset.trend.mmPerYear !== void 0 ? ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)` : ""}`,
+              pointStyle: "circle",
+              fillStyle: dataset.borderColor,
+              strokeStyle: dataset.borderColor,
+              lineWidth: 2,
+              datasetIndex: index
+            }));
+          }
+        }
+      },
+      tooltip: {
+        callbacks: {
+          title: (context) => {
+            var _a2;
+            return `Time: ${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
+          },
+          label: (context) => {
+            var _a2;
+            const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
+            if (!dataset) return "";
+            let label = `${dataset.label}: ${context.parsed.y.toFixed(3)}`;
+            if (dataset.trend && dataset.trend.mmPerYear !== void 0 && state.showTrends) {
+              label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
+            }
+            return label;
+          }
+        }
       }
     },
     scales: {
+      x: {
+        title: {
+          display: true,
+          text: "Time"
+        }
+      },
       y: {
+        title: {
+          display: true,
+          text: "Displacement (m)"
+        },
         suggestedMin: state.vmin,
         suggestedMax: state.vmax
       }
-    }
+    },
+    onClick: handleChartClick
   };
-  if (!state.showChart || !chartData) {
+  if (!state.showChart) {
     return null;
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options: chartOptions }) });
+  if (state.timeSeriesPoints.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-placeholder", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No time series points selected." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on the map to add points." }) })
+    ] }) });
+  }
+  if (isLoading) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading time series data..." }) }) });
+  }
+  if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No data available for selected points." }) }) });
+  }
+  const formattedChartData = {
+    labels: chartData.labels,
+    datasets: chartData.datasets.map((dataset) => ({
+      label: dataset.label,
+      data: dataset.data,
+      borderColor: dataset.borderColor,
+      backgroundColor: dataset.backgroundColor,
+      borderWidth: 2,
+      pointRadius: 3,
+      pointHoverRadius: 5,
+      tension: 0.1,
+      fill: false
+    }))
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Time Series Analysis" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-controls", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "pure-button",
+          onClick: () => dispatch({ type: "TOGGLE_TRENDS" }),
+          title: "Toggle trend analysis",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-chart-line" : "fa-chart-simple"}` }),
+            state.showTrends ? "Hide" : "Show",
+            " Trends"
+          ]
+        }
+      ) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: formattedChartData, options: chartOptions }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-help", children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on chart points to sync map time • Trends show mm/year rates" }) })
+  ] });
+}
+function PointManagerPanel() {
+  const { state, dispatch } = useAppContext();
+  const [showPanel, setShowPanel] = reactExports.useState(false);
+  const handleTogglePointVisibility = (pointId) => {
+    const point = state.timeSeriesPoints.find((p2) => p2.id === pointId);
+    if (point) {
+      dispatch({
+        type: "UPDATE_TIME_SERIES_POINT",
+        payload: {
+          id: pointId,
+          updates: { visible: !point.visible }
+        }
+      });
+    }
+  };
+  const handlePointNameChange = (pointId, newName) => {
+    dispatch({
+      type: "UPDATE_TIME_SERIES_POINT",
+      payload: {
+        id: pointId,
+        updates: { name: newName }
+      }
+    });
+  };
+  const handleRemovePoint = (pointId) => {
+    dispatch({ type: "REMOVE_TIME_SERIES_POINT", payload: pointId });
+  };
+  const handleSelectPoint = (pointId) => {
+    dispatch({ type: "SET_SELECTED_POINT", payload: pointId });
+  };
+  const handleClearAllPoints = () => {
+    if (confirm("Remove all time series points?")) {
+      state.timeSeriesPoints.forEach((point) => {
+        dispatch({ type: "REMOVE_TIME_SERIES_POINT", payload: point.id });
+      });
+    }
+  };
+  const handleToggleTrends = () => {
+    dispatch({ type: "TOGGLE_TRENDS" });
+  };
+  if (!showPanel) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "point-manager-toggle", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        className: "pure-button",
+        onClick: () => setShowPanel(true),
+        title: "Manage Time Series Points",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-list" }),
+          " Points (",
+          state.timeSeriesPoints.length,
+          ")"
+        ]
+      }
+    ) });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-manager-panel", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-manager-header", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-map-pin" }),
+        " Time Series Points"
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "pure-button",
+          onClick: () => setShowPanel(false),
+          title: "Close Panel",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-times" })
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-manager-controls", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "pure-button pure-button-primary",
+          onClick: handleToggleTrends,
+          title: "Toggle trend display",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-eye-slash" : "fa-eye"}` }),
+            state.showTrends ? "Hide" : "Show",
+            " Trends"
+          ]
+        }
+      ),
+      state.timeSeriesPoints.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "pure-button button-warning",
+          onClick: handleClearAllPoints,
+          title: "Remove all points",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-trash" }),
+            " Clear All"
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "point-list", children: state.timeSeriesPoints.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "no-points", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No time series points selected." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on the map to add points." }) })
+    ] }) : state.timeSeriesPoints.map((point) => {
+      var _a2;
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: `point-item ${state.selectedPointId === point.id ? "selected" : ""}`,
+          onClick: () => handleSelectPoint(point.id),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-item-header", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "point-color-indicator",
+                  style: { backgroundColor: point.color }
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "text",
+                  value: point.name,
+                  onChange: (e) => handlePointNameChange(point.id, e.target.value),
+                  className: "point-name-input",
+                  onClick: (e) => e.stopPropagation()
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-item-info", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "point-coordinates", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
+                "Lat: ",
+                point.position[0].toFixed(6),
+                ", Lon: ",
+                point.position[1].toFixed(6)
+              ] }) }),
+              state.showTrends && point.trendData && point.trendData[state.currentDataset] && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "point-trend-info", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
+                "Rate: ",
+                ((_a2 = point.trendData[state.currentDataset].mmPerYear) == null ? void 0 : _a2.toFixed(2)) || "N/A",
+                " mm/year (R²: ",
+                point.trendData[state.currentDataset].rSquared.toFixed(3),
+                ")"
+              ] }) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "point-item-controls", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    handleTogglePointVisibility(point.id);
+                  },
+                  className: "pure-button",
+                  title: point.visible ? "Hide point" : "Show point",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${point.visible ? "fa-eye" : "fa-eye-slash"}` })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: (e) => {
+                    e.stopPropagation();
+                    handleRemovePoint(point.id);
+                  },
+                  className: "pure-button button-error",
+                  title: "Remove point",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-trash" })
+                }
+              )
+            ] })
+          ]
+        },
+        point.id
+      );
+    }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "point-manager-help", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
+      "• Click map to add points",
+      /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
+      "• Double-click markers to remove",
+      /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
+      "• Drag markers to move"
+    ] }) })
+  ] });
 }
 function AppContent() {
   const { state, dispatch } = useAppContext();
@@ -28518,7 +29065,6 @@ function AppContent() {
           const bounds = datasets[firstDataset].latlon_bounds;
           const centerLat = (bounds[1] + bounds[3]) / 2;
           const centerLng = (bounds[0] + bounds[2]) / 2;
-          dispatch({ type: "SET_TS_MARKER_POSITION", payload: [centerLat, centerLng] });
           dispatch({ type: "SET_REF_MARKER_POSITION", payload: [centerLat, centerLng] });
         }
       } catch (error) {
@@ -28531,6 +29077,7 @@ function AppContent() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(ControlPanel, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-container", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(MapContainer, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(PointManagerPanel, {}),
       state.showChart && /* @__PURE__ */ jsxRuntimeExports.jsx(TimeSeriesChart, {})
     ] })
   ] });
