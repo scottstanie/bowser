@@ -39,6 +39,13 @@ var map = L.map('map', {
 
 mousePosition().addTo(map);
 
+// Add scale bar
+L.control.scale({
+  metric: true,
+  imperial: false,
+  position: 'bottomleft'
+}).addTo(map);
+
 const fontAwesomeIcon = L.divIcon({
   html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
   iconSize: [20, 20],
