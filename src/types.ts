@@ -10,6 +10,33 @@ export interface RasterGroup {
   x_values: Array<number | string>;
 }
 
+export interface TimeSeriesPoint {
+  id: string;
+  name: string;
+  position: [number, number]; // [lat, lng]
+  color: string;
+  visible: boolean;
+  data?: { [dataset: string]: number[] };
+  trendData?: { [dataset: string]: { slope: number; intercept: number; rSquared: number; mmPerYear: number } };
+}
+
+export interface MultiPointTimeSeriesData {
+  labels: string[];
+  datasets: {
+    label: string;
+    pointId: string;
+    data: Array<{ x: string; y: number }>;
+    borderColor: string;
+    backgroundColor: string;
+    trend?: {
+      slope: number;
+      intercept: number;
+      rSquared: number;
+      mmPerYear: number;
+    };
+  }[];
+}
+
 export interface BaseMapItem {
   url: string;
   attribution: string;
@@ -17,7 +44,7 @@ export interface BaseMapItem {
 
 export interface AppState {
   datasetInfo: { [key: string]: RasterGroup };
-  tsMarkerPosition: [number, number];
+  timeSeriesPoints: TimeSeriesPoint[];
   refMarkerPosition: [number, number];
   currentDataset: string;
   currentTimeIndex: number;
@@ -29,11 +56,17 @@ export interface AppState {
   vmax: number;
   opacity: number;
   showChart: boolean;
+  selectedPointId: string | null;
+  showTrends: boolean;
 }
 
 export type AppAction =
   | { type: 'SET_DATASETS'; payload: { [key: string]: RasterGroup } }
-  | { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] }
+  | { type: 'ADD_TIME_SERIES_POINT'; payload: { position: [number, number]; name?: string } }
+  | { type: 'REMOVE_TIME_SERIES_POINT'; payload: string }
+  | { type: 'UPDATE_TIME_SERIES_POINT'; payload: { id: string; updates: Partial<TimeSeriesPoint> } }
+  | { type: 'SET_POINT_DATA'; payload: { pointId: string; dataset: string; data: number[] } }
+  | { type: 'SET_POINT_TREND_DATA'; payload: { pointId: string; dataset: string; trend: { slope: number; intercept: number; rSquared: number; mmPerYear: number } } }
   | { type: 'SET_REF_MARKER_POSITION'; payload: [number, number] }
   | { type: 'SET_CURRENT_DATASET'; payload: string }
   | { type: 'SET_TIME_INDEX'; payload: number }
@@ -44,4 +77,9 @@ export type AppAction =
   | { type: 'SET_VMIN'; payload: number }
   | { type: 'SET_VMAX'; payload: number }
   | { type: 'SET_OPACITY'; payload: number }
-  | { type: 'TOGGLE_CHART' };
+  | { type: 'TOGGLE_CHART' }
+  | { type: 'SET_SELECTED_POINT'; payload: string | null }
+  | { type: 'TOGGLE_TRENDS' };
+
+// Backward compatibility
+export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };
