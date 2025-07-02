@@ -40,7 +40,7 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
   switch (action.type) {
     case 'SET_DATASETS':
       return { ...state, datasetInfo: action.payload };
-    
+
     // Multi-point actions
     case 'ADD_TIME_SERIES_POINT': {
       const id = generatePointId();
@@ -61,60 +61,60 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
         selectedPointId: id,
       };
     }
-    
+
     case 'REMOVE_TIME_SERIES_POINT':
       return {
         ...state,
         timeSeriesPoints: state.timeSeriesPoints.filter(p => p.id !== action.payload),
         selectedPointId: state.selectedPointId === action.payload ? null : state.selectedPointId,
       };
-    
+
     case 'UPDATE_TIME_SERIES_POINT':
       return {
         ...state,
-        timeSeriesPoints: state.timeSeriesPoints.map(p => 
+        timeSeriesPoints: state.timeSeriesPoints.map(p =>
           p.id === action.payload.id ? { ...p, ...action.payload.updates } : p
         ),
       };
-    
+
     case 'SET_POINT_DATA':
       return {
         ...state,
-        timeSeriesPoints: state.timeSeriesPoints.map(p => 
-          p.id === action.payload.pointId 
-            ? { 
-                ...p, 
-                data: { 
-                  ...p.data, 
-                  [action.payload.dataset]: action.payload.data 
-                } 
+        timeSeriesPoints: state.timeSeriesPoints.map(p =>
+          p.id === action.payload.pointId
+            ? {
+                ...p,
+                data: {
+                  ...p.data,
+                  [action.payload.dataset]: action.payload.data
+                }
               }
             : p
         ),
       };
-    
+
     case 'SET_POINT_TREND_DATA':
       return {
         ...state,
-        timeSeriesPoints: state.timeSeriesPoints.map(p => 
-          p.id === action.payload.pointId 
-            ? { 
-                ...p, 
-                trendData: { 
-                  ...p.trendData, 
-                  [action.payload.dataset]: action.payload.trend 
-                } 
+        timeSeriesPoints: state.timeSeriesPoints.map(p =>
+          p.id === action.payload.pointId
+            ? {
+                ...p,
+                trendData: {
+                  ...p.trendData,
+                  [action.payload.dataset]: action.payload.trend
+                }
               }
             : p
         ),
       };
-    
+
     case 'SET_SELECTED_POINT':
       return { ...state, selectedPointId: action.payload };
-    
+
     case 'TOGGLE_TRENDS':
       return { ...state, showTrends: !state.showTrends };
-    
+
     // Backward compatibility for legacy single point
     case 'SET_TS_MARKER_POSITION': {
       // Convert legacy single point to multi-point system
@@ -122,7 +122,7 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       if (existingPoint) {
         return {
           ...state,
-          timeSeriesPoints: state.timeSeriesPoints.map(p => 
+          timeSeriesPoints: state.timeSeriesPoints.map(p =>
             p.id === existingPoint.id ? { ...p, position: action.payload } : p
           ),
         };
@@ -146,7 +146,7 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
         };
       }
     }
-    
+
     case 'SET_REF_MARKER_POSITION':
       return { ...state, refMarkerPosition: action.payload };
     case 'SET_CURRENT_DATASET':
