@@ -7,6 +7,17 @@ export default defineConfig({
 	// plugins: [viteSingleFile()],
 	// https://stackoverflow.com/a/69746868/4174466
 	base: './',
+	server: {
+		proxy: {
+			'/mode': 'http://localhost:8000',
+			'/datasets': 'http://localhost:8000',
+			'/colorbar': 'http://localhost:8000',
+			'/md': 'http://localhost:8000',
+			'/cog': 'http://localhost:8000',
+			'/point': 'http://localhost:8000',
+			'/chart_point': 'http://localhost:8000',
+		}
+	},
 	build: {
 		outDir: 'src/bowser/dist/',
 		minify: false,
