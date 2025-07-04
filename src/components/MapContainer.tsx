@@ -1,57 +1,40 @@
-import { useEffect, useState } from 'react';
-import { MapContainer as LeafletMapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { useEffect, useState, useRef, useCallback } from 'react';
+import Map, { Marker, Source, Layer } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { useAppContext } from '../context/AppContext';
 import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
 
-// Fix for default markers in React Leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-const fontAwesomeIcon = L.divIcon({
-  html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
-  iconSize: [20, 20],
-  className: 'myDivIcon'
-});
-
-function MapEvents() {
-  const { dispatch } = useAppContext();
-
-  useMapEvents({
-    click: (e) => {
-      // Add new time series point on map click
-      dispatch({ 
-        type: 'ADD_TIME_SERIES_POINT', 
-        payload: { 
-          position: [e.latlng.lat, e.latlng.lng],
-          name: `Point ${Date.now().toString().slice(-4)}` // Short unique name
-        } 
-      });
-    },
-  });
-
-  return null;
-}
-
-function MousePosition() {
-  const map = useMap();
-
-  useEffect(() => {
-    const mousePositionControl = new MousePositionControl();
-    mousePositionControl.addTo(map);
-
-    return () => {
-      mousePositionControl.remove();
-    };
-  }, [map]);
-
-  return null;
+// Custom marker components for Mapbox GL JS
+function CustomMarker({
+  children,
+  longitude,
+  latitude,
+  draggable = false,
+  onDrag,
+  onDragEnd,
+  onClick,
+  onDoubleClick,
+  ...props
+}: any) {
+  return (
+    <Marker
+      longitude={longitude}
+      latitude={latitude}
+      draggable={draggable}
+      onDrag={onDrag}
+      onDragEnd={onDragEnd}
+      {...props}
+    >
+      <div
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        style={{ cursor: draggable ? 'move' : 'pointer' }}
+      >
+        {children}
+      </div>
+    </Marker>
+  );
 }
 
 function RasterTileLayer() {
@@ -118,8 +101,19 @@ function RasterTileLayer() {
 
       try {
         const response = await fetch(endpoint);
+        if (!response.ok) {
+          console.warn('Failed to fetch tile info:', response.status, response.statusText);
+          return;
+        }
+        const contentType = response.headers.get('content-type');
+        if (!contentType?.includes('application/json')) {
+          console.warn('Expected JSON response for tile info, got:', contentType);
+          return;
+        }
         const tileInfo = await response.json();
-        setTileUrl(tileInfo.tiles[0]);
+        if (tileInfo.tiles && tileInfo.tiles[0]) {
+          setTileUrl(tileInfo.tiles[0]);
+        }
       } catch (error) {
         console.error('Error fetching tile info:', error);
       }
@@ -140,45 +134,49 @@ function RasterTileLayer() {
   if (!tileUrl) return null;
 
   return (
-    <TileLayer
-      url={tileUrl}
-      opacity={state.opacity}
-      maxZoom={19}
-    />
+    <Source
+      id="raster-tiles"
+      type="raster"
+      tiles={[tileUrl]}
+      tileSize={256}
+    >
+      <Layer
+        id="raster-layer"
+        type="raster"
+        paint={{
+          'raster-opacity': state.opacity
+        }}
+      />
+    </Source>
   );
 }
 
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
-  const map = useMap();
+  const [popup, setPopup] = useState<{ longitude: number; latitude: number; content: string } | null>(null);
 
   const handleMarkerClick = (position: [number, number], pointName?: string) => {
     const [lat, lng] = position;
-    const content = pointName 
+    const content = pointName
       ? `${pointName} (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`
       : `Reference (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`;
-    L.popup()
-      .setLatLng([lat, lng])
-      .setContent(content)
-      .openOn(map);
+    setPopup({ longitude: lng, latitude: lat, content });
   };
 
-  const handleTsMarkerDragEnd = (pointId: string) => (e: L.DragEndEvent) => {
-    const marker = e.target;
-    const position = marker.getLatLng();
-    dispatch({ 
-      type: 'UPDATE_TIME_SERIES_POINT', 
-      payload: { 
-        id: pointId, 
-        updates: { position: [position.lat, position.lng] } 
-      } 
+  const handleTsMarkerDragEnd = (pointId: string) => (event: any) => {
+    const { lngLat } = event;
+    dispatch({
+      type: 'UPDATE_TIME_SERIES_POINT',
+      payload: {
+        id: pointId,
+        updates: { position: [lngLat.lat, lngLat.lng] }
+      }
     });
   };
 
-  const handleRefMarkerDragEnd = (e: L.DragEndEvent) => {
-    const marker = e.target;
-    const position = marker.getLatLng();
-    dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [position.lat, position.lng] });
+  const handleRefMarkerDragEnd = (event: any) => {
+    const { lngLat } = event;
+    dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [lngLat.lat, lngLat.lng] });
   };
 
   const handleTsMarkerDoubleClick = (pointId: string) => () => {
@@ -186,61 +184,78 @@ function MarkerEventHandlers() {
     dispatch({ type: 'REMOVE_TIME_SERIES_POINT', payload: pointId });
   };
 
-  // Create custom colored icons for each point
-  const createColoredIcon = (color: string, isSelected: boolean = false) => {
+  // Create custom colored markers for each point
+  const createColoredMarker = (color: string, isSelected: boolean = false) => {
     const iconSize = isSelected ? 25 : 20;
-    return L.divIcon({
-      html: `<div style="
-        width: ${iconSize}px;
-        height: ${iconSize}px;
-        background-color: ${color};
-        border: ${isSelected ? '3px solid white' : '2px solid white'};
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      "></div>`,
-      iconSize: [iconSize, iconSize],
-      className: 'custom-colored-marker'
-    });
+    return (
+      <div style={{
+        width: `${iconSize}px`,
+        height: `${iconSize}px`,
+        backgroundColor: color,
+        border: `${isSelected ? '3px solid white' : '2px solid white'}`,
+        borderRadius: '50%',
+        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+      }} />
+    );
   };
 
   return (
     <>
       {/* Time Series Points */}
       {state.timeSeriesPoints.filter(p => p.visible).map((point) => (
-        <Marker
+        <CustomMarker
           key={point.id}
-          position={point.position}
-          icon={createColoredIcon(point.color, state.selectedPointId === point.id)}
+          longitude={point.position[1]}
+          latitude={point.position[0]}
           draggable
-          title={`${point.name} - Double-click to remove`}
-          eventHandlers={{
-            click: () => {
-              handleMarkerClick(point.position, point.name);
-              dispatch({ type: 'SET_SELECTED_POINT', payload: point.id });
-            },
-            dragend: handleTsMarkerDragEnd(point.id),
-            dblclick: handleTsMarkerDoubleClick(point.id),
+          onDragEnd={handleTsMarkerDragEnd(point.id)}
+          onClick={() => {
+            handleMarkerClick(point.position, point.name);
+            dispatch({ type: 'SET_SELECTED_POINT', payload: point.id });
           }}
-        />
+          onDoubleClick={handleTsMarkerDoubleClick(point.id)}
+        >
+          {createColoredMarker(point.color, state.selectedPointId === point.id)}
+        </CustomMarker>
       ))}
-      
+
       {/* Reference Marker */}
-      <Marker
-        position={state.refMarkerPosition}
-        icon={fontAwesomeIcon}
+      <CustomMarker
+        longitude={state.refMarkerPosition[1]}
+        latitude={state.refMarkerPosition[0]}
         draggable
-        title="Reference Location"
-        eventHandlers={{
-          click: () => handleMarkerClick(state.refMarkerPosition),
-          dragend: handleRefMarkerDragEnd,
-        }}
-      />
+        onDragEnd={handleRefMarkerDragEnd}
+        onClick={() => handleMarkerClick(state.refMarkerPosition)}
+      >
+        <i className="fa-solid fa-location-dot fa-2x" style={{ color: '#333' }} />
+      </CustomMarker>
+
+      {/* Popup */}
+      {popup && (
+        <div
+          style={{
+            position: 'absolute',
+            background: 'white',
+            padding: '8px',
+            borderRadius: '4px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+            fontSize: '12px',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            whiteSpace: 'pre-line',
+          }}
+          onClick={() => setPopup(null)}
+        >
+          {popup.content}
+        </div>
+      )}
     </>
   );
 }
 
 export default function MapContainer() {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
+  const mapRef = useRef<any>(null);
 
   // Calculate initial center from first dataset bounds
   const getInitialCenter = (): [number, number] => {
@@ -248,43 +263,79 @@ export default function MapContainer() {
       const bounds = state.datasetInfo[state.currentDataset].latlon_bounds;
       const centerLat = (bounds[1] + bounds[3]) / 2;
       const centerLng = (bounds[0] + bounds[2]) / 2;
-      return [centerLat, centerLng];
+      return [centerLng, centerLat]; // Note: Mapbox uses [lng, lat] order
     }
-    
+
     // If no current dataset, try to get bounds from any available dataset
     const datasets = Object.values(state.datasetInfo);
     if (datasets.length > 0) {
       const bounds = datasets[0].latlon_bounds;
       const centerLat = (bounds[1] + bounds[3]) / 2;
       const centerLng = (bounds[0] + bounds[2]) / 2;
-      return [centerLat, centerLng];
+      return [centerLng, centerLat]; // Note: Mapbox uses [lng, lat] order
     }
-    
+
     return [0, 0];
   };
 
   const selectedBasemap = baseMaps[state.selectedBasemap] || baseMaps.esriSatellite;
-
   const center = getInitialCenter();
   const hasDatasets = Object.keys(state.datasetInfo).length > 0;
 
+  // Map click handler to add new time series points
+  const handleMapClick = useCallback((event: any) => {
+    const { lngLat } = event;
+    dispatch({
+      type: 'ADD_TIME_SERIES_POINT',
+      payload: {
+        position: [lngLat.lat, lngLat.lng],
+        name: `Point ${Date.now().toString().slice(-4)}` // Short unique name
+      }
+    });
+  }, [dispatch]);
+
+  // Add mouse position control when map loads
+  const handleMapLoad = useCallback((event: any) => {
+    const map = event.target;
+    mapRef.current = map;
+
+    const mousePositionControl = new MousePositionControl();
+    map.addControl(mousePositionControl, 'bottom-left');
+  }, []);
+
   return (
-    <LeafletMapContainer
-      key={hasDatasets ? 'with-data' : 'no-data'} // Force re-render when data loads
-      center={center}
-      zoom={9}
-      style={{ height: '100%', width: '100%' }}
-      doubleClickZoom={false}
-    >
-      <TileLayer
-        url={selectedBasemap.url}
-        attribution={selectedBasemap.attribution}
-        maxZoom={19}
-      />
-      <RasterTileLayer />
-      <MarkerEventHandlers />
-      <MapEvents />
-      <MousePosition />
-    </LeafletMapContainer>
+    <div style={{ width: '100%', height: '100%' }}>
+      <Map
+        key={hasDatasets ? 'with-data' : 'no-data'} // Force re-render when data loads
+        initialViewState={{
+          longitude: center[0],
+          latitude: center[1],
+          zoom: 9
+        }}
+        style={{ width: '100%', height: '100%' }}
+        mapStyle={{
+          version: 8,
+          sources: {
+            'basemap': {
+              type: 'raster',
+              tiles: [selectedBasemap.url],
+              tileSize: 256,
+              attribution: selectedBasemap.attribution
+            }
+          },
+          layers: [{
+            id: 'basemap',
+            type: 'raster',
+            source: 'basemap'
+          }]
+        }}
+        doubleClickZoom={false}
+        onClick={handleMapClick}
+        onLoad={handleMapLoad}
+      >
+        <RasterTileLayer />
+        <MarkerEventHandlers />
+      </Map>
+    </div>
   );
 }

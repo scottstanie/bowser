@@ -15,4 +15,16 @@ export default defineConfig({
 			}
 		}
 	},
+	server: {
+		proxy: {
+			'/datasets': 'http://localhost:8000',
+			'/mode': 'http://localhost:8000',
+			'/point': 'http://localhost:8000',
+			'/chart_point': 'http://localhost:8000',
+			'/multi_point': 'http://localhost:8000',
+			'/trend_analysis': 'http://localhost:8000',
+			'/md': 'http://localhost:8000',
+			'/cog': 'http://localhost:8000'
+		}
+	}
 })

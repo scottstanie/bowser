@@ -3,14 +3,42 @@ import { MultiPointTimeSeriesData } from '../types';
 
 export function useApi() {
   const fetchDatasets = useCallback(async () => {
-    const response = await fetch('/datasets');
-    return await response.json();
+    try {
+      const response = await fetch('/datasets');
+      if (!response.ok) {
+        console.warn('Failed to fetch datasets:', response.status, response.statusText);
+        return {};
+      }
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        console.warn('Expected JSON response for datasets, got:', contentType);
+        return {};
+      }
+      return await response.json();
+    } catch (error) {
+      console.warn('Error fetching datasets:', error);
+      return {};
+    }
   }, []);
 
   const fetchDataMode = useCallback(async () => {
-    const response = await fetch('/mode');
-    const data = await response.json();
-    return data.mode;
+    try {
+      const response = await fetch('/mode');
+      if (!response.ok) {
+        console.warn('Failed to fetch data mode:', response.status, response.statusText);
+        return 'cog'; // Default fallback
+      }
+      const contentType = response.headers.get('content-type');
+      if (!contentType?.includes('application/json')) {
+        console.warn('Expected JSON response for mode, got:', contentType);
+        return 'cog'; // Default fallback
+      }
+      const data = await response.json();
+      return data.mode;
+    } catch (error) {
+      console.warn('Error fetching data mode:', error);
+      return 'cog'; // Default fallback
+    }
   }, []);
 
   const fetchPointTimeSeries = useCallback(async (lon: number, lat: number, datasetName: string) => {
