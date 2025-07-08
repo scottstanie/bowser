@@ -1,3 +1,4 @@
+import argparse
 import json
 from collections.abc import Sequence
 from pathlib import Path
@@ -61,3 +62,12 @@ def combine_bowser(
                 continue
             out.append(data_source[i])
     Path(outname).write_text(json.dumps(out, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bowser-paths", nargs="*")
+    parser.add_argument("--names", nargs="*")
+    parser.add_argument("--out-suffix", default="_combined")
+    args = parser.parse_args()
+    combine_bowser(args.bowser_paths, args.names, args.out_suffix)
