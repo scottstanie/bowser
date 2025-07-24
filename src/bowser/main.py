@@ -20,7 +20,6 @@ from titiler.core.algorithm import algorithms as default_algorithms
 from titiler.core.dependencies import DefaultDependency
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
-from titiler.core.middleware import CacheControlMiddleware
 
 from .config import settings
 from .readers import CustomReader
@@ -317,12 +316,6 @@ app.add_middleware(
         "image/webp",
     },
     compression_level=6,
-)
-
-app.add_middleware(
-    CacheControlMiddleware,
-    cachecontrol="public, max-age=3600",
-    exclude_path={r"/healthz"},
 )
 
 # Set up algorithms
