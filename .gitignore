@@ -30,3 +30,4 @@ __pycache__
 _version.py
 
 data/
+.ipynb_checkpoints

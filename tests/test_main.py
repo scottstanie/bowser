@@ -1,21 +1,20 @@
 import os
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
 
+DATA_DIR = Path(__file__).parent / "data/geotiffs"
 
-def test_setup_aligned_disp_s1_command():
+
+def test_setup_aligned_disp_s1_command(tmp_path):
     """Test that the setup-aligned-disp-s1 command creates a config file."""
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
-        config_file = tmp.name
+    config_file = tmp_path / "bowser_rasters.json"
 
     # Run the setup command
     result = subprocess.run(
-        ["bowser", "setup-aligned-disp-s1", "data/geotiffs", "-o", config_file],
+        ["bowser", "setup-aligned-disp-s1", str(DATA_DIR), "-o", config_file],
         capture_output=True,
         text=True,
         cwd=Path(__file__).parent.parent,
@@ -26,10 +25,18 @@ def test_setup_aligned_disp_s1_command():
     assert Path(config_file).stat().st_size > 0
 
 
-def test_fastapi_app_startup():
+def test_fastapi_app_startup(tmp_path):
     """Test that the FastAPI app can start with the sample data."""
+    config_file = tmp_path / "bowser_rasters.json"
+    # Run the setup command
+    subprocess.run(
+        ["bowser", "setup-aligned-disp-s1", str(DATA_DIR), "-o", config_file],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent,
+    )
     # Set up environment for test
-    os.environ["BOWSER_DATASET_CONFIG_FILE"] = "bowser_rasters.json"
+    os.environ["BOWSER_DATASET_CONFIG_FILE"] = str(config_file)
 
     # Import after setting environment variables
     from bowser.main import app
@@ -46,12 +53,16 @@ def test_fastapi_app_startup():
     assert response.status_code == 200
 
 
-def test_bowser_cli_run_command():
+def test_bowser_cli_run_command(tmp_path):
     """Test that bowser run command doesn't crash immediately."""
-    # Skip if bowser_rasters.json doesn't exist
-    config_file = Path("bowser_rasters.json")
-    if not config_file.exists():
-        pytest.skip("bowser_rasters.json not found - run setup command first")
+    config_file = tmp_path / "bowser_rasters.json"
+    # Run the setup command
+    subprocess.run(
+        ["bowser", "setup-aligned-disp-s1", str(DATA_DIR), "-o", config_file],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).parent.parent,
+    )
 
     # Start the server in background and kill it quickly
     proc = subprocess.Popen(

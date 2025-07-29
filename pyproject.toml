@@ -97,5 +97,5 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 doctest_optionflags = "NORMALIZE_WHITESPACE NUMBER"
-addopts = "-W ignore::PendingDeprecationWarning  --cov=bowser  --doctest-modules --randomly-seed=1234"
+addopts = "-W ignore::PendingDeprecationWarning  --cov=bowser  --randomly-seed=1234"
 filterwarnings = ["error"]
