@@ -23,6 +23,15 @@ def combine_bowser(
     """
     if len(bowser_paths) != len(names):
         raise ValueError("bowser_paths and names must have the same length")
+    parent_dirs = []
+    json_paths = []
+    for p in bowser_paths:
+        if p.is_file():
+            parent_dirs.append(p.parent)
+            json_paths.append(p)
+        else:
+            parent_dirs.append(p)
+            json_paths.append(p / "bowser_rasters.json")
 
     def adjust_paths(d, path):
         """Adjust file paths in the data dictionary to be relative to the given path."""
@@ -39,14 +48,14 @@ def combine_bowser(
     # Load and process data from each source
     all_data = []
 
-    for path, name_prefix in zip(bowser_paths, names):
+    for parent, p, name_prefix in zip(parent_dirs, json_paths, names):
         # Read the JSON file
-        d = json.loads(Path(f"{path}/bowser_rasters.json").read_text())
+        d = json.loads(p.read_text())
 
         # Process each item in the data
         for item in d:
             item["name"] = f"{name_prefix}: {item['name']}"
-            adjust_paths(item, path)
+            adjust_paths(item, parent)
 
         all_data.append(d)
 
@@ -66,7 +75,7 @@ def combine_bowser(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bowser-paths", nargs="*")
+    parser.add_argument("--bowser-paths", nargs="*", type=Path)
     parser.add_argument("--names", nargs="*")
     parser.add_argument("--out-suffix", default="_combined")
     args = parser.parse_args()
