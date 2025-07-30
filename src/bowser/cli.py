@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -149,7 +150,7 @@ def set_data(output: Path):
     raster_groups = []
 
     # Make an interactive loop
-    def add_files():
+    def add_files() -> None:
         file_list: list[str] = []
         while not file_list:
             g = click.prompt(
@@ -554,7 +555,7 @@ def setup_hyp3(hyp3_dir: str, output: str):
             matching_files.extend(str(f) for f in matches)
         return sorted(matching_files)
 
-    hyp3_outputs = [
+    hyp3_outputs: list[dict[str, Any]] = [
         {
             "name": "Unwrapped Phase",
             "file_list": _glob_all_products("*_unw_phase.tif"),

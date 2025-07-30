@@ -148,7 +148,7 @@ class RasterGroup(BaseModel):
             # otherwise, use indexes
             x_values = np.arange(len(self.file_list)).tolist()
         else:
-            x_values = [_format_dates(*k) for k in dates]
+            x_values = [_format_dates(*k) for k in dates]  # type: ignore[misc]
 
         return x_values
 

@@ -40,4 +40,4 @@ jobs:
           pip install xarray dask
       - name: Test
         run: |
-          pytest -n0 -vv
+          pytest -vv
