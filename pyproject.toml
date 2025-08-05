@@ -9,6 +9,19 @@ description = "Web UI for browsing InSAR time series"
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 
+dependencies = [
+  "titiler.xarray[minimal,http]",
+  "starlette-cramjam",
+  "boto3",
+  "uvicorn",
+  "typing_extensions",
+  "tqdm",
+  "opera-utils[disp]",
+  "rioxarray",
+  "matplotlib",
+  "pydantic_settings"
+]
+
 classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
@@ -16,6 +29,7 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python",
   "Topic :: Scientific/Engineering",
   "Typing :: Typed",

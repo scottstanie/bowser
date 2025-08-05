@@ -5,15 +5,10 @@ from typing import Any
 
 import click
 
-from .add_overviews import addo
-
 
 @click.group()
 def cli_app():
     """CLI for bowser."""
-
-
-cli_app.add_command(addo)
 
 
 @cli_app.command()
