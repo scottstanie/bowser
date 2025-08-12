@@ -1,19 +1,28 @@
 # Bowser
 
+## Quickstart
+
+1. Install [`uv`](https://docs.astral.sh/uv/#installation)
+2. Run `uvx --with bowser-insar --stack-file example-stack.zarr`
+
 ![](docs/demo-timeseries.jpg)
 
 ## Install
 
 ```bash
+pip install bowser-insar`
+```
+
+```bash
+uv add bowser-insar
+```
+
+For local development, clone and create a conda environment:
+```bash
+git clone git@github.com:opera-adt/bowser.git && cd bowser
 mamba env create
 conda activate bowser-env
 pip install .
-```
-
-Note: if viewing files on S3, please install `s5cmd`:
-
-```bash
-mamba install s5cmd
 ```
 
 ## Quickstart for dolphin

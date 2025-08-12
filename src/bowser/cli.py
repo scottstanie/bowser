@@ -310,11 +310,19 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         },
         {
             "name": "Temporal coherence",
-            "file_list": _glob(f"{wd}/interferograms/temporal_coherence*.tif"),
+            "file_list": _glob(f"{wd}/interferograms/temporal_coherence_[0-9]*.tif"),
+        },
+        {
+            "name": "Average temporal coherence",
+            "file_list": _glob(f"{wd}/interferograms/temporal_coherence_average*.tif"),
         },
         {
             "name": "Phase cosine similarity",
-            "file_list": _glob(f"{wd}/interferograms/similarity*.tif"),
+            "file_list": _glob(f"{wd}/interferograms/similarity_[0-9]*.tif"),
+        },
+        {
+            "name": "Phase cosine similarity",
+            "file_list": _glob(f"{wd}/interferograms/similarity_full*.tif"),
         },
         {
             "name": "Standard deviation of estimated CRLB",
