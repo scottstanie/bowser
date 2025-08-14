@@ -50,10 +50,33 @@ Click on the `http://127.0.0.1:8000` link to open the map.
 **Note for running over ssh**: you will need to run an ssh command creating a tunnel from your local computer to wherever the `bowser` server is.
 For example, if you machine is `myserver`, you would run in a local terminal
 
-```
+```bash
 ssh -N -L 8000:localhost:8000 myserver
 ```
+
 after starting the web server.
+
+## Running in Jupyter
+
+```python
+from bowser._widget import make_bowser_widget
+
+# Automatically starts server and creates widget
+widget = make_bowser_widget(rasters_file="bowser_rasters.json")
+widget
+
+# Or with more control:
+
+from bowser._server import running
+from bowser._widget import make_bowser_widget
+
+with running(stack_file="data/west-texas-tubbs-uplift.zarr") as server:
+    widget = make_bowser_widget(
+        dataset_name="displacement",
+        bowser_url=server.url
+    )
+    display(widget)
+```
 
 ## Quickstart for DISP-S1 NetCDFs
 

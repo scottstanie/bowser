@@ -32,6 +32,12 @@ warnings.filterwarnings(
 )
 
 t0 = time.time()
+
+# Set up matplotlib backend for thread safety BEFORE any matplotlib imports
+import matplotlib
+
+matplotlib.use("Agg")
+
 # Set up logging
 h = logging.StreamHandler()
 h.setLevel(settings.LOG_LEVEL)

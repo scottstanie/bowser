@@ -7,7 +7,7 @@ name = "bowser-insar"
 authors = [{ name = "Scott Staniewicz", email = "scott.stanie@gmail.com" }]
 description = "Web UI for browsing InSAR time series"
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 
 dependencies = [
   "titiler.xarray[minimal,http]",
@@ -19,14 +19,13 @@ dependencies = [
   "opera-utils[disp]",
   "rioxarray",
   "matplotlib",
-  "pydantic_settings"
+  "pydantic-settings",
 ]
 
 classifiers = [
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -39,7 +38,18 @@ classifiers = [
 # see section: setuptools_scm
 # https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata
 # dependencies will be read from text files
-dynamic = ["version", "optional-dependencies"]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+widget = [
+  "requests",
+  "jupyter",
+  "matplotlib",
+  "ipympl",
+  "ipywidgets",
+  "ipyleaflet",
+]
+test = ["pytest", "httpx", "ipython"]
 
 # [project.urls]
 # Homepage = "https://github.com/opera-adt/bowser"
@@ -51,11 +61,6 @@ dynamic = ["version", "optional-dependencies"]
 [project.scripts]
 bowser = "bowser.cli:cli_app"
 
-# extra requirements: `pip install .[docs]` or `pip install .[docs]`
-[tool.setuptools.dynamic.optional-dependencies.docs]
-file = ["docs/requirements.txt"]
-[tool.setuptools.dynamic.optional-dependencies.test]
-file = ["tests/requirements.txt"]
 
 [tool.setuptools_scm]
 # https://github.com/pypa/setuptools_scm#configuration-parameters
@@ -63,6 +68,31 @@ write_to = "src/bowser/_version.py"
 # https://github.com/pypa/setuptools_scm#version-number-construction
 version_scheme = "no-guess-dev" # Will not guess the next version
 
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+bowser-insar = { path = ".", editable = true }
+
+[tool.pixi.dependencies]
+boto3 = "*"
+uvicorn = "*"
+typing_extensions = "*"
+tqdm = "*"
+opera-utils = "*"
+rioxarray = "*"
+matplotlib = "*"
+pydantic-settings = "*"
+
+[tool.pixi.environments]
+default = { solve-group = "default" }
+widget = { features = ["widget"], solve-group = "default" }
+test = { features = ["test"], solve-group = "test" }
+all = { features = ["widget", "test"], solve-group = "all" }
+
+[tool.pixi.tasks]
 
 [tool.ruff]
 src = ["src"]
