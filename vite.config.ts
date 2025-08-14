@@ -1,22 +1,40 @@
 import { defineConfig } from "vite"
-// https://github.com/richardtallent/vite-plugin-singlefile
-// Bundles JS/CSS into a single HTML file
-// import { viteSingleFile } from "vite-plugin-singlefile"
+import { resolve } from 'path'
+
+// Determine if we're building the widget or the main app
+const buildWidget = process.env.BUILD_TARGET === 'widget';
 
 export default defineConfig({
-	// plugins: [viteSingleFile()],
-	// https://stackoverflow.com/a/69746868/4174466
 	base: './',
 	build: {
 		outDir: 'src/bowser/dist/',
 		minify: false,
 		cssMinify: false,
-		rollupOptions: {
-			output: {
-				// https://github.com/vitejs/vite/issues/378
-				entryFileNames: `[name].js`,
-				assetFileNames: `[name].[ext]`
+		...(buildWidget ? {
+			// Widget build configuration
+			lib: {
+				entry: resolve(__dirname, 'src/widget.ts'),
+				name: 'BowserWidget',
+				formats: ['es'],
+				fileName: 'widget'
+			},
+			rollupOptions: {
+				external: [], // Don't externalize anything for the widget
+				output: {
+					format: 'es'
+				}
 			}
-		}
+		} : {
+			// Main app build configuration
+			rollupOptions: {
+				input: {
+					main: resolve(__dirname, 'index.html'),
+				},
+				output: {
+					entryFileNames: `[name].js`,
+					assetFileNames: `[name].[ext]`
+				}
+			}
+		})
 	},
 })

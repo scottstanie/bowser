@@ -1,50 +1,16 @@
 var __defProp = Object.defineProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-var _a;
-(function polyfill() {
-  const relList = document.createElement("link").relList;
-  if (relList && relList.supports && relList.supports("modulepreload")) {
-    return;
-  }
-  for (const link of document.querySelectorAll('link[rel="modulepreload"]')) {
-    processPreload(link);
-  }
-  new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-      if (mutation.type !== "childList") {
-        continue;
-      }
-      for (const node of mutation.addedNodes) {
-        if (node.tagName === "LINK" && node.rel === "modulepreload")
-          processPreload(node);
-      }
-    }
-  }).observe(document, { childList: true, subtree: true });
-  function getFetchOpts(link) {
-    const fetchOpts = {};
-    if (link.integrity) fetchOpts.integrity = link.integrity;
-    if (link.referrerPolicy) fetchOpts.referrerPolicy = link.referrerPolicy;
-    if (link.crossOrigin === "use-credentials")
-      fetchOpts.credentials = "include";
-    else if (link.crossOrigin === "anonymous") fetchOpts.credentials = "omit";
-    else fetchOpts.credentials = "same-origin";
-    return fetchOpts;
-  }
-  function processPreload(link) {
-    if (link.ep)
-      return;
-    link.ep = true;
-    const fetchOpts = getFetchOpts(link);
-    fetch(link.href, fetchOpts);
-  }
-})();
+var __publicField = (obj, key, value) => {
+  __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  return value;
+};
 /*!
- * @kurkle/color v0.3.4
+ * @kurkle/color v0.3.2
  * https://github.com/kurkle/color#readme
- * (c) 2024 Jukka Kurkela
+ * (c) 2023 Jukka Kurkela
  * Released under the MIT License
  */
+var _a;
 function round(v) {
   return v + 0.5 | 0;
 }
@@ -61,7 +27,7 @@ function b2n(v) {
 function n2p(v) {
   return lim(round(v * 100), 0, 100);
 }
-const map$1$1 = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, A: 10, B: 11, C: 12, D: 13, E: 14, F: 15, a: 10, b: 11, c: 12, d: 13, e: 14, f: 15 };
+const map$1 = { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, A: 10, B: 11, C: 12, D: 13, E: 14, F: 15, a: 10, b: 11, c: 12, d: 13, e: 14, f: 15 };
 const hex = [..."0123456789ABCDEF"];
 const h1 = (b) => hex[b & 15];
 const h2 = (b) => hex[(b & 240) >> 4] + hex[b & 15];
@@ -73,17 +39,17 @@ function hexParse(str) {
   if (str[0] === "#") {
     if (len === 4 || len === 5) {
       ret = {
-        r: 255 & map$1$1[str[1]] * 17,
-        g: 255 & map$1$1[str[2]] * 17,
-        b: 255 & map$1$1[str[3]] * 17,
-        a: len === 5 ? map$1$1[str[4]] * 17 : 255
+        r: 255 & map$1[str[1]] * 17,
+        g: 255 & map$1[str[2]] * 17,
+        b: 255 & map$1[str[3]] * 17,
+        a: len === 5 ? map$1[str[4]] * 17 : 255
       };
     } else if (len === 7 || len === 9) {
       ret = {
-        r: map$1$1[str[1]] << 4 | map$1$1[str[2]],
-        g: map$1$1[str[3]] << 4 | map$1$1[str[4]],
-        b: map$1$1[str[5]] << 4 | map$1$1[str[6]],
-        a: len === 9 ? map$1$1[str[7]] << 4 | map$1$1[str[8]] : 255
+        r: map$1[str[1]] << 4 | map$1[str[2]],
+        g: map$1[str[3]] << 4 | map$1[str[4]],
+        b: map$1[str[5]] << 4 | map$1[str[6]],
+        a: len === 9 ? map$1[str[7]] << 4 | map$1[str[8]] : 255
       };
     }
   }
@@ -601,9 +567,9 @@ class Color {
   }
 }
 /*!
- * Chart.js v4.4.9
+ * Chart.js v4.4.1
  * https://www.chartjs.org
- * (c) 2025 Chart.js Contributors
+ * (c) 2023 Chart.js Contributors
  * Released under the MIT License
  */
 function noop() {
@@ -613,7 +579,7 @@ const uid = /* @__PURE__ */ (() => {
   return () => id++;
 })();
 function isNullOrUndef(value) {
-  return value === null || value === void 0;
+  return value === null || typeof value === "undefined";
 }
 function isArray(value) {
   if (Array.isArray && Array.isArray(value)) {
@@ -648,7 +614,11 @@ function each(loopable, fn, thisArg, reverse) {
   let i, len, keys;
   if (isArray(loopable)) {
     len = loopable.length;
-    {
+    if (reverse) {
+      for (i = len - 1; i >= 0; i--) {
+        fn.call(thisArg, loopable[i], i);
+      }
+    } else {
       for (i = 0; i < len; i++) {
         fn.call(thisArg, loopable[i], i);
       }
@@ -844,11 +814,8 @@ function _factorize(value) {
   result.sort((a, b) => a - b).pop();
   return result;
 }
-function isNonPrimitive(n) {
-  return typeof n === "symbol" || typeof n === "object" && n !== null && !(Symbol.toPrimitive in n || "toString" in n || "valueOf" in n);
-}
 function isNumber(n) {
-  return !isNonPrimitive(n) && !isNaN(parseFloat(n)) && isFinite(n);
+  return !isNaN(parseFloat(n)) && isFinite(n);
 }
 function almostWhole(x, epsilon) {
   const rounded = Math.round(x);
@@ -1066,35 +1033,24 @@ function _getStartAndCountOfVisiblePoints(meta, points, animationsDisabled) {
   let start = 0;
   let count = pointCount;
   if (meta._sorted) {
-    const { iScale, vScale, _parsed } = meta;
-    const spanGaps = meta.dataset ? meta.dataset.options ? meta.dataset.options.spanGaps : null : null;
+    const { iScale, _parsed } = meta;
     const axis = iScale.axis;
     const { min, max, minDefined, maxDefined } = iScale.getUserBounds();
     if (minDefined) {
-      start = Math.min(
+      start = _limitValue(Math.min(
         // @ts-expect-error Need to type _parsed
         _lookupByKey(_parsed, axis, min).lo,
         // @ts-expect-error Need to fix types on _lookupByKey
         animationsDisabled ? pointCount : _lookupByKey(points, axis, iScale.getPixelForValue(min)).lo
-      );
-      if (spanGaps) {
-        const distanceToDefinedLo = _parsed.slice(0, start + 1).reverse().findIndex((point) => !isNullOrUndef(point[vScale.axis]));
-        start -= Math.max(0, distanceToDefinedLo);
-      }
-      start = _limitValue(start, 0, pointCount - 1);
+      ), 0, pointCount - 1);
     }
     if (maxDefined) {
-      let end = Math.max(
+      count = _limitValue(Math.max(
         // @ts-expect-error Need to type _parsed
         _lookupByKey(_parsed, iScale.axis, max, true).hi + 1,
         // @ts-expect-error Need to fix types on _lookupByKey
         animationsDisabled ? 0 : _lookupByKey(points, axis, iScale.getPixelForValue(max), true).hi + 1
-      );
-      if (spanGaps) {
-        const distanceToDefinedHi = _parsed.slice(end - 1).findIndex((point) => !isNullOrUndef(point[vScale.axis]));
-        end += Math.max(0, distanceToDefinedHi);
-      }
-      count = _limitValue(end, start, pointCount) - start;
+      ), start, pointCount) - start;
     } else {
       count = pointCount - start;
     }
@@ -1602,15 +1558,12 @@ function _longestText(ctx, font, arrayOfThings, cache) {
   }
   return longest;
 }
-function _alignPixel(chart2, pixel, width) {
-  const devicePixelRatio = chart2.currentDevicePixelRatio;
+function _alignPixel(chart, pixel, width) {
+  const devicePixelRatio = chart.currentDevicePixelRatio;
   const halfWidth = width !== 0 ? Math.max(width / 2, 0.5) : 0;
   return Math.round((pixel - halfWidth) * devicePixelRatio) / devicePixelRatio + halfWidth;
 }
 function clearCanvas(canvas, ctx) {
-  if (!ctx && !canvas) {
-    return;
-  }
   ctx = ctx || canvas.getContext("2d");
   ctx.save();
   ctx.resetTransform();
@@ -1928,13 +1881,25 @@ function toFont(options, fallback) {
   return font;
 }
 function resolve(inputs, context, index2, info) {
+  let cacheable = true;
   let i, ilen, value;
   for (i = 0, ilen = inputs.length; i < ilen; ++i) {
     value = inputs[i];
     if (value === void 0) {
       continue;
     }
+    if (context !== void 0 && typeof value === "function") {
+      value = value(context);
+      cacheable = false;
+    }
+    if (index2 !== void 0 && isArray(value)) {
+      value = value[index2 % value.length];
+      cacheable = false;
+    }
     if (value !== void 0) {
+      if (info && !cacheable) {
+        info.cacheable = false;
+      }
       return value;
     }
   }
@@ -2102,7 +2067,7 @@ function _descriptors(proxy, defaults2 = {
 const readKey = (prefix, name) => prefix ? prefix + _capitalize(name) : name;
 const needsSubResolver = (prop, value) => isObject(value) && prop !== "adapters" && (Object.getPrototypeOf(value) === null || value.constructor === Object);
 function _cached(target, prop, resolve2) {
-  if (Object.prototype.hasOwnProperty.call(target, prop) || prop === "constructor") {
+  if (Object.prototype.hasOwnProperty.call(target, prop)) {
     return target[prop];
   }
   const value = resolve2();
@@ -2472,11 +2437,11 @@ function getCanvasPosition(e, canvas) {
     box
   };
 }
-function getRelativePosition(event, chart2) {
+function getRelativePosition(event, chart) {
   if ("native" in event) {
     return event;
   }
-  const { canvas, currentDevicePixelRatio } = chart2;
+  const { canvas, currentDevicePixelRatio } = chart;
   const style = getComputedStyle(canvas);
   const borderBox = style.boxSizing === "border-box";
   const paddings = getPositionedStyle(style, "padding");
@@ -2484,7 +2449,7 @@ function getRelativePosition(event, chart2) {
   const { x, y, box } = getCanvasPosition(event, canvas);
   const xOffset = paddings.left + (box && borders.left);
   const yOffset = paddings.top + (box && borders.top);
-  let { width, height } = chart2;
+  let { width, height } = chart;
   if (borderBox) {
     width -= paddings.width + borders.width;
     height -= paddings.height + borders.height;
@@ -2497,7 +2462,7 @@ function getRelativePosition(event, chart2) {
 function getContainerSize(canvas, width, height) {
   let maxWidth, maxHeight;
   if (width === void 0 || height === void 0) {
-    const container = canvas && _getParentNode(canvas);
+    const container = _getParentNode(canvas);
     if (!container) {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
@@ -2550,22 +2515,22 @@ function getMaximumSize(canvas, bbWidth, bbHeight, aspectRatio) {
     height
   };
 }
-function retinaScale(chart2, forceRatio, forceStyle) {
+function retinaScale(chart, forceRatio, forceStyle) {
   const pixelRatio = forceRatio || 1;
-  const deviceHeight = Math.floor(chart2.height * pixelRatio);
-  const deviceWidth = Math.floor(chart2.width * pixelRatio);
-  chart2.height = Math.floor(chart2.height);
-  chart2.width = Math.floor(chart2.width);
-  const canvas = chart2.canvas;
+  const deviceHeight = Math.floor(chart.height * pixelRatio);
+  const deviceWidth = Math.floor(chart.width * pixelRatio);
+  chart.height = Math.floor(chart.height);
+  chart.width = Math.floor(chart.width);
+  const canvas = chart.canvas;
   if (canvas.style && (forceStyle || !canvas.style.height && !canvas.style.width)) {
-    canvas.style.height = `${chart2.height}px`;
-    canvas.style.width = `${chart2.width}px`;
+    canvas.style.height = `${chart.height}px`;
+    canvas.style.width = `${chart.width}px`;
   }
-  if (chart2.currentDevicePixelRatio !== pixelRatio || canvas.height !== deviceHeight || canvas.width !== deviceWidth) {
-    chart2.currentDevicePixelRatio = pixelRatio;
+  if (chart.currentDevicePixelRatio !== pixelRatio || canvas.height !== deviceHeight || canvas.width !== deviceWidth) {
+    chart.currentDevicePixelRatio = pixelRatio;
     canvas.height = deviceHeight;
     canvas.width = deviceWidth;
-    chart2.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    chart.ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     return true;
   }
   return false;
@@ -2970,38 +2935,10 @@ function styleChanged(style, prevStyle) {
   };
   return JSON.stringify(style, replacer) !== JSON.stringify(prevStyle, replacer);
 }
-function getSizeForArea(scale, chartArea, field) {
-  return scale.options.clip ? scale[field] : chartArea[field];
-}
-function getDatasetArea(meta, chartArea) {
-  const { xScale, yScale } = meta;
-  if (xScale && yScale) {
-    return {
-      left: getSizeForArea(xScale, chartArea, "left"),
-      right: getSizeForArea(xScale, chartArea, "right"),
-      top: getSizeForArea(yScale, chartArea, "top"),
-      bottom: getSizeForArea(yScale, chartArea, "bottom")
-    };
-  }
-  return chartArea;
-}
-function getDatasetClipArea(chart2, meta) {
-  const clip = meta._clip;
-  if (clip.disabled) {
-    return false;
-  }
-  const area = getDatasetArea(meta, chart2.chartArea);
-  return {
-    left: clip.left === false ? 0 : area.left - (clip.left === true ? 0 : clip.left),
-    right: clip.right === false ? chart2.width : area.right + (clip.right === true ? 0 : clip.right),
-    top: clip.top === false ? 0 : area.top - (clip.top === true ? 0 : clip.top),
-    bottom: clip.bottom === false ? chart2.height : area.bottom + (clip.bottom === true ? 0 : clip.bottom)
-  };
-}
 /*!
- * Chart.js v4.4.9
+ * Chart.js v4.4.1
  * https://www.chartjs.org
- * (c) 2025 Chart.js Contributors
+ * (c) 2023 Chart.js Contributors
  * Released under the MIT License
  */
 class Animator {
@@ -3011,11 +2948,11 @@ class Animator {
     this._running = false;
     this._lastDate = void 0;
   }
-  _notify(chart2, anims, date, type) {
+  _notify(chart, anims, date, type) {
     const callbacks = anims.listeners[type];
     const numSteps = anims.duration;
     callbacks.forEach((fn) => fn({
-      chart: chart2,
+      chart,
       initial: anims.initial,
       numSteps,
       currentStep: Math.min(date - anims.start, numSteps)
@@ -3036,7 +2973,7 @@ class Animator {
   }
   _update(date = Date.now()) {
     let remaining = 0;
-    this._charts.forEach((anims, chart2) => {
+    this._charts.forEach((anims, chart) => {
       if (!anims.running || !anims.items.length) {
         return;
       }
@@ -3058,12 +2995,12 @@ class Animator {
         }
       }
       if (draw2) {
-        chart2.draw();
-        this._notify(chart2, anims, date, "progress");
+        chart.draw();
+        this._notify(chart, anims, date, "progress");
       }
       if (!items.length) {
         anims.running = false;
-        this._notify(chart2, anims, date, "complete");
+        this._notify(chart, anims, date, "complete");
         anims.initial = false;
       }
       remaining += items.length;
@@ -3073,9 +3010,9 @@ class Animator {
       this._running = false;
     }
   }
-  _getAnims(chart2) {
+  _getAnims(chart) {
     const charts = this._charts;
-    let anims = charts.get(chart2);
+    let anims = charts.get(chart);
     if (!anims) {
       anims = {
         running: false,
@@ -3086,24 +3023,24 @@ class Animator {
           progress: []
         }
       };
-      charts.set(chart2, anims);
+      charts.set(chart, anims);
     }
     return anims;
   }
-  listen(chart2, event, cb) {
-    this._getAnims(chart2).listeners[event].push(cb);
+  listen(chart, event, cb) {
+    this._getAnims(chart).listeners[event].push(cb);
   }
-  add(chart2, items) {
+  add(chart, items) {
     if (!items || !items.length) {
       return;
     }
-    this._getAnims(chart2).items.push(...items);
+    this._getAnims(chart).items.push(...items);
   }
-  has(chart2) {
-    return this._getAnims(chart2).items.length > 0;
+  has(chart) {
+    return this._getAnims(chart).items.length > 0;
   }
-  start(chart2) {
-    const anims = this._charts.get(chart2);
+  start(chart) {
+    const anims = this._charts.get(chart);
     if (!anims) {
       return;
     }
@@ -3112,18 +3049,18 @@ class Animator {
     anims.duration = anims.items.reduce((acc, cur) => Math.max(acc, cur._duration), 0);
     this._refresh();
   }
-  running(chart2) {
+  running(chart) {
     if (!this._running) {
       return false;
     }
-    const anims = this._charts.get(chart2);
+    const anims = this._charts.get(chart);
     if (!anims || !anims.running || !anims.items.length) {
       return false;
     }
     return true;
   }
-  stop(chart2) {
-    const anims = this._charts.get(chart2);
+  stop(chart) {
+    const anims = this._charts.get(chart);
     if (!anims || !anims.items.length) {
       return;
     }
@@ -3133,10 +3070,10 @@ class Animator {
       items[i].cancel();
     }
     anims.items = [];
-    this._notify(chart2, anims, Date.now(), "complete");
+    this._notify(chart, anims, Date.now(), "complete");
   }
-  remove(chart2) {
-    return this._charts.delete(chart2);
+  remove(chart) {
+    return this._charts.delete(chart);
   }
 }
 var animator = /* @__PURE__ */ new Animator();
@@ -3254,8 +3191,8 @@ class Animation {
   }
 }
 class Animations {
-  constructor(chart2, config) {
-    this._chart = chart2;
+  constructor(chart, config) {
+    this._chart = chart;
     this._properties = /* @__PURE__ */ new Map();
     this.configure(config);
   }
@@ -3415,9 +3352,9 @@ function toClip(value) {
     disabled: value === false
   };
 }
-function getSortedDatasetIndices(chart2, filterVisible) {
+function getSortedDatasetIndices(chart, filterVisible) {
   const keys = [];
-  const metasets = chart2._getSortedDatasetMetas(filterVisible);
+  const metasets = chart._getSortedDatasetMetas(filterVisible);
   let i, ilen;
   for (i = 0, ilen = metasets.length; i < ilen; ++i) {
     keys.push(metasets[i].index);
@@ -3431,11 +3368,9 @@ function applyStack(stack, value, dsIndex, options = {}) {
   if (value === null) {
     return;
   }
-  let found = false;
   for (i = 0, ilen = keys.length; i < ilen; ++i) {
     datasetIndex = +keys[i];
     if (datasetIndex === dsIndex) {
-      found = true;
       if (options.all) {
         continue;
       }
@@ -3446,23 +3381,17 @@ function applyStack(stack, value, dsIndex, options = {}) {
       value += otherValue;
     }
   }
-  if (!found && !options.all) {
-    return 0;
-  }
   return value;
 }
-function convertObjectDataToArray(data, meta) {
-  const { iScale, vScale } = meta;
-  const iAxisKey = iScale.axis === "x" ? "x" : "y";
-  const vAxisKey = vScale.axis === "x" ? "x" : "y";
+function convertObjectDataToArray(data) {
   const keys = Object.keys(data);
   const adata = new Array(keys.length);
   let i, ilen, key;
   for (i = 0, ilen = keys.length; i < ilen; ++i) {
     key = keys[i];
     adata[i] = {
-      [iAxisKey]: key,
-      [vAxisKey]: data[key]
+      x: key,
+      y: data[key]
     };
   }
   return adata;
@@ -3495,8 +3424,8 @@ function getLastIndexInStack(stack, vScale, positive, type) {
   return null;
 }
 function updateStacks(controller, parsed) {
-  const { chart: chart2, _cachedMeta: meta } = controller;
-  const stacks = chart2._stacks || (chart2._stacks = {});
+  const { chart, _cachedMeta: meta } = controller;
+  const stacks = chart._stacks || (chart._stacks = {});
   const { iScale, vScale, index: datasetIndex } = meta;
   const iAxis = iScale.axis;
   const vAxis = vScale.axis;
@@ -3515,8 +3444,8 @@ function updateStacks(controller, parsed) {
     visualValues[datasetIndex] = value;
   }
 }
-function getFirstScaleId(chart2, axis) {
-  const scales2 = chart2.scales;
+function getFirstScaleId(chart, axis) {
+  const scales2 = chart.scales;
   return Object.keys(scales2).filter((key) => scales2[key].axis === axis).shift();
 }
 function createDatasetContext(parent, index2) {
@@ -3561,14 +3490,14 @@ function clearStacks(meta, items) {
 }
 const isDirectUpdateMode = (mode) => mode === "reset" || mode === "none";
 const cloneIfNotShared = (cached, shared) => shared ? cached : Object.assign({}, cached);
-const createStack = (canStack, meta, chart2) => canStack && !meta.hidden && meta._stacked && {
-  keys: getSortedDatasetIndices(chart2, true),
+const createStack = (canStack, meta, chart) => canStack && !meta.hidden && meta._stacked && {
+  keys: getSortedDatasetIndices(chart, true),
   values: null
 };
 class DatasetController {
-  constructor(chart2, datasetIndex) {
-    this.chart = chart2;
-    this._ctx = chart2.ctx;
+  constructor(chart, datasetIndex) {
+    this.chart = chart;
+    this._ctx = chart.ctx;
     this.index = datasetIndex;
     this._cachedDataOpts = {};
     this._cachedMeta = this.getMeta();
@@ -3605,13 +3534,13 @@ class DatasetController {
     this.index = datasetIndex;
   }
   linkScales() {
-    const chart2 = this.chart;
+    const chart = this.chart;
     const meta = this._cachedMeta;
     const dataset = this.getDataset();
     const chooseId = (axis, x, y, r) => axis === "x" ? x : axis === "r" ? r : y;
-    const xid = meta.xAxisID = valueOrDefault(dataset.xAxisID, getFirstScaleId(chart2, "x"));
-    const yid = meta.yAxisID = valueOrDefault(dataset.yAxisID, getFirstScaleId(chart2, "y"));
-    const rid = meta.rAxisID = valueOrDefault(dataset.rAxisID, getFirstScaleId(chart2, "r"));
+    const xid = meta.xAxisID = valueOrDefault(dataset.xAxisID, getFirstScaleId(chart, "x"));
+    const yid = meta.yAxisID = valueOrDefault(dataset.yAxisID, getFirstScaleId(chart, "y"));
+    const rid = meta.rAxisID = valueOrDefault(dataset.rAxisID, getFirstScaleId(chart, "r"));
     const indexAxis = meta.indexAxis;
     const iid = meta.iAxisID = chooseId(indexAxis, xid, yid, rid);
     const vid = meta.vAxisID = chooseId(indexAxis, yid, xid, rid);
@@ -3651,8 +3580,7 @@ class DatasetController {
     const data = dataset.data || (dataset.data = []);
     const _data = this._data;
     if (isObject(data)) {
-      const meta = this._cachedMeta;
-      this._data = convertObjectDataToArray(data, meta);
+      this._data = convertObjectDataToArray(data);
     } else if (_data !== data) {
       if (_data) {
         unlistenArrayEvents(_data, this);
@@ -3689,7 +3617,6 @@ class DatasetController {
     this._resyncElements(resetNewElements);
     if (stackChanged || oldStacked !== meta._stacked) {
       updateStacks(this, meta._parsed);
-      meta._stacked = isStacked(meta.vScale, meta);
     }
   }
   configure() {
@@ -3788,11 +3715,11 @@ class DatasetController {
     return this._cachedMeta.data[index2];
   }
   applyStack(scale, parsed, mode) {
-    const chart2 = this.chart;
+    const chart = this.chart;
     const meta = this._cachedMeta;
     const value = parsed[scale.axis];
     const stack = {
-      keys: getSortedDatasetIndices(chart2, true),
+      keys: getSortedDatasetIndices(chart, true),
       values: parsed._stacks[scale.axis]._visualValues
     };
     return applyStack(stack, value, meta.index, {
@@ -3882,10 +3809,10 @@ class DatasetController {
   }
   draw() {
     const ctx = this._ctx;
-    const chart2 = this.chart;
+    const chart = this.chart;
     const meta = this._cachedMeta;
     const elements2 = meta.data || [];
-    const area = chart2.chartArea;
+    const area = chart.chartArea;
     const active = [];
     const start = this._drawStart || 0;
     const count = this._drawCount || elements2.length - start;
@@ -3968,7 +3895,7 @@ class DatasetController {
     return values;
   }
   _resolveAnimations(index2, transition, active) {
-    const chart2 = this.chart;
+    const chart = this.chart;
     const cache = this._cachedDataOpts;
     const cacheKey = `animation-${transition}`;
     const cached = cache[cacheKey];
@@ -3976,13 +3903,13 @@ class DatasetController {
       return cached;
     }
     let options;
-    if (chart2.options.animation !== false) {
+    if (chart.options.animation !== false) {
       const config = this.chart.config;
       const scopeKeys = config.datasetAnimationScopeKeys(this._type, transition);
       const scopes = config.getOptionScopes(this.getDataset(), scopeKeys);
       options = config.createResolver(scopes, this.getContext(index2, active, transition));
     }
-    const animations = new Animations(chart2, options && options.animations);
+    const animations = new Animations(chart, options && options.animations);
     if (options && options._cacheable) {
       cache[cacheKey] = Object.freeze(animations);
     }
@@ -4453,10 +4380,8 @@ class BarController extends DatasetController {
     const metasets = iScale.getMatchingVisibleMetas(this._type).filter((meta) => meta.controller.options.grouped);
     const stacked = iScale.options.stacked;
     const stacks = [];
-    const currentParsed = this._cachedMeta.controller.getParsed(dataIndex);
-    const iScaleValue = currentParsed && currentParsed[iScale.axis];
     const skipNull = (meta) => {
-      const parsed = meta._parsed.find((item) => item[iScale.axis] === iScaleValue);
+      const parsed = meta.controller.getParsed(dataIndex);
       const val = parsed && parsed[meta.vScale.axis];
       if (isNullOrUndef(val) || isNaN(val)) {
         return true;
@@ -4595,7 +4520,7 @@ class BarController extends DatasetController {
     const ilen = rects.length;
     let i = 0;
     for (; i < ilen; ++i) {
-      if (this.getParsed(i)[vScale.axis] !== null && !rects[i].hidden) {
+      if (this.getParsed(i)[vScale.axis] !== null) {
         rects[i].draw(this._ctx);
       }
     }
@@ -4784,8 +4709,8 @@ function getRatioAndOffset(rotation, circumference, cutout) {
   };
 }
 class DoughnutController extends DatasetController {
-  constructor(chart2, datasetIndex) {
-    super(chart2, datasetIndex);
+  constructor(chart, datasetIndex) {
+    super(chart, datasetIndex);
     this.enableOptionSharing = true;
     this.innerRadius = void 0;
     this.outerRadius = void 0;
@@ -4835,8 +4760,8 @@ class DoughnutController extends DatasetController {
     };
   }
   update(mode) {
-    const chart2 = this.chart;
-    const { chartArea } = chart2;
+    const chart = this.chart;
+    const { chartArea } = chart;
     const meta = this._cachedMeta;
     const arcs = meta.data;
     const spacing = this.getMaxBorderWidth() + this.getMaxOffset(arcs) + this.options.spacing;
@@ -4869,9 +4794,9 @@ class DoughnutController extends DatasetController {
   }
   updateElements(arcs, start, count, mode) {
     const reset = mode === "reset";
-    const chart2 = this.chart;
-    const chartArea = chart2.chartArea;
-    const opts = chart2.options;
+    const chart = this.chart;
+    const chartArea = chart.chartArea;
+    const opts = chart.options;
     const animationOpts = opts.animation;
     const centerX = (chartArea.left + chartArea.right) / 2;
     const centerY = (chartArea.top + chartArea.bottom) / 2;
@@ -4925,9 +4850,9 @@ class DoughnutController extends DatasetController {
   }
   getLabelAndValue(index2) {
     const meta = this._cachedMeta;
-    const chart2 = this.chart;
-    const labels = chart2.data.labels || [];
-    const value = formatNumber(meta._parsed[index2], chart2.options.locale);
+    const chart = this.chart;
+    const labels = chart.data.labels || [];
+    const value = formatNumber(meta._parsed[index2], chart.options.locale);
     return {
       label: labels[index2] || "",
       value
@@ -4935,12 +4860,12 @@ class DoughnutController extends DatasetController {
   }
   getMaxBorderWidth(arcs) {
     let max = 0;
-    const chart2 = this.chart;
+    const chart = this.chart;
     let i, ilen, meta, controller, options;
     if (!arcs) {
-      for (i = 0, ilen = chart2.data.datasets.length; i < ilen; ++i) {
-        if (chart2.isDatasetVisible(i)) {
-          meta = chart2.getDatasetMeta(i);
+      for (i = 0, ilen = chart.data.datasets.length; i < ilen; ++i) {
+        if (chart.isDatasetVisible(i)) {
+          meta = chart.getDatasetMeta(i);
           arcs = meta.data;
           controller = meta.controller;
           break;
@@ -5023,12 +4948,12 @@ __publicField(DoughnutController, "overrides", {
   plugins: {
     legend: {
       labels: {
-        generateLabels(chart2) {
-          const data = chart2.data;
+        generateLabels(chart) {
+          const data = chart.data;
           if (data.labels.length && data.datasets.length) {
-            const { labels: { pointStyle, color: color2 } } = chart2.legend.options;
+            const { labels: { pointStyle, color: color2 } } = chart.legend.options;
             return data.labels.map((label, i) => {
-              const meta = chart2.getDatasetMeta(0);
+              const meta = chart.getDatasetMeta(0);
               const style = meta.controller.getStyle(i);
               return {
                 text: label,
@@ -5037,7 +4962,7 @@ __publicField(DoughnutController, "overrides", {
                 fontColor: color2,
                 lineWidth: style.borderWidth,
                 pointStyle,
-                hidden: !chart2.getDataVisibility(i),
+                hidden: !chart.getDataVisibility(i),
                 index: i
               };
             });
@@ -5158,16 +5083,16 @@ __publicField(LineController, "overrides", {
   }
 });
 class PolarAreaController extends DatasetController {
-  constructor(chart2, datasetIndex) {
-    super(chart2, datasetIndex);
+  constructor(chart, datasetIndex) {
+    super(chart, datasetIndex);
     this.innerRadius = void 0;
     this.outerRadius = void 0;
   }
   getLabelAndValue(index2) {
     const meta = this._cachedMeta;
-    const chart2 = this.chart;
-    const labels = chart2.data.labels || [];
-    const value = formatNumber(meta._parsed[index2].r, chart2.options.locale);
+    const chart = this.chart;
+    const labels = chart.data.labels || [];
+    const value = formatNumber(meta._parsed[index2].r, chart.options.locale);
     return {
       label: labels[index2] || "",
       value
@@ -5201,20 +5126,20 @@ class PolarAreaController extends DatasetController {
     return range;
   }
   _updateRadius() {
-    const chart2 = this.chart;
-    const chartArea = chart2.chartArea;
-    const opts = chart2.options;
+    const chart = this.chart;
+    const chartArea = chart.chartArea;
+    const opts = chart.options;
     const minSize = Math.min(chartArea.right - chartArea.left, chartArea.bottom - chartArea.top);
     const outerRadius = Math.max(minSize / 2, 0);
     const innerRadius = Math.max(opts.cutoutPercentage ? outerRadius / 100 * opts.cutoutPercentage : 1, 0);
-    const radiusLength = (outerRadius - innerRadius) / chart2.getVisibleDatasetCount();
+    const radiusLength = (outerRadius - innerRadius) / chart.getVisibleDatasetCount();
     this.outerRadius = outerRadius - radiusLength * this.index;
     this.innerRadius = this.outerRadius - radiusLength;
   }
   updateElements(arcs, start, count, mode) {
     const reset = mode === "reset";
-    const chart2 = this.chart;
-    const opts = chart2.options;
+    const chart = this.chart;
+    const opts = chart.options;
     const animationOpts = opts.animation;
     const scale = this._cachedMeta.rScale;
     const centerX = scale.xCenter;
@@ -5230,7 +5155,7 @@ class PolarAreaController extends DatasetController {
       const arc = arcs[i];
       let startAngle = angle;
       let endAngle = angle + this._computeAngle(i, mode, defaultAngle);
-      let outerRadius = chart2.getDataVisibility(i) ? scale.getDistanceFromCenterForValue(this.getParsed(i).r) : 0;
+      let outerRadius = chart.getDataVisibility(i) ? scale.getDistanceFromCenterForValue(this.getParsed(i).r) : 0;
       angle = endAngle;
       if (reset) {
         if (animationOpts.animateScale) {
@@ -5294,12 +5219,12 @@ __publicField(PolarAreaController, "overrides", {
   plugins: {
     legend: {
       labels: {
-        generateLabels(chart2) {
-          const data = chart2.data;
+        generateLabels(chart) {
+          const data = chart.data;
           if (data.labels.length && data.datasets.length) {
-            const { labels: { pointStyle, color: color2 } } = chart2.legend.options;
+            const { labels: { pointStyle, color: color2 } } = chart.legend.options;
             return data.labels.map((label, i) => {
-              const meta = chart2.getDatasetMeta(0);
+              const meta = chart.getDatasetMeta(0);
               const style = meta.controller.getStyle(i);
               return {
                 text: label,
@@ -5308,7 +5233,7 @@ __publicField(PolarAreaController, "overrides", {
                 fontColor: color2,
                 lineWidth: style.borderWidth,
                 pointStyle,
-                hidden: !chart2.getDataVisibility(i),
+                hidden: !chart.getDataVisibility(i),
                 index: i
               };
             });
@@ -5610,20 +5535,10 @@ var adapters = {
 function binarySearch(metaset, axis, value, intersect) {
   const { controller, data, _sorted } = metaset;
   const iScale = controller._cachedMeta.iScale;
-  const spanGaps = metaset.dataset ? metaset.dataset.options ? metaset.dataset.options.spanGaps : null : null;
   if (iScale && axis === iScale.axis && axis !== "r" && _sorted && data.length) {
     const lookupMethod = iScale._reversePixels ? _rlookupByKey : _lookupByKey;
     if (!intersect) {
-      const result = lookupMethod(data, axis, value);
-      if (spanGaps) {
-        const { vScale } = controller._cachedMeta;
-        const { _parsed } = metaset;
-        const distanceToDefinedLo = _parsed.slice(0, result.lo + 1).reverse().findIndex((point) => !isNullOrUndef(point[vScale.axis]));
-        result.lo -= Math.max(0, distanceToDefinedLo);
-        const distanceToDefinedHi = _parsed.slice(result.hi).findIndex((point) => !isNullOrUndef(point[vScale.axis]));
-        result.hi += Math.max(0, distanceToDefinedHi);
-      }
-      return result;
+      return lookupMethod(data, axis, value);
     } else if (controller._sharedOptions) {
       const el = data[0];
       const range = typeof el.getRange === "function" && el.getRange(axis);
@@ -5642,8 +5557,8 @@ function binarySearch(metaset, axis, value, intersect) {
     hi: data.length - 1
   };
 }
-function evaluateInteractionItems(chart2, axis, position, handler, intersect) {
-  const metasets = chart2.getSortedVisibleDatasetMetas();
+function evaluateInteractionItems(chart, axis, position, handler, intersect) {
+  const metasets = chart.getSortedVisibleDatasetMetas();
   const value = position[axis];
   for (let i = 0, ilen = metasets.length; i < ilen; ++i) {
     const { index: index2, data } = metasets[i];
@@ -5665,13 +5580,13 @@ function getDistanceMetricForAxis(axis) {
     return Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));
   };
 }
-function getIntersectItems(chart2, position, axis, useFinalPosition, includeInvisible) {
+function getIntersectItems(chart, position, axis, useFinalPosition, includeInvisible) {
   const items = [];
-  if (!includeInvisible && !chart2.isPointInArea(position)) {
+  if (!includeInvisible && !chart.isPointInArea(position)) {
     return items;
   }
   const evaluationFunc = function(element, datasetIndex, index2) {
-    if (!includeInvisible && !_isPointInArea(element, chart2.chartArea, 0)) {
+    if (!includeInvisible && !_isPointInArea(element, chart.chartArea, 0)) {
       return;
     }
     if (element.inRange(position.x, position.y, useFinalPosition)) {
@@ -5682,10 +5597,10 @@ function getIntersectItems(chart2, position, axis, useFinalPosition, includeInvi
       });
     }
   };
-  evaluateInteractionItems(chart2, axis, position, evaluationFunc, true);
+  evaluateInteractionItems(chart, axis, position, evaluationFunc, true);
   return items;
 }
-function getNearestRadialItems(chart2, position, axis, useFinalPosition) {
+function getNearestRadialItems(chart, position, axis, useFinalPosition) {
   let items = [];
   function evaluationFunc(element, datasetIndex, index2) {
     const { startAngle, endAngle } = element.getProps([
@@ -5704,10 +5619,10 @@ function getNearestRadialItems(chart2, position, axis, useFinalPosition) {
       });
     }
   }
-  evaluateInteractionItems(chart2, axis, position, evaluationFunc);
+  evaluateInteractionItems(chart, axis, position, evaluationFunc);
   return items;
 }
-function getNearestCartesianItems(chart2, position, axis, intersect, useFinalPosition, includeInvisible) {
+function getNearestCartesianItems(chart, position, axis, intersect, useFinalPosition, includeInvisible) {
   let items = [];
   const distanceMetric = getDistanceMetricForAxis(axis);
   let minDistance = Number.POSITIVE_INFINITY;
@@ -5717,7 +5632,7 @@ function getNearestCartesianItems(chart2, position, axis, intersect, useFinalPos
       return;
     }
     const center = element.getCenterPoint(useFinalPosition);
-    const pointInArea = !!includeInvisible || chart2.isPointInArea(center);
+    const pointInArea = !!includeInvisible || chart.isPointInArea(center);
     if (!pointInArea && !inRange2) {
       return;
     }
@@ -5739,21 +5654,21 @@ function getNearestCartesianItems(chart2, position, axis, intersect, useFinalPos
       });
     }
   }
-  evaluateInteractionItems(chart2, axis, position, evaluationFunc);
+  evaluateInteractionItems(chart, axis, position, evaluationFunc);
   return items;
 }
-function getNearestItems(chart2, position, axis, intersect, useFinalPosition, includeInvisible) {
-  if (!includeInvisible && !chart2.isPointInArea(position)) {
+function getNearestItems(chart, position, axis, intersect, useFinalPosition, includeInvisible) {
+  if (!includeInvisible && !chart.isPointInArea(position)) {
     return [];
   }
-  return axis === "r" && !intersect ? getNearestRadialItems(chart2, position, axis, useFinalPosition) : getNearestCartesianItems(chart2, position, axis, intersect, useFinalPosition, includeInvisible);
+  return axis === "r" && !intersect ? getNearestRadialItems(chart, position, axis, useFinalPosition) : getNearestCartesianItems(chart, position, axis, intersect, useFinalPosition, includeInvisible);
 }
-function getAxisItems(chart2, position, axis, intersect, useFinalPosition) {
+function getAxisItems(chart, position, axis, intersect, useFinalPosition) {
   const items = [];
   const rangeMethod = axis === "x" ? "inXRange" : "inYRange";
   let intersectsItem = false;
-  evaluateInteractionItems(chart2, axis, position, (element, datasetIndex, index2) => {
-    if (element[rangeMethod] && element[rangeMethod](position[axis], useFinalPosition)) {
+  evaluateInteractionItems(chart, axis, position, (element, datasetIndex, index2) => {
+    if (element[rangeMethod](position[axis], useFinalPosition)) {
       items.push({
         element,
         datasetIndex,
@@ -5768,17 +5683,18 @@ function getAxisItems(chart2, position, axis, intersect, useFinalPosition) {
   return items;
 }
 var Interaction = {
+  evaluateInteractionItems,
   modes: {
-    index(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
+    index(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
       const axis = options.axis || "x";
       const includeInvisible = options.includeInvisible || false;
-      const items = options.intersect ? getIntersectItems(chart2, position, axis, useFinalPosition, includeInvisible) : getNearestItems(chart2, position, axis, false, useFinalPosition, includeInvisible);
+      const items = options.intersect ? getIntersectItems(chart, position, axis, useFinalPosition, includeInvisible) : getNearestItems(chart, position, axis, false, useFinalPosition, includeInvisible);
       const elements2 = [];
       if (!items.length) {
         return [];
       }
-      chart2.getSortedVisibleDatasetMetas().forEach((meta) => {
+      chart.getSortedVisibleDatasetMetas().forEach((meta) => {
         const index2 = items[0].index;
         const element = meta.data[index2];
         if (element && !element.skip) {
@@ -5791,14 +5707,14 @@ var Interaction = {
       });
       return elements2;
     },
-    dataset(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
+    dataset(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
       const axis = options.axis || "xy";
       const includeInvisible = options.includeInvisible || false;
-      let items = options.intersect ? getIntersectItems(chart2, position, axis, useFinalPosition, includeInvisible) : getNearestItems(chart2, position, axis, false, useFinalPosition, includeInvisible);
+      let items = options.intersect ? getIntersectItems(chart, position, axis, useFinalPosition, includeInvisible) : getNearestItems(chart, position, axis, false, useFinalPosition, includeInvisible);
       if (items.length > 0) {
         const datasetIndex = items[0].datasetIndex;
-        const data = chart2.getDatasetMeta(datasetIndex).data;
+        const data = chart.getDatasetMeta(datasetIndex).data;
         items = [];
         for (let i = 0; i < data.length; ++i) {
           items.push({
@@ -5810,25 +5726,25 @@ var Interaction = {
       }
       return items;
     },
-    point(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
+    point(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
       const axis = options.axis || "xy";
       const includeInvisible = options.includeInvisible || false;
-      return getIntersectItems(chart2, position, axis, useFinalPosition, includeInvisible);
+      return getIntersectItems(chart, position, axis, useFinalPosition, includeInvisible);
     },
-    nearest(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
+    nearest(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
       const axis = options.axis || "xy";
       const includeInvisible = options.includeInvisible || false;
-      return getNearestItems(chart2, position, axis, options.intersect, useFinalPosition, includeInvisible);
+      return getNearestItems(chart, position, axis, options.intersect, useFinalPosition, includeInvisible);
     },
-    x(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
-      return getAxisItems(chart2, position, "x", options.intersect, useFinalPosition);
+    x(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
+      return getAxisItems(chart, position, "x", options.intersect, useFinalPosition);
     },
-    y(chart2, e, options, useFinalPosition) {
-      const position = getRelativePosition(e, chart2);
-      return getAxisItems(chart2, position, "y", options.intersect, useFinalPosition);
+    y(chart, e, options, useFinalPosition) {
+      const position = getRelativePosition(e, chart);
+      return getAxisItems(chart, position, "y", options.intersect, useFinalPosition);
     }
   }
 };
@@ -6029,6 +5945,7 @@ function placeBoxes(boxes, chartArea, params, stacks) {
   for (const layout of boxes) {
     const box = layout.box;
     const stack = stacks[layout.stack] || {
+      count: 1,
       placed: 0,
       weight: 1
     };
@@ -6067,9 +5984,9 @@ function placeBoxes(boxes, chartArea, params, stacks) {
   chartArea.y = y;
 }
 var layouts = {
-  addBox(chart2, item) {
-    if (!chart2.boxes) {
-      chart2.boxes = [];
+  addBox(chart, item) {
+    if (!chart.boxes) {
+      chart.boxes = [];
     }
     item.fullSize = item.fullSize || false;
     item.position = item.position || "top";
@@ -6084,30 +6001,30 @@ var layouts = {
         }
       ];
     };
-    chart2.boxes.push(item);
+    chart.boxes.push(item);
   },
-  removeBox(chart2, layoutItem) {
-    const index2 = chart2.boxes ? chart2.boxes.indexOf(layoutItem) : -1;
+  removeBox(chart, layoutItem) {
+    const index2 = chart.boxes ? chart.boxes.indexOf(layoutItem) : -1;
     if (index2 !== -1) {
-      chart2.boxes.splice(index2, 1);
+      chart.boxes.splice(index2, 1);
     }
   },
-  configure(chart2, item, options) {
+  configure(chart, item, options) {
     item.fullSize = options.fullSize;
     item.position = options.position;
     item.weight = options.weight;
   },
-  update(chart2, width, height, minPadding) {
-    if (!chart2) {
+  update(chart, width, height, minPadding) {
+    if (!chart) {
       return;
     }
-    const padding = toPadding(chart2.options.layout.padding);
+    const padding = toPadding(chart.options.layout.padding);
     const availableWidth = Math.max(width - padding.width, 0);
     const availableHeight = Math.max(height - padding.height, 0);
-    const boxes = buildLayoutBoxes(chart2.boxes);
+    const boxes = buildLayoutBoxes(chart.boxes);
     const verticalBoxes = boxes.vertical;
     const horizontalBoxes = boxes.horizontal;
-    each(chart2.boxes, (box) => {
+    each(chart.boxes, (box) => {
       if (typeof box.beforeLayout === "function") {
         box.beforeLayout();
       }
@@ -6142,7 +6059,7 @@ var layouts = {
     chartArea.x += chartArea.w;
     chartArea.y += chartArea.h;
     placeBoxes(boxes.rightAndBottom, chartArea, params, stacks);
-    chart2.chartArea = {
+    chart.chartArea = {
       left: chartArea.left,
       top: chartArea.top,
       right: chartArea.left + chartArea.w,
@@ -6152,7 +6069,7 @@ var layouts = {
     };
     each(boxes.chartArea, (layout) => {
       const box = layout.box;
-      Object.assign(box, chart2.chartArea);
+      Object.assign(box, chart.chartArea);
       box.update(chartArea.w, chartArea.h, {
         left: 0,
         top: 0,
@@ -6168,9 +6085,9 @@ class BasePlatform {
   releaseContext(context) {
     return false;
   }
-  addEventListener(chart2, type, listener) {
+  addEventListener(chart, type, listener) {
   }
-  removeEventListener(chart2, type, listener) {
+  removeEventListener(chart, type, listener) {
   }
   getDevicePixelRatio() {
     return 1;
@@ -6249,21 +6166,17 @@ const eventListenerOptions = supportsEventListenerOptions ? {
   passive: true
 } : false;
 function addListener(node, type, listener) {
-  if (node) {
-    node.addEventListener(type, listener, eventListenerOptions);
-  }
+  node.addEventListener(type, listener, eventListenerOptions);
 }
-function removeListener(chart2, type, listener) {
-  if (chart2 && chart2.canvas) {
-    chart2.canvas.removeEventListener(type, listener, eventListenerOptions);
-  }
+function removeListener(chart, type, listener) {
+  chart.canvas.removeEventListener(type, listener, eventListenerOptions);
 }
-function fromNativeEvent(event, chart2) {
+function fromNativeEvent(event, chart) {
   const type = EVENT_TYPES[event.type] || event.type;
-  const { x, y } = getRelativePosition(event, chart2);
+  const { x, y } = getRelativePosition(event, chart);
   return {
     type,
-    chart: chart2,
+    chart,
     native: event,
     x: x !== void 0 ? x : null,
     y: y !== void 0 ? y : null
@@ -6276,8 +6189,8 @@ function nodeListContains(nodeList, canvas) {
     }
   }
 }
-function createAttachObserver(chart2, type, listener) {
-  const canvas = chart2.canvas;
+function createAttachObserver(chart, type, listener) {
+  const canvas = chart.canvas;
   const observer = new MutationObserver((entries) => {
     let trigger = false;
     for (const entry of entries) {
@@ -6294,8 +6207,8 @@ function createAttachObserver(chart2, type, listener) {
   });
   return observer;
 }
-function createDetachObserver(chart2, type, listener) {
-  const canvas = chart2.canvas;
+function createDetachObserver(chart, type, listener) {
+  const canvas = chart.canvas;
   const observer = new MutationObserver((entries) => {
     let trigger = false;
     for (const entry of entries) {
@@ -6320,26 +6233,26 @@ function onWindowResize() {
     return;
   }
   oldDevicePixelRatio = dpr;
-  drpListeningCharts.forEach((resize, chart2) => {
-    if (chart2.currentDevicePixelRatio !== dpr) {
+  drpListeningCharts.forEach((resize, chart) => {
+    if (chart.currentDevicePixelRatio !== dpr) {
       resize();
     }
   });
 }
-function listenDevicePixelRatioChanges(chart2, resize) {
+function listenDevicePixelRatioChanges(chart, resize) {
   if (!drpListeningCharts.size) {
     window.addEventListener("resize", onWindowResize);
   }
-  drpListeningCharts.set(chart2, resize);
+  drpListeningCharts.set(chart, resize);
 }
-function unlistenDevicePixelRatioChanges(chart2) {
-  drpListeningCharts.delete(chart2);
+function unlistenDevicePixelRatioChanges(chart) {
+  drpListeningCharts.delete(chart);
   if (!drpListeningCharts.size) {
     window.removeEventListener("resize", onWindowResize);
   }
 }
-function createResizeObserver(chart2, type, listener) {
-  const canvas = chart2.canvas;
+function createResizeObserver(chart, type, listener) {
+  const canvas = chart.canvas;
   const container = canvas && _getParentNode(canvas);
   if (!container) {
     return;
@@ -6361,24 +6274,24 @@ function createResizeObserver(chart2, type, listener) {
     resize(width, height);
   });
   observer.observe(container);
-  listenDevicePixelRatioChanges(chart2, resize);
+  listenDevicePixelRatioChanges(chart, resize);
   return observer;
 }
-function releaseObserver(chart2, type, observer) {
+function releaseObserver(chart, type, observer) {
   if (observer) {
     observer.disconnect();
   }
   if (type === "resize") {
-    unlistenDevicePixelRatioChanges(chart2);
+    unlistenDevicePixelRatioChanges(chart);
   }
 }
-function createProxyAndListen(chart2, type, listener) {
-  const canvas = chart2.canvas;
+function createProxyAndListen(chart, type, listener) {
+  const canvas = chart.canvas;
   const proxy = throttled((event) => {
-    if (chart2.ctx !== null) {
-      listener(fromNativeEvent(event, chart2));
+    if (chart.ctx !== null) {
+      listener(fromNativeEvent(event, chart));
     }
-  }, chart2);
+  }, chart);
   addListener(canvas, type, proxy);
   return proxy;
 }
@@ -6416,19 +6329,19 @@ class DomPlatform extends BasePlatform {
     delete canvas[EXPANDO_KEY];
     return true;
   }
-  addEventListener(chart2, type, listener) {
-    this.removeEventListener(chart2, type);
-    const proxies = chart2.$proxies || (chart2.$proxies = {});
+  addEventListener(chart, type, listener) {
+    this.removeEventListener(chart, type);
+    const proxies = chart.$proxies || (chart.$proxies = {});
     const handlers = {
       attach: createAttachObserver,
       detach: createDetachObserver,
       resize: createResizeObserver
     };
     const handler = handlers[type] || createProxyAndListen;
-    proxies[type] = handler(chart2, type, listener);
+    proxies[type] = handler(chart, type, listener);
   }
-  removeEventListener(chart2, type) {
-    const proxies = chart2.$proxies || (chart2.$proxies = {});
+  removeEventListener(chart, type) {
+    const proxies = chart.$proxies || (chart.$proxies = {});
     const proxy = proxies[type];
     if (!proxy) {
       return;
@@ -6439,7 +6352,7 @@ class DomPlatform extends BasePlatform {
       resize: releaseObserver
     };
     const handler = handlers[type] || removeListener;
-    handler(chart2, type, proxy);
+    handler(chart, type, proxy);
     proxies[type] = void 0;
   }
   getDevicePixelRatio() {
@@ -6449,7 +6362,7 @@ class DomPlatform extends BasePlatform {
     return getMaximumSize(canvas, width, height, aspectRatio);
   }
   isAttached(canvas) {
-    const container = canvas && _getParentNode(canvas);
+    const container = _getParentNode(canvas);
     return !!(container && container.isConnected);
   }
 }
@@ -6682,8 +6595,8 @@ function titleAlign(align, position, reverse) {
   return ret;
 }
 function titleArgs(scale, offset, position, align) {
-  const { top, left, bottom, right, chart: chart2 } = scale;
-  const { chartArea, scales: scales2 } = chart2;
+  const { top, left, bottom, right, chart } = scale;
+  const { chartArea, scales: scales2 } = chart;
   let rotation = 0;
   let maxWidth, titleX, titleY;
   const height = bottom - top;
@@ -7038,11 +6951,11 @@ class Scale extends Element$1 {
       width: 0,
       height: 0
     };
-    const { chart: chart2, options: { ticks: tickOpts, title: titleOpts, grid: gridOpts } } = this;
+    const { chart, options: { ticks: tickOpts, title: titleOpts, grid: gridOpts } } = this;
     const display = this._isVisible();
     const isHorizontal = this.isHorizontal();
     if (display) {
-      const titleHeight = getTitleHeight(titleOpts, chart2.options.font);
+      const titleHeight = getTitleHeight(titleOpts, chart.options.font);
       if (isHorizontal) {
         minSize.width = this.maxWidth;
         minSize.height = getTickMarkLength(gridOpts) + titleHeight;
@@ -7068,11 +6981,11 @@ class Scale extends Element$1 {
     }
     this._handleMargins();
     if (isHorizontal) {
-      this.width = this._length = chart2.width - this._margins.left - this._margins.right;
+      this.width = this._length = chart.width - this._margins.left - this._margins.right;
       this.height = minSize.height;
     } else {
       this.width = minSize.width;
-      this.height = this._length = chart2.height - this._margins.top - this._margins.bottom;
+      this.height = this._length = chart.height - this._margins.top - this._margins.bottom;
     }
   }
   _calculatePadding(first, last, sin, cos) {
@@ -7273,7 +7186,7 @@ class Scale extends Element$1 {
   }
   _computeGridLineItems(chartArea) {
     const axis = this.axis;
-    const chart2 = this.chart;
+    const chart = this.chart;
     const options = this.options;
     const { grid, position, border } = options;
     const offset = grid.offset;
@@ -7286,7 +7199,7 @@ class Scale extends Element$1 {
     const axisWidth = borderOpts.display ? borderOpts.width : 0;
     const axisHalfWidth = axisWidth / 2;
     const alignBorderValue = function(pixel) {
-      return _alignPixel(chart2, pixel, axisWidth);
+      return _alignPixel(chart, pixel, axisWidth);
     };
     let borderValue, i, lineValue, alignedLineValue;
     let tx1, ty1, tx2, ty2, x1, y1, x2, y2;
@@ -7357,7 +7270,7 @@ class Scale extends Element$1 {
       if (lineValue === void 0) {
         continue;
       }
-      alignedLineValue = _alignPixel(chart2, lineValue, lineWidth);
+      alignedLineValue = _alignPixel(chart, lineValue, lineWidth);
       if (isHorizontal) {
         tx1 = tx2 = x1 = x2 = alignedLineValue;
       } else {
@@ -7634,13 +7547,13 @@ class Scale extends Element$1 {
     if (this.options.ticks.mirror) {
       return;
     }
-    const chart2 = this.chart;
+    const chart = this.chart;
     const position = this.options.position;
     if (position === "left" || position === "right") {
       return {
         top: 0,
         left: this.left,
-        bottom: chart2.height,
+        bottom: chart.height,
         right: this.right
       };
     }
@@ -7649,7 +7562,7 @@ class Scale extends Element$1 {
         top: this.top,
         left: 0,
         bottom: this.bottom,
-        right: chart2.width
+        right: chart.width
       };
     }
   }
@@ -7725,7 +7638,7 @@ class Scale extends Element$1 {
     }
   }
   drawBorder() {
-    const { chart: chart2, ctx, options: { border, grid } } = this;
+    const { chart, ctx, options: { border, grid } } = this;
     const borderOpts = border.setContext(this.getContext());
     const axisWidth = border.display ? borderOpts.width : 0;
     if (!axisWidth) {
@@ -7735,12 +7648,12 @@ class Scale extends Element$1 {
     const borderValue = this._borderValue;
     let x1, x2, y1, y2;
     if (this.isHorizontal()) {
-      x1 = _alignPixel(chart2, this.left, axisWidth) - axisWidth / 2;
-      x2 = _alignPixel(chart2, this.right, lastLineWidth) + lastLineWidth / 2;
+      x1 = _alignPixel(chart, this.left, axisWidth) - axisWidth / 2;
+      x2 = _alignPixel(chart, this.right, lastLineWidth) + lastLineWidth / 2;
       y1 = y2 = borderValue;
     } else {
-      y1 = _alignPixel(chart2, this.top, axisWidth) - axisWidth / 2;
-      y2 = _alignPixel(chart2, this.bottom, lastLineWidth) + lastLineWidth / 2;
+      y1 = _alignPixel(chart, this.top, axisWidth) - axisWidth / 2;
+      y2 = _alignPixel(chart, this.bottom, lastLineWidth) + lastLineWidth / 2;
       x1 = x2 = borderValue;
     }
     ctx.save();
@@ -8051,26 +7964,26 @@ class PluginService {
   constructor() {
     this._init = [];
   }
-  notify(chart2, hook, args, filter) {
+  notify(chart, hook, args, filter) {
     if (hook === "beforeInit") {
-      this._init = this._createDescriptors(chart2, true);
-      this._notify(this._init, chart2, "install");
+      this._init = this._createDescriptors(chart, true);
+      this._notify(this._init, chart, "install");
     }
-    const descriptors2 = filter ? this._descriptors(chart2).filter(filter) : this._descriptors(chart2);
-    const result = this._notify(descriptors2, chart2, hook, args);
+    const descriptors2 = filter ? this._descriptors(chart).filter(filter) : this._descriptors(chart);
+    const result = this._notify(descriptors2, chart, hook, args);
     if (hook === "afterDestroy") {
-      this._notify(descriptors2, chart2, "stop");
-      this._notify(this._init, chart2, "uninstall");
+      this._notify(descriptors2, chart, "stop");
+      this._notify(this._init, chart, "uninstall");
     }
     return result;
   }
-  _notify(descriptors2, chart2, hook, args) {
+  _notify(descriptors2, chart, hook, args) {
     args = args || {};
     for (const descriptor of descriptors2) {
       const plugin = descriptor.plugin;
       const method = plugin[hook];
       const params = [
-        chart2,
+        chart,
         args,
         descriptor.options
       ];
@@ -8086,26 +7999,26 @@ class PluginService {
       this._cache = void 0;
     }
   }
-  _descriptors(chart2) {
+  _descriptors(chart) {
     if (this._cache) {
       return this._cache;
     }
-    const descriptors2 = this._cache = this._createDescriptors(chart2);
-    this._notifyStateChanges(chart2);
+    const descriptors2 = this._cache = this._createDescriptors(chart);
+    this._notifyStateChanges(chart);
     return descriptors2;
   }
-  _createDescriptors(chart2, all) {
-    const config = chart2 && chart2.config;
+  _createDescriptors(chart, all) {
+    const config = chart && chart.config;
     const options = valueOrDefault(config.options && config.options.plugins, {});
     const plugins2 = allPlugins(config);
-    return options === false && !all ? [] : createDescriptors(chart2, plugins2, options, all);
+    return options === false && !all ? [] : createDescriptors(chart, plugins2, options, all);
   }
-  _notifyStateChanges(chart2) {
+  _notifyStateChanges(chart) {
     const previousDescriptors = this._oldCache || [];
     const descriptors2 = this._cache;
     const diff = (a, b) => a.filter((x) => !b.some((y) => x.plugin.id === y.plugin.id));
-    this._notify(diff(previousDescriptors, descriptors2), chart2, "stop");
-    this._notify(diff(descriptors2, previousDescriptors), chart2, "start");
+    this._notify(diff(previousDescriptors, descriptors2), chart, "stop");
+    this._notify(diff(descriptors2, previousDescriptors), chart, "start");
   }
 }
 function allPlugins(config) {
@@ -8137,9 +8050,9 @@ function getOpts(options, all) {
   }
   return options;
 }
-function createDescriptors(chart2, { plugins: plugins2, localIds }, options, all) {
+function createDescriptors(chart, { plugins: plugins2, localIds }, options, all) {
   const result = [];
-  const context = chart2.getContext();
+  const context = chart.getContext();
   for (const plugin of plugins2) {
     const id = plugin.id;
     const opts = getOpts(options[id], all);
@@ -8148,7 +8061,7 @@ function createDescriptors(chart2, { plugins: plugins2, localIds }, options, all
     }
     result.push({
       plugin,
-      options: pluginOpts(chart2.config, {
+      options: pluginOpts(chart.config, {
         plugin,
         local: localIds[id]
       }, opts, context)
@@ -8501,7 +8414,7 @@ function needContext(proxy, names2) {
   }
   return false;
 }
-var version = "4.4.9";
+var version = "4.4.1";
 const KNOWN_POSITIONS = [
   "top",
   "bottom",
@@ -8518,19 +8431,19 @@ function compare2Level(l1, l2) {
   };
 }
 function onAnimationsComplete(context) {
-  const chart2 = context.chart;
-  const animationOptions = chart2.options.animation;
-  chart2.notifyPlugins("afterRender");
+  const chart = context.chart;
+  const animationOptions = chart.options.animation;
+  chart.notifyPlugins("afterRender");
   callback(animationOptions && animationOptions.onComplete, [
     context
-  ], chart2);
+  ], chart);
 }
 function onAnimationProgress(context) {
-  const chart2 = context.chart;
-  const animationOptions = chart2.options.animation;
+  const chart = context.chart;
+  const animationOptions = chart.options.animation;
   callback(animationOptions && animationOptions.onProgress, [
     context
-  ], chart2);
+  ], chart);
 }
 function getCanvas(item) {
   if (_isDomSupported() && typeof item === "string") {
@@ -8569,6 +8482,21 @@ function determineLastEvent(e, lastEvent, inChartArea, isClick) {
     return lastEvent;
   }
   return e;
+}
+function getSizeForArea(scale, chartArea, field) {
+  return scale.options.clip ? scale[field] : chartArea[field];
+}
+function getDatasetArea(meta, chartArea) {
+  const { xScale, yScale } = meta;
+  if (xScale && yScale) {
+    return {
+      left: getSizeForArea(xScale, chartArea, "left"),
+      right: getSizeForArea(xScale, chartArea, "right"),
+      top: getSizeForArea(yScale, chartArea, "top"),
+      bottom: getSizeForArea(yScale, chartArea, "bottom")
+    };
+  }
+  return chartArea;
 }
 class Chart {
   static register(...items) {
@@ -9011,8 +8939,8 @@ class Chart {
     let i;
     if (this._resizeBeforeDraw) {
       const { width, height } = this._resizeBeforeDraw;
-      this._resizeBeforeDraw = null;
       this._resize(width, height);
+      this._resizeBeforeDraw = null;
     }
     this.clear();
     if (this.width <= 0 || this.height <= 0) {
@@ -9062,20 +8990,27 @@ class Chart {
   }
   _drawDataset(meta) {
     const ctx = this.ctx;
+    const clip = meta._clip;
+    const useClip = !clip.disabled;
+    const area = getDatasetArea(meta, this.chartArea);
     const args = {
       meta,
       index: meta.index,
       cancelable: true
     };
-    const clip = getDatasetClipArea(this, meta);
     if (this.notifyPlugins("beforeDatasetDraw", args) === false) {
       return;
     }
-    if (clip) {
-      clipArea(ctx, clip);
+    if (useClip) {
+      clipArea(ctx, {
+        left: clip.left === false ? 0 : area.left - clip.left,
+        right: clip.right === false ? this.width : area.right + clip.right,
+        top: clip.top === false ? 0 : area.top - clip.top,
+        bottom: clip.bottom === false ? this.height : area.bottom + clip.bottom
+      });
     }
     meta.controller.draw();
-    if (clip) {
+    if (useClip) {
       unclipArea(ctx);
     }
     args.cancelable = false;
@@ -9391,7 +9326,7 @@ __publicField(Chart, "registry", registry);
 __publicField(Chart, "version", version);
 __publicField(Chart, "getChart", getChart);
 function invalidatePlugins() {
-  return each(Chart.instances, (chart2) => chart2._plugins.invalidate());
+  return each(Chart.instances, (chart) => chart._plugins.invalidate());
 }
 function clipArc(ctx, element, endAngle) {
   const { startAngle, pixelMargin, x, y, outerRadius, innerRadius } = element;
@@ -9591,8 +9526,7 @@ class ArcElement extends Element$1 {
     ], useFinalPosition);
     const rAdjust = (this.options.spacing + this.options.borderWidth) / 2;
     const _circumference = valueOrDefault(circumference, endAngle - startAngle);
-    const nonZeroBetween = _angleBetween(angle, startAngle, endAngle) && startAngle !== endAngle;
-    const betweenAngles = _circumference >= TAU || nonZeroBetween;
+    const betweenAngles = _circumference >= TAU || _angleBetween(angle, startAngle, endAngle);
     const withinRadius = _isBetween(distance, innerRadius + rAdjust, outerRadius + rAdjust);
     return betweenAngles && withinRadius;
   }
@@ -10250,10 +10184,10 @@ function colorizePolarAreaDataset(dataset, i) {
   dataset.backgroundColor = dataset.data.map(() => getBackgroundColor(i++));
   return i;
 }
-function getColorizer(chart2) {
+function getColorizer(chart) {
   let i = 0;
   return (dataset, datasetIndex) => {
-    const controller = chart2.getDatasetMeta(datasetIndex).controller;
+    const controller = chart.getDatasetMeta(datasetIndex).controller;
     if (controller instanceof DoughnutController) {
       i = colorizeDoughnutDataset(dataset, i);
     } else if (controller instanceof PolarAreaController) {
@@ -10275,26 +10209,22 @@ function containsColorsDefinitions(descriptors2) {
 function containsColorsDefinition(descriptor) {
   return descriptor && (descriptor.borderColor || descriptor.backgroundColor);
 }
-function containsDefaultColorsDefenitions() {
-  return defaults.borderColor !== "rgba(0,0,0,0.1)" || defaults.backgroundColor !== "rgba(0,0,0,0.1)";
-}
 var plugin_colors = {
   id: "colors",
   defaults: {
     enabled: true,
     forceOverride: false
   },
-  beforeLayout(chart2, _args, options) {
+  beforeLayout(chart, _args, options) {
     if (!options.enabled) {
       return;
     }
-    const { data: { datasets }, options: chartOptions } = chart2.config;
+    const { data: { datasets }, options: chartOptions } = chart.config;
     const { elements: elements2 } = chartOptions;
-    const containsColorDefenition = containsColorsDefinitions(datasets) || containsColorsDefinition(chartOptions) || elements2 && containsColorsDefinitions(elements2) || containsDefaultColorsDefenitions();
-    if (!options.forceOverride && containsColorDefenition) {
+    if (!options.forceOverride && (containsColorsDefinitions(datasets) || containsColorsDefinition(chartOptions) || elements2 && containsColorsDefinitions(elements2))) {
       return;
     }
-    const colorizer = getColorizer(chart2);
+    const colorizer = getColorizer(chart);
     datasets.forEach(colorizer);
   }
 };
@@ -10407,8 +10337,8 @@ function cleanDecimatedDataset(dataset) {
     });
   }
 }
-function cleanDecimatedData(chart2) {
-  chart2.data.datasets.forEach((dataset) => {
+function cleanDecimatedData(chart) {
+  chart.data.datasets.forEach((dataset) => {
     cleanDecimatedDataset(dataset);
   });
 }
@@ -10437,30 +10367,30 @@ var plugin_decimation = {
     algorithm: "min-max",
     enabled: false
   },
-  beforeElementsUpdate: (chart2, args, options) => {
+  beforeElementsUpdate: (chart, args, options) => {
     if (!options.enabled) {
-      cleanDecimatedData(chart2);
+      cleanDecimatedData(chart);
       return;
     }
-    const availableWidth = chart2.width;
-    chart2.data.datasets.forEach((dataset, datasetIndex) => {
+    const availableWidth = chart.width;
+    chart.data.datasets.forEach((dataset, datasetIndex) => {
       const { _data, indexAxis } = dataset;
-      const meta = chart2.getDatasetMeta(datasetIndex);
+      const meta = chart.getDatasetMeta(datasetIndex);
       const data = _data || dataset.data;
       if (resolve([
         indexAxis,
-        chart2.options.indexAxis
+        chart.options.indexAxis
       ]) === "y") {
         return;
       }
       if (!meta.controller.supportsDecimation) {
         return;
       }
-      const xAxis = chart2.scales[meta.xAxisID];
+      const xAxis = chart.scales[meta.xAxisID];
       if (xAxis.type !== "linear" && xAxis.type !== "time") {
         return;
       }
-      if (chart2.options.parsing) {
+      if (chart.options.parsing) {
         return;
       }
       let { start, count } = getStartAndCountOfVisiblePointsSimplified(meta, data);
@@ -10497,8 +10427,8 @@ var plugin_decimation = {
       dataset._decimated = decimated;
     });
   },
-  destroy(chart2) {
-    cleanDecimatedData(chart2);
+  destroy(chart) {
+    cleanDecimatedData(chart);
   }
 };
 function _segments(line, target, property) {
@@ -10820,9 +10750,9 @@ class simpleArc {
   }
 }
 function _getTarget(source) {
-  const { chart: chart2, fill: fill2, line } = source;
+  const { chart, fill: fill2, line } = source;
   if (isNumberFinite(fill2)) {
-    return getLineByIndex(chart2, fill2);
+    return getLineByIndex(chart, fill2);
   }
   if (fill2 === "stack") {
     return _buildStackLine(source);
@@ -10836,9 +10766,9 @@ function _getTarget(source) {
   }
   return _createBoundaryLine(boundary, line);
 }
-function getLineByIndex(chart2, index2) {
-  const meta = chart2.getDatasetMeta(index2);
-  const visible = meta && chart2.isDatasetVisible(index2);
+function getLineByIndex(chart, index2) {
+  const meta = chart.getDatasetMeta(index2);
+  const visible = meta && chart.isDatasetVisible(index2);
   return visible ? meta.dataset : null;
 }
 function computeBoundary(source) {
@@ -10882,13 +10812,11 @@ function computeCircularBoundary(source) {
 }
 function _drawfill(ctx, source, area) {
   const target = _getTarget(source);
-  const { chart: chart2, index: index2, line, scale, axis } = source;
+  const { line, scale, axis } = source;
   const lineOpts = line.options;
   const fillOption = lineOpts.fill;
   const color2 = lineOpts.backgroundColor;
   const { above = color2, below = color2 } = fillOption || {};
-  const meta = chart2.getDatasetMeta(index2);
-  const clip = getDatasetClipArea(chart2, meta);
   if (target && line.points.length) {
     clipArea(ctx, area);
     doFill(ctx, {
@@ -10898,14 +10826,13 @@ function _drawfill(ctx, source, area) {
       below,
       area,
       scale,
-      axis,
-      clip
+      axis
     });
     unclipArea(ctx);
   }
 }
 function doFill(ctx, cfg) {
-  const { line, target, above, below, area, scale, clip } = cfg;
+  const { line, target, above, below, area, scale } = cfg;
   const property = line._loop ? "angle" : cfg.axis;
   ctx.save();
   if (property === "x" && below !== above) {
@@ -10915,8 +10842,7 @@ function doFill(ctx, cfg) {
       target,
       color: above,
       scale,
-      property,
-      clip
+      property
     });
     ctx.restore();
     ctx.save();
@@ -10927,8 +10853,7 @@ function doFill(ctx, cfg) {
     target,
     color: below,
     scale,
-    property,
-    clip
+    property
   });
   ctx.restore();
 }
@@ -10962,14 +10887,14 @@ function clipVertical(ctx, target, clipY) {
   ctx.clip();
 }
 function fill(ctx, cfg) {
-  const { line, target, property, color: color2, scale, clip } = cfg;
+  const { line, target, property, color: color2, scale } = cfg;
   const segments = _segments(line, target, property);
   for (const { source: src, target: tgt, start, end } of segments) {
     const { style: { backgroundColor = color2 } = {} } = src;
     const notShape = target !== true;
     ctx.save();
     ctx.fillStyle = backgroundColor;
-    clipBounds(ctx, scale, clip, notShape && _getBounds(property, start, end));
+    clipBounds(ctx, scale, notShape && _getBounds(property, start, end));
     ctx.beginPath();
     const lineLoop = !!line.pathSegment(ctx, src);
     let loop;
@@ -10993,30 +10918,12 @@ function fill(ctx, cfg) {
     ctx.restore();
   }
 }
-function clipBounds(ctx, scale, clip, bounds) {
-  const chartArea = scale.chart.chartArea;
+function clipBounds(ctx, scale, bounds) {
+  const { top, bottom } = scale.chart.chartArea;
   const { property, start, end } = bounds || {};
-  if (property === "x" || property === "y") {
-    let left, top, right, bottom;
-    if (property === "x") {
-      left = start;
-      top = chartArea.top;
-      right = end;
-      bottom = chartArea.bottom;
-    } else {
-      left = chartArea.left;
-      top = start;
-      right = chartArea.right;
-      bottom = end;
-    }
+  if (property === "x") {
     ctx.beginPath();
-    if (clip) {
-      left = Math.max(left, clip.left);
-      right = Math.min(right, clip.right);
-      top = Math.max(top, clip.top);
-      bottom = Math.min(bottom, clip.bottom);
-    }
-    ctx.rect(left, top, right - left, bottom - top);
+    ctx.rect(start, top, end - start, bottom - top);
     ctx.clip();
   }
 }
@@ -11028,20 +10935,20 @@ function interpolatedLineTo(ctx, target, point, property) {
 }
 var index = {
   id: "filler",
-  afterDatasetsUpdate(chart2, _args, options) {
-    const count = (chart2.data.datasets || []).length;
+  afterDatasetsUpdate(chart, _args, options) {
+    const count = (chart.data.datasets || []).length;
     const sources = [];
     let meta, i, line, source;
     for (i = 0; i < count; ++i) {
-      meta = chart2.getDatasetMeta(i);
+      meta = chart.getDatasetMeta(i);
       line = meta.dataset;
       source = null;
       if (line && line.options && line instanceof LineElement) {
         source = {
-          visible: chart2.isDatasetVisible(i),
+          visible: chart.isDatasetVisible(i),
           index: i,
           fill: _decodeFill(line, i, count),
-          chart: chart2,
+          chart,
           axis: meta.controller.options.indexAxis,
           scale: meta.vScale,
           line
@@ -11058,10 +10965,10 @@ var index = {
       source.fill = _resolveTarget(sources, i, options.propagate);
     }
   },
-  beforeDraw(chart2, _args, options) {
+  beforeDraw(chart, _args, options) {
     const draw2 = options.drawTime === "beforeDraw";
-    const metasets = chart2.getSortedVisibleDatasetMetas();
-    const area = chart2.chartArea;
+    const metasets = chart.getSortedVisibleDatasetMetas();
+    const area = chart.chartArea;
     for (let i = metasets.length - 1; i >= 0; --i) {
       const source = metasets[i].$filler;
       if (!source) {
@@ -11069,28 +10976,28 @@ var index = {
       }
       source.line.updateControlPoints(area, source.axis);
       if (draw2 && source.fill) {
-        _drawfill(chart2.ctx, source, area);
+        _drawfill(chart.ctx, source, area);
       }
     }
   },
-  beforeDatasetsDraw(chart2, _args, options) {
+  beforeDatasetsDraw(chart, _args, options) {
     if (options.drawTime !== "beforeDatasetsDraw") {
       return;
     }
-    const metasets = chart2.getSortedVisibleDatasetMetas();
+    const metasets = chart.getSortedVisibleDatasetMetas();
     for (let i = metasets.length - 1; i >= 0; --i) {
       const source = metasets[i].$filler;
       if (_shouldApplyFill(source)) {
-        _drawfill(chart2.ctx, source, chart2.chartArea);
+        _drawfill(chart.ctx, source, chart.chartArea);
       }
     }
   },
-  beforeDatasetDraw(chart2, args, options) {
+  beforeDatasetDraw(chart, args, options) {
     const source = args.meta.$filler;
     if (!_shouldApplyFill(source) || options.drawTime !== "beforeDatasetDraw") {
       return;
     }
-    _drawfill(chart2.ctx, source, chart2.chartArea);
+    _drawfill(chart.ctx, source, chart.chartArea);
   },
   defaults: {
     propagate: true,
@@ -11551,32 +11458,32 @@ function isListened(type, opts) {
 var plugin_legend = {
   id: "legend",
   _element: Legend,
-  start(chart2, _args, options) {
-    const legend = chart2.legend = new Legend({
-      ctx: chart2.ctx,
+  start(chart, _args, options) {
+    const legend = chart.legend = new Legend({
+      ctx: chart.ctx,
       options,
-      chart: chart2
+      chart
     });
-    layouts.configure(chart2, legend, options);
-    layouts.addBox(chart2, legend);
+    layouts.configure(chart, legend, options);
+    layouts.addBox(chart, legend);
   },
-  stop(chart2) {
-    layouts.removeBox(chart2, chart2.legend);
-    delete chart2.legend;
+  stop(chart) {
+    layouts.removeBox(chart, chart.legend);
+    delete chart.legend;
   },
-  beforeUpdate(chart2, _args, options) {
-    const legend = chart2.legend;
-    layouts.configure(chart2, legend, options);
+  beforeUpdate(chart, _args, options) {
+    const legend = chart.legend;
+    layouts.configure(chart, legend, options);
     legend.options = options;
   },
-  afterUpdate(chart2) {
-    const legend = chart2.legend;
+  afterUpdate(chart) {
+    const legend = chart.legend;
     legend.buildLabels();
     legend.adjustHitBoxes();
   },
-  afterEvent(chart2, args) {
+  afterEvent(chart, args) {
     if (!args.replay) {
-      chart2.legend.handleEvent(args.event);
+      chart.legend.handleEvent(args.event);
     }
   },
   defaults: {
@@ -11603,10 +11510,10 @@ var plugin_legend = {
       color: (ctx) => ctx.chart.options.color,
       boxWidth: 40,
       padding: 10,
-      generateLabels(chart2) {
-        const datasets = chart2.data.datasets;
-        const { labels: { usePointStyle, pointStyle, textAlign, color: color2, useBorderRadius, borderRadius } } = chart2.legend.options;
-        return chart2._getSortedDatasetMetas().map((meta) => {
+      generateLabels(chart) {
+        const datasets = chart.data.datasets;
+        const { labels: { usePointStyle, pointStyle, textAlign, color: color2, useBorderRadius, borderRadius } } = chart.legend.options;
+        return chart._getSortedDatasetMetas().map((meta) => {
           const style = meta.controller.getStyle(usePointStyle ? 0 : void 0);
           const borderWidth = toPadding(style.borderWidth);
           return {
@@ -11738,30 +11645,30 @@ class Title extends Element$1 {
     });
   }
 }
-function createTitle(chart2, titleOpts) {
+function createTitle(chart, titleOpts) {
   const title = new Title({
-    ctx: chart2.ctx,
+    ctx: chart.ctx,
     options: titleOpts,
-    chart: chart2
+    chart
   });
-  layouts.configure(chart2, title, titleOpts);
-  layouts.addBox(chart2, title);
-  chart2.titleBlock = title;
+  layouts.configure(chart, title, titleOpts);
+  layouts.addBox(chart, title);
+  chart.titleBlock = title;
 }
 var plugin_title = {
   id: "title",
   _element: Title,
-  start(chart2, _args, options) {
-    createTitle(chart2, options);
+  start(chart, _args, options) {
+    createTitle(chart, options);
   },
-  stop(chart2) {
-    const titleBlock = chart2.titleBlock;
-    layouts.removeBox(chart2, titleBlock);
-    delete chart2.titleBlock;
+  stop(chart) {
+    const titleBlock = chart.titleBlock;
+    layouts.removeBox(chart, titleBlock);
+    delete chart.titleBlock;
   },
-  beforeUpdate(chart2, _args, options) {
-    const title = chart2.titleBlock;
-    layouts.configure(chart2, title, options);
+  beforeUpdate(chart, _args, options) {
+    const title = chart.titleBlock;
+    layouts.configure(chart, title, options);
     title.options = options;
   },
   defaults: {
@@ -11784,26 +11691,26 @@ var plugin_title = {
     _indexable: false
   }
 };
-const map$1 = /* @__PURE__ */ new WeakMap();
+const map = /* @__PURE__ */ new WeakMap();
 var plugin_subtitle = {
   id: "subtitle",
-  start(chart2, _args, options) {
+  start(chart, _args, options) {
     const title = new Title({
-      ctx: chart2.ctx,
+      ctx: chart.ctx,
       options,
-      chart: chart2
+      chart
     });
-    layouts.configure(chart2, title, options);
-    layouts.addBox(chart2, title);
-    map$1.set(chart2, title);
+    layouts.configure(chart, title, options);
+    layouts.addBox(chart, title);
+    map.set(chart, title);
   },
-  stop(chart2) {
-    layouts.removeBox(chart2, map$1.get(chart2));
-    map$1.delete(chart2);
+  stop(chart) {
+    layouts.removeBox(chart, map.get(chart));
+    map.delete(chart);
   },
-  beforeUpdate(chart2, _args, options) {
-    const title = map$1.get(chart2);
-    layouts.configure(chart2, title, options);
+  beforeUpdate(chart, _args, options) {
+    const title = map.get(chart);
+    layouts.configure(chart, title, options);
     title.options = options;
   },
   defaults: {
@@ -11832,26 +11739,20 @@ const positioners = {
       return false;
     }
     let i, len;
-    let xSet = /* @__PURE__ */ new Set();
+    let x = 0;
     let y = 0;
     let count = 0;
     for (i = 0, len = items.length; i < len; ++i) {
       const el = items[i].element;
       if (el && el.hasValue()) {
         const pos = el.tooltipPosition();
-        xSet.add(pos.x);
+        x += pos.x;
         y += pos.y;
         ++count;
       }
     }
-    if (count === 0 || xSet.size === 0) {
-      return false;
-    }
-    const xAverage = [
-      ...xSet
-    ].reduce((a, b) => a + b) / xSet.size;
     return {
-      x: xAverage,
+      x: x / count,
       y: y / count
     };
   },
@@ -11901,15 +11802,15 @@ function splitNewlines(str) {
   }
   return str;
 }
-function createTooltipItem(chart2, item) {
+function createTooltipItem(chart, item) {
   const { element, datasetIndex, index: index2 } = item;
-  const controller = chart2.getDatasetMeta(datasetIndex).controller;
+  const controller = chart.getDatasetMeta(datasetIndex).controller;
   const { label, value } = controller.getLabelAndValue(index2);
   return {
-    chart: chart2,
+    chart,
     label,
     parsed: controller.getParsed(index2),
-    raw: chart2.data.datasets[datasetIndex].data[index2],
+    raw: chart.data.datasets[datasetIndex].data[index2],
     formattedValue: value,
     dataset: controller.getDataset(),
     dataIndex: index2,
@@ -11967,28 +11868,28 @@ function getTooltipSize(tooltip, options) {
     height
   };
 }
-function determineYAlign(chart2, size) {
+function determineYAlign(chart, size) {
   const { y, height } = size;
   if (y < height / 2) {
     return "top";
-  } else if (y > chart2.height - height / 2) {
+  } else if (y > chart.height - height / 2) {
     return "bottom";
   }
   return "center";
 }
-function doesNotFitWithAlign(xAlign, chart2, options, size) {
+function doesNotFitWithAlign(xAlign, chart, options, size) {
   const { x, width } = size;
   const caret = options.caretSize + options.caretPadding;
-  if (xAlign === "left" && x + width + caret > chart2.width) {
+  if (xAlign === "left" && x + width + caret > chart.width) {
     return true;
   }
   if (xAlign === "right" && x - width - caret < 0) {
     return true;
   }
 }
-function determineXAlign(chart2, options, size, yAlign) {
+function determineXAlign(chart, options, size, yAlign) {
   const { x, width } = size;
-  const { width: chartWidth, chartArea: { left, right } } = chart2;
+  const { width: chartWidth, chartArea: { left, right } } = chart;
   let xAlign = "center";
   if (yAlign === "center") {
     xAlign = x <= (left + right) / 2 ? "left" : "right";
@@ -11997,15 +11898,15 @@ function determineXAlign(chart2, options, size, yAlign) {
   } else if (x >= chartWidth - width / 2) {
     xAlign = "right";
   }
-  if (doesNotFitWithAlign(xAlign, chart2, options, size)) {
+  if (doesNotFitWithAlign(xAlign, chart, options, size)) {
     xAlign = "center";
   }
   return xAlign;
 }
-function determineAlignment(chart2, options, size) {
-  const yAlign = size.yAlign || options.yAlign || determineYAlign(chart2, size);
+function determineAlignment(chart, options, size) {
+  const yAlign = size.yAlign || options.yAlign || determineYAlign(chart, size);
   return {
-    xAlign: size.xAlign || options.xAlign || determineXAlign(chart2, options, size, yAlign),
+    xAlign: size.xAlign || options.xAlign || determineXAlign(chart, options, size, yAlign),
     yAlign
   };
 }
@@ -12029,7 +11930,7 @@ function alignY(size, yAlign, paddingAndSize) {
   }
   return y;
 }
-function getBackgroundPoint(options, size, alignment, chart2) {
+function getBackgroundPoint(options, size, alignment, chart) {
   const { caretSize, caretPadding, cornerRadius } = options;
   const { xAlign, yAlign } = alignment;
   const paddingAndSize = caretSize + caretPadding;
@@ -12048,8 +11949,8 @@ function getBackgroundPoint(options, size, alignment, chart2) {
     x += Math.max(topRight, bottomRight) + caretSize;
   }
   return {
-    x: _limitValue(x, 0, chart2.width - size.width),
-    y: _limitValue(y, 0, chart2.height - size.height)
+    x: _limitValue(x, 0, chart.width - size.width),
+    y: _limitValue(y, 0, chart.height - size.height)
   };
 }
 function getAlignedX(tooltip, align, options) {
@@ -12181,9 +12082,9 @@ class Tooltip extends Element$1 {
     if (cached) {
       return cached;
     }
-    const chart2 = this.chart;
+    const chart = this.chart;
     const options = this.options.setContext(this.getContext());
-    const opts = options.enabled && chart2.options.animation && options.animations;
+    const opts = options.enabled && chart.options.animation && options.animations;
     const animations = new Animations(this.chart, opts);
     if (opts._cacheable) {
       this._cachedAnimations = Object.freeze(animations);
@@ -12555,7 +12456,7 @@ class Tooltip extends Element$1 {
     }
   }
   _updateAnimationTarget(options) {
-    const chart2 = this.chart;
+    const chart = this.chart;
     const anims = this.$animations;
     const animX = anims && anims.x;
     const animY = anims && anims.y;
@@ -12566,8 +12467,8 @@ class Tooltip extends Element$1 {
       }
       const size = this._size = getTooltipSize(this, options);
       const positionAndSize = Object.assign({}, position, this._size);
-      const alignment = determineAlignment(chart2, options, positionAndSize);
-      const point = getBackgroundPoint(options, positionAndSize, alignment, chart2);
+      const alignment = determineAlignment(chart, options, positionAndSize);
+      const point = getBackgroundPoint(options, positionAndSize, alignment, chart);
       if (animX._to !== point.x || animY._to !== point.y) {
         this.xAlign = alignment.xAlign;
         this.yAlign = alignment.yAlign;
@@ -12685,44 +12586,44 @@ var plugin_tooltip = {
   id: "tooltip",
   _element: Tooltip,
   positioners,
-  afterInit(chart2, _args, options) {
+  afterInit(chart, _args, options) {
     if (options) {
-      chart2.tooltip = new Tooltip({
-        chart: chart2,
+      chart.tooltip = new Tooltip({
+        chart,
         options
       });
     }
   },
-  beforeUpdate(chart2, _args, options) {
-    if (chart2.tooltip) {
-      chart2.tooltip.initialize(options);
+  beforeUpdate(chart, _args, options) {
+    if (chart.tooltip) {
+      chart.tooltip.initialize(options);
     }
   },
-  reset(chart2, _args, options) {
-    if (chart2.tooltip) {
-      chart2.tooltip.initialize(options);
+  reset(chart, _args, options) {
+    if (chart.tooltip) {
+      chart.tooltip.initialize(options);
     }
   },
-  afterDraw(chart2) {
-    const tooltip = chart2.tooltip;
+  afterDraw(chart) {
+    const tooltip = chart.tooltip;
     if (tooltip && tooltip._willRender()) {
       const args = {
         tooltip
       };
-      if (chart2.notifyPlugins("beforeTooltipDraw", {
+      if (chart.notifyPlugins("beforeTooltipDraw", {
         ...args,
         cancelable: true
       }) === false) {
         return;
       }
-      tooltip.draw(chart2.ctx);
-      chart2.notifyPlugins("afterTooltipDraw", args);
+      tooltip.draw(chart.ctx);
+      chart.notifyPlugins("afterTooltipDraw", args);
     }
   },
-  afterEvent(chart2, args) {
-    if (chart2.tooltip) {
+  afterEvent(chart, args) {
+    if (chart.tooltip) {
       const useFinalPosition = args.replay;
-      if (chart2.tooltip.handleEvent(args.event, useFinalPosition, args.inChartArea)) {
+      if (chart.tooltip.handleEvent(args.event, useFinalPosition, args.inChartArea)) {
         args.changed = true;
       }
     }
@@ -13593,7 +13494,7 @@ function drawRadiusLine(scale, gridLineOpts, radius, labelCount, borderOpts) {
   ctx.save();
   ctx.strokeStyle = color2;
   ctx.lineWidth = lineWidth;
-  ctx.setLineDash(borderOpts.dash || []);
+  ctx.setLineDash(borderOpts.dash);
   ctx.lineDashOffset = borderOpts.dashOffset;
   ctx.beginPath();
   pathRadiusLine(scale, radius, circular, labelCount);
@@ -13733,7 +13634,7 @@ class RadialLinearScale extends LinearScaleBase {
     }
     if (grid.display) {
       this.ticks.forEach((tick, index2) => {
-        if (index2 !== 0 || index2 === 0 && this.min < 0) {
+        if (index2 !== 0) {
           offset = this.getDistanceFromCenterForValue(tick.value);
           const context = this.getContext(index2);
           const optsAtIndex = grid.setContext(context);
@@ -13754,7 +13655,7 @@ class RadialLinearScale extends LinearScaleBase {
         ctx.strokeStyle = color2;
         ctx.setLineDash(optsAtIndex.borderDash);
         ctx.lineDashOffset = optsAtIndex.borderDashOffset;
-        offset = this.getDistanceFromCenterForValue(opts.reverse ? this.min : this.max);
+        offset = this.getDistanceFromCenterForValue(opts.ticks.reverse ? this.min : this.max);
         position = this.getPointPosition(i, offset);
         ctx.beginPath();
         ctx.moveTo(this.xCenter, this.yCenter);
@@ -13781,7 +13682,7 @@ class RadialLinearScale extends LinearScaleBase {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     this.ticks.forEach((tick, index2) => {
-      if (index2 === 0 && this.min >= 0 && !opts.reverse) {
+      if (index2 === 0 && !opts.reverse) {
         return;
       }
       const optsAtIndex = tickOpts.setContext(this.getContext(index2));
@@ -24001,7 +23902,8 @@ class MousePositionControl extends L$1.Control {
     map2.off("mousemove", this._onMouseMove, this);
   }
   _onMouseMove(e) {
-    if (!this._container) return;
+    if (!this._container)
+      return;
     const lng = this.options.lngFormatter ? this.options.lngFormatter(e.latlng.lng) : L$1.Util.formatNum(e.latlng.lng, this.options.numDigits || 5);
     const lat = this.options.latFormatter ? this.options.latFormatter(e.latlng.lat) : L$1.Util.formatNum(e.latlng.lat, this.options.numDigits || 5);
     const formattedText = `lon ${lng}    lat ${lat}`;
@@ -24013,349 +23915,596 @@ L$1.control.mousePosition = function(options) {
   return new MousePositionControl(options);
 };
 const mousePosition = L$1.control.mousePosition;
-var map = leafletSrcExports.map("map", {
-  doubleClickZoom: false
-});
-mousePosition().addTo(map);
-leafletSrcExports.control.scale({
-  metric: true,
-  imperial: false,
-  position: "bottomleft"
-}).addTo(map);
-const fontAwesomeIcon = leafletSrcExports.divIcon({
-  html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
-  iconSize: [20, 20],
-  className: "myDivIcon"
-});
-var state = {
-  datasetInfo: {},
-  markerTs: leafletSrcExports.marker([0, -0], { draggable: true, title: "Time Series Point" }),
-  markerRef: leafletSrcExports.marker([0, -0], { icon: fontAwesomeIcon, draggable: true, title: "Reference Location" }),
-  name: "displacement",
-  // Default to displacement variable
-  tile: null,
-  tileIdx: 0,
-  refValues: {},
-  basemap: baseMaps.esriSatellite,
-  dataMode: "md"
-  // Will be updated from server
-};
-const curUsesRef = () => state.datasetInfo[state.name].uses_spatial_ref;
-let baseMapTile = leafletSrcExports.tileLayer(state.basemap.url, {
-  maxZoom: 19,
-  attribution: state.basemap.attribution
-});
-baseMapTile.addTo(map);
-const basemapSelector = document.getElementById("basemap-selector");
-basemapSelector.addEventListener("change", (event) => {
-  const target = event.target;
-  const newUrl = target.value;
-  const newBasemapName = target.options[target.selectedIndex].innerText;
-  const newBasemap = baseMaps[newBasemapName];
-  map.attributionControl.removeAttribution(state.basemap.attribution);
-  state.basemap = newBasemap;
-  baseMapTile.setUrl(newUrl);
-  map.attributionControl.addAttribution(state.basemap.attribution);
-});
-for (const [name, basemap] of Object.entries(baseMaps)) {
-  const option = document.createElement("option");
-  option.textContent = name;
-  option.value = basemap.url;
-  basemapSelector.appendChild(option);
+class BowserApp {
+  constructor(options) {
+    __publicField(this, "container");
+    __publicField(this, "baseUrl");
+    __publicField(this, "options");
+    __publicField(this, "map");
+    __publicField(this, "state");
+    __publicField(this, "chart");
+    this.container = options.container;
+    this.baseUrl = options.baseUrl || "";
+    this.options = options;
+    this.setupDOM();
+    this.initializeMap();
+    this.initializeChart();
+    this.initializeDatasets();
+  }
+  setupDOM() {
+    this.container.innerHTML = `
+      <div class="bowser-app" style="height: 100%; width: 100%; position: relative;">
+        <div id="map" style="height: 100%; width: 100%;"></div>
+        ${this.options.showSidebar !== false ? this.createSidebarHTML() : ""}
+        <div id="chart-container" style="position: absolute; bottom: 20px; left: 20px; background: white; border-radius: 5px; padding: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); display: none; width: 400px; height: 250px;">
+          <canvas id="chart"></canvas>
+          <button id="hide-chart" style="position: absolute; top: 5px; right: 5px;">Hide</button>
+        </div>
+      </div>
+    `;
+  }
+  createSidebarHTML() {
+    return `
+      <div class="sidebar" style="position: absolute; top: 10px; left: 10px; background: white; padding: 15px; border-radius: 5px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); z-index: 1000; min-width: 250px;">
+        <div class="control-group">
+          <label>Dataset:</label>
+          <select id="dataset-selector"></select>
+        </div>
+
+        <div class="control-group">
+          <label>Time:</label>
+          <input type="range" id="layer-slider" min="0" max="0" value="0" />
+          <span id="layer-slider-value">0</span>
+        </div>
+
+        <div class="control-group">
+          <label>Colormap:</label>
+          <select id="colormap-selector">
+            <option value="viridis">viridis</option>
+            <option value="plasma">plasma</option>
+            <option value="inferno">inferno</option>
+            <option value="magma">magma</option>
+            <option value="cividis">cividis</option>
+            <option value="RdBu_r">RdBu_r</option>
+            <option value="RdYlBu_r">RdYlBu_r</option>
+          </select>
+          <img id="colormap-img" src="/colorbar/viridis" style="width: 100%; height: 20px; margin-top: 5px;" />
+        </div>
+
+        <div class="control-group">
+          <label>Scale:</label>
+          <input type="number" id="vmin" placeholder="Min" value="-0.1" step="0.01" />
+          <input type="number" id="vmax" placeholder="Max" value="0.1" step="0.01" />
+        </div>
+
+        <div class="control-group">
+          <label>Opacity:</label>
+          <input type="range" id="opacity-slider" min="0" max="1" step="0.1" value="1" />
+          <span id="opacity-slider-value">1</span>
+        </div>
+
+        <div class="control-group">
+          <label>Basemap:</label>
+          <select id="basemap-selector"></select>
+        </div>
+
+        <div class="control-group">
+          <button id="hide-chart" type="button">Show time series</button>
+        </div>
+      </div>
+    `;
+  }
+  initializeMap() {
+    const mapElement = this.container.querySelector("#map");
+    this.map = leafletSrcExports.map(mapElement, {
+      doubleClickZoom: false
+    });
+    mousePosition().addTo(this.map);
+    leafletSrcExports.control.scale({
+      metric: true,
+      imperial: false,
+      position: "bottomright"
+    }).addTo(this.map);
+    const fontAwesomeIcon = leafletSrcExports.divIcon({
+      html: '<i class="fa-solid fa-location-dot fa-3x"></i>',
+      iconSize: [20, 20],
+      className: "myDivIcon"
+    });
+    this.state = {
+      datasetInfo: {},
+      markerTs: leafletSrcExports.marker([0, -0], { draggable: true, title: "Time Series Point" }),
+      markerRef: leafletSrcExports.marker([0, -0], { icon: fontAwesomeIcon, draggable: true, title: "Reference Location" }),
+      name: "displacement",
+      tile: null,
+      tileIdx: 0,
+      refValues: {},
+      basemap: baseMaps.esriSatellite,
+      dataMode: "md"
+    };
+    let baseMapTile = leafletSrcExports.tileLayer(this.state.basemap.url, {
+      maxZoom: 19,
+      attribution: this.state.basemap.attribution
+    });
+    baseMapTile.addTo(this.map);
+    this.setupMapEventHandlers();
+    this.setupUIEventHandlers();
+  }
+  setupMapEventHandlers() {
+    this.map.on("click", (e) => {
+      const { lat, lng } = e.latlng;
+      this.state.markerTs.setLatLng([lat, lng]);
+      const chartContainer = this.container.querySelector("#chart-container");
+      if (chartContainer && chartContainer.style.display !== "none") {
+        this.updateChart();
+      }
+      if (this.options.onTimeseriesClick) {
+        this.getPointTimeSeries(lng, lat, this.state.name).then((data) => {
+          var _a2, _b;
+          (_b = (_a2 = this.options).onTimeseriesClick) == null ? void 0 : _b.call(_a2, data);
+        });
+      }
+    });
+    this.state.markerTs.on("moveend", () => {
+      const chartContainer = this.container.querySelector("#chart-container");
+      if (chartContainer && chartContainer.style.display !== "none") {
+        this.updateChart();
+      }
+    });
+    this.state.markerRef.on("moveend", () => {
+      const chartContainer = this.container.querySelector("#chart-container");
+      if (chartContainer && chartContainer.style.display !== "none") {
+        this.updateChart();
+      }
+      this.setRefValues(this.state.name);
+    });
+    this.state.markerRef.addTo(this.map);
+  }
+  setupUIEventHandlers() {
+    if (this.options.showSidebar === false)
+      return;
+    const datasetSelector = this.container.querySelector("#dataset-selector");
+    if (datasetSelector) {
+      datasetSelector.addEventListener("change", (event) => {
+        var _a2, _b;
+        this.savePreferences(this.state.name);
+        const datasetName = event.target.value;
+        this.setupDataset(datasetName);
+        this.loadPreferences(datasetName);
+        (_b = (_a2 = this.options).onDatasetChange) == null ? void 0 : _b.call(_a2, datasetName);
+      });
+    }
+    const layerSlider = this.container.querySelector("#layer-slider");
+    const layerSliderText = this.container.querySelector("#layer-slider-value");
+    if (layerSlider && layerSliderText) {
+      layerSlider.addEventListener("input", (event) => {
+        const target = event.target;
+        const newIdx = parseInt(target.value);
+        const timeValue = this.state.datasetInfo[this.state.name].x_values[newIdx];
+        layerSliderText.textContent = timeValue.toString();
+      });
+      layerSlider.addEventListener("change", (event) => {
+        var _a2, _b;
+        const target = event.target;
+        const newIdx = parseInt(target.value);
+        this.state.tileIdx = newIdx;
+        this.updateRasterTile();
+        (_b = (_a2 = this.options).onTimeIndexChange) == null ? void 0 : _b.call(_a2, newIdx);
+      });
+    }
+    const cmapSelect = this.container.querySelector("#colormap-selector");
+    const vminInput = this.container.querySelector("#vmin");
+    const vmaxInput = this.container.querySelector("#vmax");
+    if (cmapSelect)
+      cmapSelect.addEventListener("change", () => {
+        this.savePreferences(this.state.name);
+        this.updateRasterTile();
+      });
+    if (vminInput)
+      vminInput.addEventListener("change", () => {
+        this.savePreferences(this.state.name);
+        this.updateRasterTile();
+      });
+    if (vmaxInput)
+      vmaxInput.addEventListener("change", () => {
+        this.savePreferences(this.state.name);
+        this.updateRasterTile();
+      });
+    const opacitySlider = this.container.querySelector("#opacity-slider");
+    const opacityText = this.container.querySelector("#opacity-slider-value");
+    if (opacitySlider && opacityText) {
+      opacitySlider.addEventListener("input", (event) => {
+        const opacity = event.target.value;
+        opacityText.textContent = opacity;
+        if (this.state.tile) {
+          this.state.tile.setOpacity(parseFloat(opacity));
+        }
+      });
+    }
+    const basemapSelector = this.container.querySelector("#basemap-selector");
+    if (basemapSelector) {
+      for (const [name, basemap] of Object.entries(baseMaps)) {
+        const option = document.createElement("option");
+        option.textContent = name;
+        option.value = basemap.url;
+        basemapSelector.appendChild(option);
+      }
+      basemapSelector.addEventListener("change", (event) => {
+        const target = event.target;
+        const newBasemapName = target.options[target.selectedIndex].innerText;
+        const newBasemap = baseMaps[newBasemapName];
+        this.map.attributionControl.removeAttribution(this.state.basemap.attribution);
+        this.state.basemap = newBasemap;
+        this.map.attributionControl.addAttribution(this.state.basemap.attribution);
+      });
+    }
+    const hideChartBtn = this.container.querySelector("#hide-chart");
+    const chartContainer = this.container.querySelector("#chart-container");
+    if (hideChartBtn && chartContainer) {
+      hideChartBtn.addEventListener("click", () => {
+        if (chartContainer.style.display !== "none") {
+          chartContainer.style.display = "none";
+          hideChartBtn.textContent = "Show time series";
+          this.state.markerTs.remove();
+        } else {
+          chartContainer.style.display = "block";
+          hideChartBtn.textContent = "Hide time series";
+          this.state.markerTs.addTo(this.map);
+        }
+      });
+    }
+  }
+  initializeChart() {
+    const chartElement = this.container.querySelector("#chart");
+    if (!chartElement)
+      return;
+    this.chart = new Chart(chartElement, {
+      options: {
+        animation: false,
+        plugins: { legend: { display: false } },
+        scales: { y: {} }
+      },
+      type: "line",
+      data: { datasets: [] }
+    });
+  }
+  async initializeDatasets() {
+    try {
+      const modeResponse = await fetch(`${this.baseUrl}/mode`);
+      const modeData = await modeResponse.json();
+      this.state.dataMode = modeData.mode;
+      const datasetsResponse = await fetch(`${this.baseUrl}/datasets`);
+      const data = await datasetsResponse.json();
+      this.state.datasetInfo = data;
+      const initialDataset = this.options.initialDataset || Object.keys(this.state.datasetInfo)[0];
+      const { centerLat, centerLng } = this.computeCenter(initialDataset);
+      this.map.setView([centerLat, centerLng], 9);
+      this.state.markerTs.setLatLng([centerLat, centerLng]);
+      this.state.markerRef.setLatLng([centerLat, centerLng]);
+      this.setupDataset(initialDataset);
+      if (this.options.showSidebar !== false) {
+        const datasetSelector = this.container.querySelector("#dataset-selector");
+        if (datasetSelector) {
+          datasetSelector.innerHTML = "";
+          Object.keys(this.state.datasetInfo).forEach((varName) => {
+            const option = document.createElement("option");
+            option.value = varName;
+            option.textContent = varName;
+            datasetSelector.appendChild(option);
+          });
+          datasetSelector.value = initialDataset;
+        }
+      }
+    } catch (error) {
+      console.error("Error initializing datasets:", error);
+    }
+  }
+  computeCenter(name) {
+    const curDataset = this.state.datasetInfo[name];
+    const bounds = curDataset.latlon_bounds;
+    const centerLat = (bounds[1] + bounds[3]) / 2;
+    const centerLng = (bounds[0] + bounds[2]) / 2;
+    return { centerLat, centerLng };
+  }
+  setupDataset(name) {
+    const curDataset = this.state.datasetInfo[name];
+    if (this.options.showSidebar !== false) {
+      const layerSlider = this.container.querySelector("#layer-slider");
+      const layerSliderText = this.container.querySelector("#layer-slider-value");
+      if (layerSlider && layerSliderText) {
+        layerSlider.max = (curDataset.x_values.length - 1).toString();
+        layerSliderText.textContent = curDataset.x_values[0].toString();
+      }
+    }
+    this.state.name = name;
+    if (curDataset.uses_spatial_ref && this.state.refValues[name] === void 0) {
+      this.setRefValues(name);
+    }
+    this.updateRasterTile();
+  }
+  async setRefValues(datasetName) {
+    const { lat, lng } = this.state.markerRef.getLatLng();
+    try {
+      const values = await this.getPointTimeSeries(lng, lat, datasetName);
+      if (values !== void 0) {
+        this.state.refValues[datasetName] = values;
+        if (this.curUsesRef()) {
+          this.updateRasterTile();
+        }
+      }
+    } catch (error) {
+      console.log("setRefValues error:", error);
+    }
+  }
+  curUsesRef() {
+    return this.state.datasetInfo[this.state.name].uses_spatial_ref;
+  }
+  updateRasterTile() {
+    const { name, tileIdx } = this.state;
+    const curDataset = this.state.datasetInfo[name];
+    let { colormap_name, vmin, vmax } = this.loadPreferences(name);
+    const cmapSelect = this.container.querySelector("#colormap-selector");
+    const vminInput = this.container.querySelector("#vmin");
+    const vmaxInput = this.container.querySelector("#vmax");
+    if (colormap_name === null && cmapSelect)
+      colormap_name = cmapSelect.value;
+    if (vmin === null && vminInput)
+      vmin = parseFloat(vminInput.value);
+    if (vmax === null && vmaxInput)
+      vmax = parseFloat(vmaxInput.value);
+    this.setChartYLimits(vmin, vmax);
+    const colormapImg = this.container.querySelector("#colormap-img");
+    if (colormapImg) {
+      colormapImg.src = `${this.baseUrl}/colorbar/${colormap_name}`;
+    }
+    const maxIdx = curDataset.x_values.length - 1;
+    const curTileIdx = Math.max(0, Math.min(tileIdx, maxIdx));
+    this.state.tileIdx = curTileIdx;
+    let params = {
+      variable: name,
+      time_idx: curTileIdx.toString(),
+      rescale: `${vmin},${vmax}`,
+      colormap_name
+    };
+    if (curDataset.algorithm !== null) {
+      params.algorithm = curDataset.algorithm;
+    }
+    if (this.state.refValues[name] !== void 0 && curDataset.algorithm === "shift") {
+      const originalShift = this.state.refValues[name][curTileIdx];
+      const shift = originalShift ?? 0;
+      params.algorithm_params = JSON.stringify({ shift });
+    }
+    if (this.state.dataMode === "cog") {
+      const url = curDataset.file_list[curTileIdx];
+      const maskUrl = curDataset.mask_file_list[curTileIdx];
+      const maskMinValue = curDataset.mask_min_value;
+      params.url = url;
+      if (maskUrl !== void 0)
+        params.mask = maskUrl;
+      if (maskMinValue !== void 0)
+        params.mask_min_value = maskMinValue.toString();
+    }
+    const urlParams = Object.keys(params).map((i) => `${i}=${encodeURIComponent(params[i])}`).join("&");
+    const endpoint = this.state.dataMode === "md" ? `${this.baseUrl}/md/WebMercatorQuad/tilejson.json?${urlParams}` : `${this.baseUrl}/cog/WebMercatorQuad/tilejson.json?${urlParams}`;
+    fetch(endpoint).then((response) => response.json()).then((tileInfo) => {
+      const newTile = leafletSrcExports.tileLayer(tileInfo.tiles[0], { maxZoom: 19 });
+      if (this.state.tile !== null) {
+        this.map.removeLayer(this.state.tile);
+      }
+      newTile.addTo(this.map);
+      this.state.tile = newTile;
+    }).catch((error) => {
+      console.error("Error loading tile:", error);
+    });
+  }
+  async getPointTimeSeries(lon, lat, name) {
+    const params = { dataset_name: name, lon, lat };
+    const urlParams = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
+    const endpoint = `${this.baseUrl}/point?${urlParams}`;
+    try {
+      const response = await fetch(endpoint);
+      return await response.json();
+    } catch (error) {
+      console.log(error);
+      return void 0;
+    }
+  }
+  async updateChart() {
+    const { lat, lng } = this.state.markerTs.getLatLng();
+    let tsPromise;
+    if (this.curUsesRef()) {
+      const refLatlng = this.state.markerRef.getLatLng();
+      tsPromise = this.getChartTimeSeries(lng, lat, refLatlng.lng, refLatlng.lat);
+    } else {
+      tsPromise = this.getChartTimeSeries(lng, lat);
+    }
+    const data = await tsPromise;
+    if (data && this.chart) {
+      this.chart.data = data;
+      this.chart.update();
+    }
+  }
+  async getChartTimeSeries(lon, lat, ref_lon, ref_lat) {
+    let params = { lon, lat, dataset_name: this.state.name };
+    if (ref_lon !== void 0 && ref_lat !== void 0) {
+      params.ref_lat = ref_lat;
+      params.ref_lon = ref_lon;
+    }
+    const urlParams = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
+    const endpoint = `${this.baseUrl}/chart_point?${urlParams}`;
+    try {
+      const response = await fetch(endpoint);
+      return await response.json();
+    } catch (error) {
+      console.log(error);
+      return void 0;
+    }
+  }
+  setChartYLimits(min, max) {
+    if (!this.chart)
+      return;
+    const scales2 = this.chart.options.scales || {};
+    const yAxis = scales2.y || {};
+    yAxis.suggestedMin = min;
+    yAxis.suggestedMax = max;
+    this.chart.update();
+  }
+  loadPreferences(name) {
+    const colormap_name = localStorage.getItem(`${name}-colormap_name`);
+    const vmin = localStorage.getItem(`${name}-vmin`);
+    const vmax = localStorage.getItem(`${name}-vmax`);
+    if (vmin === null || vmax === null || colormap_name === null) {
+      return { colormap_name: null, vmin: null, vmax: null };
+    }
+    if (this.options.showSidebar !== false) {
+      const cmapSelect = this.container.querySelector("#colormap-selector");
+      const colormapImg = this.container.querySelector("#colormap-img");
+      const vminInput = this.container.querySelector("#vmin");
+      const vmaxInput = this.container.querySelector("#vmax");
+      if (cmapSelect)
+        cmapSelect.value = colormap_name;
+      if (colormapImg)
+        colormapImg.src = `${this.baseUrl}/colorbar/${colormap_name}`;
+      if (vminInput)
+        vminInput.value = vmin;
+      if (vmaxInput)
+        vmaxInput.value = vmax;
+    }
+    return {
+      colormap_name,
+      vmin: parseFloat(vmin),
+      vmax: parseFloat(vmax)
+    };
+  }
+  savePreferences(name) {
+    if (this.options.showSidebar === false)
+      return;
+    const vminInput = this.container.querySelector("#vmin");
+    const vmaxInput = this.container.querySelector("#vmax");
+    const cmapSelect = this.container.querySelector("#colormap-selector");
+    if (!vminInput || !vmaxInput || !cmapSelect)
+      return;
+    const vmin = parseFloat(vminInput.value);
+    const vmax = parseFloat(vmaxInput.value);
+    const colormap_name = cmapSelect.value;
+    localStorage.setItem(`${name}-colormap_name`, colormap_name);
+    localStorage.setItem(`${name}-vmin`, vmin.toString());
+    localStorage.setItem(`${name}-vmax`, vmax.toString());
+  }
+  // Public API methods
+  setDataset(dataset) {
+    if (this.state.datasetInfo[dataset]) {
+      this.setupDataset(dataset);
+      const datasetSelector = this.container.querySelector("#dataset-selector");
+      if (datasetSelector) {
+        datasetSelector.value = dataset;
+      }
+    }
+  }
+  setTimeIndex(index2) {
+    this.state.tileIdx = index2;
+    this.updateRasterTile();
+    const layerSlider = this.container.querySelector("#layer-slider");
+    const layerSliderText = this.container.querySelector("#layer-slider-value");
+    if (layerSlider && layerSliderText) {
+      layerSlider.value = index2.toString();
+      const timeValue = this.state.datasetInfo[this.state.name].x_values[index2];
+      layerSliderText.textContent = timeValue.toString();
+    }
+  }
+  getState() {
+    return {
+      dataset: this.state.name,
+      timeIndex: this.state.tileIdx,
+      markerPosition: this.state.markerTs.getLatLng(),
+      refMarkerPosition: this.state.markerRef.getLatLng()
+    };
+  }
 }
-map.on("click", function(e) {
-  console.log("click", e.latlng);
-  let lat = e.latlng.lat;
-  let lon = e.latlng.lng;
-  state.markerTs.setLatLng([lat, lon]);
-  chartContainer.style.display !== "none" && updateChart();
-});
-const setRefValues = (datasetName) => {
-  const { lat, lng } = state.markerRef.getLatLng();
-  console.log("shifting", lat, lng);
-  getPointTimeSeries(lng, lat, datasetName).then((values) => {
-    console.log("getPointTimeSeries", values);
-    if (values !== void 0) {
-      state.refValues[datasetName] = values;
-      curUsesRef() && updateRasterTile();
-    }
-  }, (error) => {
-    console.log("setRefValues error:", error);
-  });
-};
-state.markerTs.on("moveend", function() {
-  console.log("moveend", state.markerTs.getLatLng());
-  chartContainer.style.display !== "none" && updateChart();
-});
-state.markerRef.on("moveend", function() {
-  chartContainer.style.display !== "none" && updateChart();
-  setRefValues(state.name);
-});
-const showLatLngPopup = (event) => {
-  const { lat, lng } = event.latlng;
-  leafletSrcExports.popup().setLatLng(event.latlng).setContent(`Marker (lon, lat):
-(${lng.toFixed(6)}, ${lat.toFixed(6)})`).addTo(map);
-};
-state.markerRef.addEventListener("click", showLatLngPopup);
-state.markerTs.addEventListener("click", showLatLngPopup);
-const cmapNameSelect = document.getElementById("colormap-selector");
-const colormapImg = document.getElementById("colormap-img");
-const vminSelect = document.getElementById("vmin");
-const vmaxSelect = document.getElementById("vmax");
-const loadPreferences = (name) => {
-  const colormap_name = localStorage.getItem(`${name}-colormap_name`);
-  const vmin = localStorage.getItem(`${name}-vmin`);
-  const vmax = localStorage.getItem(`${name}-vmax`);
-  if (vmin === null || vmax === null || colormap_name === null) {
-    return { colormap_name: null, vmin: null, vmax: null };
-  }
-  cmapNameSelect.value = colormap_name;
-  colormapImg.src = `/colorbar/${colormap_name}`;
-  vminSelect.value = vmin;
-  vmaxSelect.value = vmax;
-  return { colormap_name, vmin: parseFloat(vmin), vmax: parseFloat(vmax) };
-};
-const savePreferences = (name) => {
-  const vmin = parseFloat(vminSelect.value);
-  const vmax = parseFloat(vmaxSelect.value);
-  const colormap_name = cmapNameSelect.value;
-  localStorage.setItem(`${name}-colormap_name`, colormap_name);
-  localStorage.setItem(`${name}-vmin`, vmin.toString());
-  localStorage.setItem(`${name}-vmax`, vmax.toString());
-};
-const updateRasterTile = () => {
-  const { name, tileIdx } = state;
-  const curDataset = state.datasetInfo[name];
-  let { colormap_name, vmin, vmax } = loadPreferences(name);
-  if (colormap_name === null) colormap_name = cmapNameSelect.value;
-  if (vmin === null) vmin = parseFloat(vminSelect.value);
-  if (vmax === null) vmax = parseFloat(vmaxSelect.value);
-  setChartYLimits(vmin, vmax);
-  colormapImg.src = `/colorbar/${colormap_name}`;
-  const maxIdx = curDataset.x_values.length - 1;
-  const curTileIdx = Math.max(0, Math.min(tileIdx, maxIdx));
-  state.tileIdx = curTileIdx;
-  let params = {
-    variable: name,
-    time_idx: curTileIdx.toString(),
-    rescale: `${vmin},${vmax}`,
-    colormap_name
-  };
-  if (curDataset.algorithm !== null) {
-    params.algorithm = curDataset.algorithm;
-  }
-  if (state.refValues[name] !== void 0 && curDataset.algorithm === "shift") {
-    const originalShift = state.refValues[name][curTileIdx];
-    const shift = originalShift ?? 0;
-    if (originalShift == null) {
-      console.log(`Warning: shift value is null/undefined for time index ${curTileIdx}, using fallback value of 0`);
-    }
-    params.algorithm_params = JSON.stringify({ "shift": shift });
-  }
-  if (state.dataMode === "cog") {
-    console.log("COG!");
-    const url = curDataset.file_list[curTileIdx];
-    const maskUrl = curDataset.mask_file_list[curTileIdx];
-    const maskMinValue = curDataset.mask_min_value;
-    params.url = url;
-    if (maskUrl !== void 0) params.mask = maskUrl;
-    if (maskMinValue !== void 0) params.mask_min_value = maskMinValue.toString();
-    console.log(params);
-  }
-  const url_params = Object.keys(params).map((i) => `${i}=${encodeURIComponent(params[i])}`).join("&");
-  console.log("Standard titiler url_params", url_params);
-  const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${url_params}` : `/cog/WebMercatorQuad/tilejson.json?${url_params}`;
-  fetch(endpoint).then((response) => response.json()).then((tileInfo) => {
-    console.log("Standard titiler tile info", tileInfo);
-    let newTile = leafletSrcExports.tileLayer(tileInfo.tiles[0], {
-      maxZoom: 19
-    });
-    if (state.tile !== null) {
-      map.removeLayer(state.tile);
-    }
-    newTile.addTo(map);
-    state.tile = newTile;
-  }).catch((error) => {
-    console.error("Error in getting standard titiler tile info:", error);
-  });
-};
-const datasetSelector = document.getElementById("dataset-selector");
-datasetSelector.addEventListener("change", (event) => {
-  savePreferences(state.name);
-  const datasetName = event.target.value;
-  console.log("Changing variable to:", datasetName);
-  setupDataset(datasetName);
-  loadPreferences(datasetName);
-});
-const layerSlider = document.getElementById("layer-slider");
-const layerSliderText = document.getElementById("layer-slider-value");
-layerSlider.addEventListener("input", (event) => {
-  const { name } = state;
-  const target = event.target;
-  let newIdx = parseInt(target.value);
-  const timeValue = state.datasetInfo[name].x_values[newIdx];
-  layerSliderText.textContent = timeValue.toString();
-});
-layerSlider.addEventListener("change", (event) => {
-  const { name } = state;
-  const target = event.target;
-  let newIdx = parseInt(target.value);
-  state.tileIdx = newIdx;
-  state.name = name;
-  updateRasterTile();
-});
-cmapNameSelect.addEventListener("change", () => {
-  savePreferences(state.name);
-  updateRasterTile();
-});
-vminSelect.addEventListener("change", () => {
-  savePreferences(state.name);
-  updateRasterTile();
-});
-vmaxSelect.addEventListener("change", () => {
-  savePreferences(state.name);
-  updateRasterTile();
-});
-const opacitySlider = document.getElementById("opacity-slider");
-const opacitySliderText = document.getElementById("opacity-slider-value");
-opacitySlider.addEventListener("input", (event) => {
-  const opacity = event.target.value;
-  opacitySliderText.textContent = opacity;
-  if (state.tile !== null) {
-    state.tile.setOpacity(parseFloat(opacity));
-  }
-});
-const setupDataset = (name) => {
-  const curDataset = state.datasetInfo[name];
-  layerSlider.max = (curDataset.x_values.length - 1).toString();
-  layerSliderText.textContent = curDataset.x_values[0].toString();
-  state.name = name;
-  if (curDataset.uses_spatial_ref && state.refValues[name] === void 0) {
-    setRefValues(name);
-  }
-  updateRasterTile();
-};
-const computeCenter = (name) => {
-  const curDataset = state.datasetInfo[name];
-  let bounds = curDataset.latlon_bounds;
-  const centerLat = (bounds[1] + bounds[3]) / 2;
-  const centerLng = (bounds[0] + bounds[2]) / 2;
-  return { centerLat, centerLng };
-};
-const initializeDatasets = () => {
-  fetch("/mode").then((response) => response.json()).then((modeData) => {
-    state.dataMode = modeData.mode;
-    console.log("Data mode:", state.dataMode);
-    return fetch("/datasets");
-  }).then((response) => response.json()).then((data) => {
-    state.datasetInfo = data;
-    console.log("datasetInfo", state.datasetInfo);
-    const name0 = Object.keys(state.datasetInfo)[0];
-    const { centerLat, centerLng } = computeCenter(name0);
-    map.setView([centerLat, centerLng], 9);
-    for (let marker of [state.markerTs, state.markerRef]) {
-      marker.setLatLng([centerLat, centerLng]);
-    }
-    setupDataset(name0);
-    datasetSelector.innerHTML = "";
-    Object.keys(state.datasetInfo).forEach((varName) => {
-      const option = document.createElement("option");
-      option.value = varName;
-      option.textContent = varName;
-      datasetSelector.appendChild(option);
-    });
-  }).catch((error) => {
-    console.error("Error initializing datasets:", error);
-  });
-};
-const chartElem = document.querySelector("#chart");
-const chartContainer = document.querySelector("#chart-container");
-const hideChartBtn = document.querySelector("#hide-chart");
-var chart = new Chart(chartElem, {
-  options: {
-    animation: false,
-    plugins: {
-      legend: { display: false }
+function createBowserApp(container, options = {}) {
+  return new BowserApp({ container, ...options });
+}
+let bowserApp = null;
+function render({ model, el }) {
+  el.innerHTML = "";
+  el.style.width = model.get("width") || "100%";
+  el.style.height = model.get("height") || "600px";
+  el.style.border = "1px solid #ccc";
+  el.style.borderRadius = "4px";
+  el.style.overflow = "hidden";
+  const serverUrl = model.get("server_url") || "";
+  bowserApp = createBowserApp(el, {
+    baseUrl: serverUrl,
+    showSidebar: true,
+    // Show full interface in widget
+    onTimeseriesClick: (data) => {
+      model.send({
+        event: "timeseries_click",
+        data
+      });
+      model.set("last_timeseries", data);
+      model.save_changes();
     },
-    scales: { y: {} }
-    // scales: { xAxes: [{ type: 'time' }], yAxes: [{ type: 'linear' }] }
-  },
-  type: "line",
-  data: { datasets: [] }
-});
-function setChartYLimits(min, max) {
-  const scales2 = chart.options.scales || {};
-  const yAxis = scales2.y || {};
-  yAxis.suggestedMin = min;
-  yAxis.suggestedMax = max;
-  chart.update();
-}
-async function getPointTimeSeries(lon, lat, name) {
-  const params = {
-    dataset_name: name,
-    lon,
-    lat
-  };
-  const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
-  const endpoint = `/point?${url_params}`;
-  console.log(endpoint);
-  try {
-    const response = await fetch(endpoint);
-    return await response.json();
-  } catch (error) {
-    console.log(error);
-    return void 0;
-  }
-}
-async function getChartTimeSeries(lon, lat, ref_lon = null, ref_lat = null) {
-  let params = {
-    lon,
-    lat,
-    dataset_name: state.name
-  };
-  if (ref_lon !== null && ref_lat !== null) {
-    params.ref_lat = ref_lat;
-    params.ref_lon = ref_lon;
-  }
-  const url_params = Object.keys(params).map((i) => `${i}=${params[i]}`).join("&");
-  const endpoint = `/chart_point?${url_params}`;
-  console.log(endpoint);
-  try {
-    const response = await fetch(endpoint);
-    return await response.json();
-  } catch (error) {
-    console.log(error);
-    return void 0;
-  }
-}
-function updateChart() {
-  const { lat, lng } = state.markerTs.getLatLng();
-  let tsPromise;
-  if (curUsesRef()) {
-    const refLatlng = state.markerRef.getLatLng();
-    tsPromise = getChartTimeSeries(lng, lat, refLatlng.lng, refLatlng.lat);
-  } else {
-    tsPromise = getChartTimeSeries(lng, lat);
-  }
-  tsPromise.then((data) => {
-    if (data) {
-      chart.data = data;
-      chart.update();
+    onDatasetChange: (dataset) => {
+      model.set("dataset", dataset);
+      model.save_changes();
+      model.send({
+        event: "dataset_selected",
+        dataset
+      });
+    },
+    onTimeIndexChange: (index2) => {
+      model.set("time_index", index2);
+      model.save_changes();
+      model.send({
+        event: "time_index_updated",
+        time_index: index2
+      });
     }
   });
+  model.on("change:dataset", () => {
+    const newDataset = model.get("dataset");
+    if (bowserApp && newDataset) {
+      bowserApp.setDataset(newDataset);
+    }
+  });
+  model.on("change:time_index", () => {
+    const newIndex = model.get("time_index");
+    if (bowserApp && typeof newIndex === "number") {
+      bowserApp.setTimeIndex(newIndex);
+    }
+  });
+  model.on("msg:custom", (msg) => {
+    if (msg.cmd === "init") {
+      console.log("Widget initialized with server URL:", msg.server_url);
+    } else if (msg.cmd === "dataset_changed") {
+      if (bowserApp) {
+        bowserApp.setDataset(msg.dataset);
+      }
+    } else if (msg.cmd === "time_index_changed") {
+      if (bowserApp) {
+        bowserApp.setTimeIndex(msg.time_index);
+      }
+    }
+  });
+  const resizeObserver = new ResizeObserver(() => {
+    if (bowserApp) {
+      const mapContainer = el.querySelector("#map");
+      if (mapContainer) {
+        setTimeout(() => {
+          const mapInstance = bowserApp.map;
+          if (mapInstance && mapInstance.invalidateSize) {
+            mapInstance.invalidateSize();
+          }
+        }, 100);
+      }
+    }
+  });
+  resizeObserver.observe(el);
+  return () => {
+    resizeObserver.disconnect();
+    bowserApp = null;
+  };
 }
-state.markerRef.addTo(map);
-hideChartBtn.addEventListener("click", () => {
-  if (chartContainer.style.display !== "none") {
-    chartContainer.style.display = "none";
-    hideChartBtn.textContent = "Show time series";
-    state.markerTs.remove();
-  } else {
-    chartContainer.style.display = "block";
-    hideChartBtn.textContent = "Hide time series";
-    state.markerTs.addTo(map);
-  }
-});
-console.log("Initializing Xarray-based app...");
-initializeDatasets();
-console.log("datasets loaded?", state.datasetInfo);
+export {
+  render
+};

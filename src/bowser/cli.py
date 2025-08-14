@@ -86,6 +86,8 @@ def run(
     """Run the web server."""
     import uvicorn
 
+    from .server import _find_available_port, _setup_gdal_env
+
     if port is None:
         port = _find_available_port(8000)
     _setup_gdal_env(ignore_sidecar_files)
@@ -106,22 +108,6 @@ def run(
         workers=workers,
         log_level=log_level,
     )
-
-
-def _setup_gdal_env(ignore_sidecar_files: bool = False):
-    # https://developmentseed.org/titiler/advanced/performance_tuning/
-    cfg = {
-        "GDAL_HTTP_MULTIPLEX": "YES",
-        "GDAL_HTTP_MERGE_CONSECUTIVE_RANGES": "YES",
-        "GDAL_CACHEMAX": "800",
-        "CPL_VSIL_CURL_CACHE_SIZE": "800",
-        "VSI_CACHE": "TRUE",
-        "VSI_CACHE_SIZE": "5000000",
-    }
-    for k, v in cfg.items():
-        os.environ[k] = v
-    if ignore_sidecar_files:
-        os.environ["GDAL_DISABLE_READDIR_ON_OPEN"] = "EMPTY_DIR"
 
 
 @cli_app.command()
@@ -364,20 +350,6 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
-
-
-def _find_available_port(port_request: int = 8000):
-    import socket
-
-    port = port_request - 1
-    while (result := 0) == 0:
-        port += 1
-        # Check if the port is open
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex(("127.0.0.1", port))
-
-        if result != 0:
-            return port
 
 
 @cli_app.command()

@@ -31,3 +31,7 @@ _version.py
 
 data/
 .ipynb_checkpoints
+
+# pixi environments
+.pixi
+*.egg-info
