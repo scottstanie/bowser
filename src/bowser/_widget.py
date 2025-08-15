@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import threading
 
 import ipywidgets as widgets
@@ -39,6 +40,7 @@ def make_bowser_widget(
     **server_kwargs,
 ) -> widgets.VBox:
     """Create a Jupyter widget with dataset, colormap, rescale and opacity controls."""
+    os.environ["TQDM_DISABLE"] = "1"
     # Ensure a server is available (this part is unchanged)
     server = None
     try:
@@ -91,12 +93,12 @@ def make_bowser_widget(
             'box-shadow:0 0 2px rgba(0,0,0,.6)"></div>'
         )
         ts_icon = DivIcon(
-            html=marker_html.format("royalblue"),
+            html=marker_html.format(color="royalblue"),
             icon_size=[14, 14],
             icon_anchor=[7, 7],
         )
         ref_icon = DivIcon(
-            html=marker_html.format("black"),
+            html=marker_html.format(color="black"),
             icon_size=[14, 14],
             icon_anchor=[7, 7],
         )
@@ -316,7 +318,7 @@ def make_bowser_widget(
             marks=[line, current_time_marker],
             axes=[x_ax, y_ax],
             title=fig_title,
-            layout={"height": "35vh", "width": "100%"},  # MODIFIED
+            layout={"height": "35vh", "width": "95%"},
         )
         ui = widgets.VBox([title, container, plot_output])
         return ui

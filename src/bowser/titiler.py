@@ -110,6 +110,7 @@ class RasterGroup(BaseModel):
     mask_min_value: float = 0.1
     file_date_fmt: str | None = "%Y%m%d"
     _reader: RasterStackReader
+    _disable_tqdm: bool = True
 
     @field_validator("file_list")
     @classmethod
@@ -126,6 +127,7 @@ class RasterGroup(BaseModel):
             num_threads=3,
             nodata=self.nodata,
             file_date_fmt=self.file_date_fmt,
+            disable_tqdm=self._disable_tqdm,
         )
 
     @computed_field
