@@ -59,8 +59,8 @@ class BowserServer:
         self.no_spatial_reference = no_spatial_reference
         self.no_recommended_mask = no_recommended_mask
 
-        self._server = None
-        self._thread = None
+        self._server: uvicorn.Server | None = None
+        self._thread: threading.Thread | None = None
         self._should_exit = threading.Event()
 
     @property
@@ -106,6 +106,7 @@ class BowserServer:
 
         # Start server in background thread
         self._thread = threading.Thread(target=self._run_server, daemon=True)
+        assert self._thread is not None
         self._thread.start()
 
         # Wait for server to start

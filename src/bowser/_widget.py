@@ -65,23 +65,25 @@ def make_bowser_widget(
             options=list(datasets.keys()),
             value=dataset_name,
             description="Layer:",
-            layout=widgets.Layout(width="280px"),
+            layout=widgets.Layout(width="100%"),
         )
         cmap_dd = widgets.Dropdown(
             options=CMAPS,
             value=DEFAULT_CMAP,
             description="Colormap:",
-            layout=widgets.Layout(width="280px"),
+            layout=widgets.Layout(width="100%"),
         )
         vmin_ft = widgets.FloatText(
             value=DEFAULT_VMIN,
+            step=0.01,
             description="vmin:",
-            layout=widgets.Layout(width="180px"),
+            layout=widgets.Layout(width="15em"),
         )
         vmax_ft = widgets.FloatText(
             value=DEFAULT_VMAX,
+            step=0.01,
             description="vmax:",
-            layout=widgets.Layout(width="180px"),
+            layout=widgets.Layout(width="15em"),
         )
         opacity_sl = widgets.FloatSlider(
             value=1.0,
@@ -90,24 +92,31 @@ def make_bowser_widget(
             step=0.01,
             description="Opacity:",
             readout=True,
-            layout=widgets.Layout(width="320px"),
+            layout=widgets.Layout(width="100%"),
         )
-        # put the index slider *below* the map; don't scroll
         idx_sl = widgets.IntSlider(
             description="Index:",
             continuous_update=False,
             layout=widgets.Layout(width="100%"),
         )
+        left_controls = widgets.VBox(
+            [dataset_dd, vmin_ft, vmax_ft, cmap_dd, opacity_sl, idx_sl],
+            layout=widgets.Layout(width="20em", grid_area="menu"),
+        )
 
         title = widgets.HTML(value="")
 
-        # --- map ---
+        # --- map (fill the right column completely) ---
         m = Map(
             center=[0, 0],
             zoom=2,
             basemap=basemaps.Esri.WorldImagery,
             layout=widgets.Layout(
-                width="100%", height="520px", min_height="520px", flex="1 1 auto"
+                width="100%",
+                height="100%",
+                min_height="0",
+                flex="1 1 auto",
+                grid_area="map",
             ),
         )
         m.add_control(ScaleControl(position="bottomleft"))
@@ -196,20 +205,20 @@ def make_bowser_widget(
         refresh_tile()
         fit_to_layer()  # one-time fit on load
 
-        # layout: controls left, map right; index slider below map full width
-        left_controls = widgets.VBox(
-            [
-                dataset_dd,
-                widgets.HBox([vmin_ft, vmax_ft]),
-                cmap_dd,
-                opacity_sl,
-            ],
-            layout=widgets.Layout(width="320px"),
+        # layout: CSS-grid clone of your `body { grid-template-areas: "menu map"; }`
+        container = widgets.GridBox(
+            children=[left_controls, m],
+            layout=widgets.Layout(
+                width="100%",
+                height="75vh",  # same as your CSS
+                grid_template_columns="20em 1fr",  # 20em + auto
+                grid_template_rows="1fr auto",  # map fills
+                grid_template_areas='"menu map"',
+                grid_gap="0.75rem",
+                align_items="stretch",
+            ),
         )
-        top_row = widgets.HBox(
-            [left_controls, m], layout=widgets.Layout(align_items="flex-start")
-        )
-        ui = widgets.VBox([title, top_row, idx_sl])
+        ui = widgets.VBox([title, container])  # instead of HBox/VBox top_row
         return ui
 
     except Exception as e:
