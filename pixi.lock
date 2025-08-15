@@ -267,6 +267,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/b7/b8/3fe70c75fe32afc4bb507f75563d39bc5642255d1d94f1f23604725780bf/babel-2.17.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/cd/30110dc0ffcf3b131156077b90e9f60ed75711223f306da4db08eff8403b/beautifulsoup4-4.13.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fc/55/96142937f66150805c25c4d0f31ee4132fd33497753400734f9dfdcbdc66/bleach-6.2.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/73/03/6b5370fc626e6f480c4a0b4cb25b3459d390745010618b21b4b573423a53/bqplot-0.12.45-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f8/9d/91cddd38bd00170aad1a4b198c47b4ed716be45c234e09b835af41f4e717/branca-0.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/00/f0/2ef431fe4141f5e334759d73e81120492b23b2824336883a91ac04ba710b/cachetools-6.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/57/13dbcc9913967489851f0b7d1c8d27840abe86e02d6e2e133d16db16d0d5/color_operations-0.2.0-cp312-cp312-macosx_11_0_arm64.whl
@@ -1196,6 +1197,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/b7/b8/3fe70c75fe32afc4bb507f75563d39bc5642255d1d94f1f23604725780bf/babel-2.17.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/50/cd/30110dc0ffcf3b131156077b90e9f60ed75711223f306da4db08eff8403b/beautifulsoup4-4.13.4-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/fc/55/96142937f66150805c25c4d0f31ee4132fd33497753400734f9dfdcbdc66/bleach-6.2.0-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/73/03/6b5370fc626e6f480c4a0b4cb25b3459d390745010618b21b4b573423a53/bqplot-0.12.45-py2.py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f8/9d/91cddd38bd00170aad1a4b198c47b4ed716be45c234e09b835af41f4e717/branca-0.8.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/00/f0/2ef431fe4141f5e334759d73e81120492b23b2824336883a91ac04ba710b/cachetools-6.1.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/b1/57/13dbcc9913967489851f0b7d1c8d27840abe86e02d6e2e133d16db16d0d5/color_operations-0.2.0-cp312-cp312-macosx_11_0_arm64.whl
@@ -1804,8 +1806,8 @@ packages:
   timestamp: 1755158592822
 - pypi: ./
   name: bowser-insar
-  version: 0.1.0.post1.dev116+g7c2eefb.d20250814
-  sha256: 1f8f327f338ce29adae9f8eb0be8b637ee6d8a047467c12a67ebf6447497e2ca
+  version: 0.3.0.post1.dev6+g6e10924.d20250815
+  sha256: fea5088ef1661d86d359d1d94cf366097ce6aca9f65e213b70ba0820cddd10f8
   requires_dist:
   - titiler-xarray[http,minimal]
   - starlette-cramjam
@@ -1823,11 +1825,23 @@ packages:
   - ipympl ; extra == 'widget'
   - ipywidgets ; extra == 'widget'
   - ipyleaflet ; extra == 'widget'
+  - bqplot>=0.12 ; extra == 'widget'
   - pytest ; extra == 'test'
   - httpx ; extra == 'test'
   - ipython ; extra == 'test'
   requires_python: '>=3.11'
   editable: true
+- pypi: https://files.pythonhosted.org/packages/73/03/6b5370fc626e6f480c4a0b4cb25b3459d390745010618b21b4b573423a53/bqplot-0.12.45-py2.py3-none-any.whl
+  name: bqplot
+  version: 0.12.45
+  sha256: cf2e046adb401670902ab53a18d9f63540091279bc45c4ef281bfdadf6e7e92c
+  requires_dist:
+  - ipywidgets>=7.5.0,<9
+  - traitlets>=4.3.0
+  - traittypes>=0.0.6
+  - numpy>=1.10.4
+  - pandas>=1.0.0,<3.0.0
+  requires_python: '>=3.6'
 - pypi: https://files.pythonhosted.org/packages/f8/9d/91cddd38bd00170aad1a4b198c47b4ed716be45c234e09b835af41f4e717/branca-0.8.1-py3-none-any.whl
   name: branca
   version: 0.8.1

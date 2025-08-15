@@ -48,6 +48,7 @@ widget = [
   "ipympl",
   "ipywidgets",
   "ipyleaflet",
+  "bqplot>=0.12",
 ]
 test = ["pytest", "httpx", "ipython"]
 
@@ -93,6 +94,7 @@ test = { features = ["test"], solve-group = "test" }
 all = { features = ["widget", "test"], solve-group = "all" }
 
 [tool.pixi.tasks]
+
 
 [tool.ruff]
 src = ["src"]
