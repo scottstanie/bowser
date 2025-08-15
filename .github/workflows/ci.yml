@@ -25,19 +25,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup environment
-        uses: mamba-org/setup-micromamba@v2
+      - name: Setup pixi
+        uses: prefix-dev/setup-pixi@v0.8.11
         with:
-          environment-file: environment.yml
-          environment-name: bowser-env
-          generate-run-shell: false
-          condarc: |
-            channels:
-              - conda-forge
-      - name: Install
+          pixi-version: v0.49.0
+          cache: false
+      - name: Install environment
         run: |
-          pip install .[test,remote,geopandas]
-          pip install xarray dask
+          pixi install
+          pixi install -e all
+
       - name: Test
         run: |
-          pytest -vv
+          pixi run -e all pytest
