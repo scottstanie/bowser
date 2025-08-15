@@ -64,18 +64,6 @@ from bowser._widget import make_bowser_widget
 # Automatically starts server and creates widget
 widget = make_bowser_widget(rasters_file="bowser_rasters.json")
 widget
-
-# Or with more control:
-
-from bowser._server import running
-from bowser._widget import make_bowser_widget
-
-with running(stack_file="data/west-texas-tubbs-uplift.zarr") as server:
-    widget = make_bowser_widget(
-        dataset_name="displacement",
-        bowser_url=server.url
-    )
-    display(widget)
 ```
 
 ## Quickstart for DISP-S1 NetCDFs
