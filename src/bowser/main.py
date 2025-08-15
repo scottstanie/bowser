@@ -6,6 +6,7 @@ import warnings
 from pathlib import Path
 from typing import Annotated, Callable, Optional
 
+import matplotlib
 import numpy as np
 import rasterio
 import xarray as xr
@@ -34,7 +35,6 @@ warnings.filterwarnings(
 t0 = time.time()
 
 # Set up matplotlib backend for thread safety BEFORE any matplotlib imports
-import matplotlib
 
 matplotlib.use("Agg")
 
