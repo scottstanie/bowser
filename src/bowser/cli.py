@@ -321,7 +321,7 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
             "file_list": _glob(f"{wd}/interferograms/similarity_[0-9]*.tif"),
         },
         {
-            "name": "Phase cosine similarity",
+            "name": "Phase cosine similarity (full)",
             "file_list": _glob(f"{wd}/interferograms/similarity_full*.tif"),
         },
         {
@@ -331,6 +331,10 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         {
             "name": "Closure phase",
             "file_list": _glob(f"{wd}/interferograms/closure_phase_*[0-9].tif"),
+        },
+        {
+            "name": "Cumulative closure phase",
+            "file_list": _glob(f"{wd}/interferograms/cumulative_closure_phase_*[0-9].tif"),
         },
         {
             "name": "Amplitude dispersion",
