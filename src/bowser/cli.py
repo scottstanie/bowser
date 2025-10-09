@@ -134,7 +134,8 @@ def _setup_gdal_env(ignore_sidecar_files: bool = False):
     default="bowser_rasters.json",
     show_default=True,
 )
-def set_data(output: Path):
+@click.option("--file-date-fmt", default="%Y%m%d")
+def set_data(output: Path, file_date_fmt: str):
     """Specify what raster data to use.
 
     Saves to `output` JSON file.
@@ -211,6 +212,7 @@ def set_data(output: Path):
             algorithm=algorithm,
             uses_spatial_ref=uses_spatial_ref,
             mask_min_value=mask_min_value,
+            file_date_fmt=file_date_fmt,
         )
         raster_groups.append(rg)
 
@@ -334,7 +336,9 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         },
         {
             "name": "Cumulative closure phase",
-            "file_list": _glob(f"{wd}/interferograms/cumulative_closure_phase_*[0-9].tif"),
+            "file_list": _glob(
+                f"{wd}/interferograms/cumulative_closure_phase_*[0-9].tif"
+            ),
         },
         {
             "name": "Amplitude dispersion",
