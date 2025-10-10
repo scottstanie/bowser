@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
+import { Chart as ChartJS, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import 'chartjs-adapter-date-fns';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { MultiPointTimeSeriesData } from '../types';
 
 // Register Chart.js components
-ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
@@ -22,10 +23,10 @@ export default function TimeSeriesChart() {
 
     setIsLoading(true);
     const currentDatasetInfo = state.datasetInfo[state.currentDataset];
-    
+
     // Filter visible points
     const visiblePoints = state.timeSeriesPoints.filter(p => p.visible);
-    
+
     if (visiblePoints.length === 0) {
       setChartData(null);
       setIsLoading(false);
@@ -58,7 +59,7 @@ export default function TimeSeriesChart() {
 
       if (tsData) {
         setChartData(tsData);
-        
+
         // Update trend data in state only if trends are being calculated
         if (state.showTrends && tsData.datasets) {
           // Use setTimeout to avoid re-render loop during state updates
@@ -106,10 +107,10 @@ export default function TimeSeriesChart() {
 
   const handleChartClick = useCallback((_event: any, elements: InteractionItem[]) => {
     if (elements.length === 0 || !chartData) return;
-    
+
     const element = elements[0];
     const dataIndex = element.index;
-    
+
     // Update the current time index to sync with the clicked point
     if (dataIndex !== undefined && dataIndex < chartData.labels.length) {
       dispatch({ type: 'SET_TIME_INDEX', payload: dataIndex });
@@ -135,7 +136,7 @@ export default function TimeSeriesChart() {
           padding: 20,
           generateLabels: (_chart: any) => {
             if (!chartData?.datasets) return [];
-            
+
             return chartData.datasets.map((dataset, index) => ({
               text: `${dataset.label}${dataset.trend && dataset.trend.mmPerYear !== undefined ? ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)` : ''}`,
               pointStyle: 'circle' as const,
@@ -155,13 +156,13 @@ export default function TimeSeriesChart() {
           label: (context: any) => {
             const dataset = chartData?.datasets?.[context.datasetIndex];
             if (!dataset) return '';
-            
+
             let label = `${dataset.label}: ${context.parsed.y.toFixed(3)}`;
-            
+
             if (dataset.trend && dataset.trend.mmPerYear !== undefined && state.showTrends) {
               label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
             }
-            
+
             return label;
           },
         },
@@ -169,6 +170,13 @@ export default function TimeSeriesChart() {
     },
     scales: {
       x: {
+        type: 'time' as const,
+        time: {
+          displayFormats: {
+            month: 'MMM yyyy',
+            year: 'yyyy',
+          },
+        },
         title: {
           display: true,
           text: 'Time',
