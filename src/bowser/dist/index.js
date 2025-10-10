@@ -32322,6 +32322,47 @@ function TimeSeriesChart() {
       dispatch({ type: "SET_TIME_INDEX", payload: dataIndex });
     }
   }, [chartData, dispatch]);
+  const handleExportToCSV = reactExports.useCallback(() => {
+    if (!chartData || !chartData.datasets || chartData.datasets.length === 0) return;
+    const headers = ["Time", ...chartData.datasets.map((d) => d.label)];
+    const rows = [];
+    chartData.labels.forEach((label, idx) => {
+      const row = [label];
+      chartData.datasets.forEach((dataset) => {
+        const dataPoint = dataset.data[idx];
+        row.push(dataPoint ? dataPoint.y.toString() : "");
+      });
+      rows.push(row);
+    });
+    const trendRows = [];
+    if (state.showTrends && chartData.datasets.some((d) => d.trend)) {
+      trendRows.push([""]);
+      trendRows.push(["Point", "Rate (mm/year)", "R²", "Slope", "Intercept"]);
+      chartData.datasets.forEach((dataset) => {
+        if (dataset.trend) {
+          trendRows.push([
+            dataset.label,
+            dataset.trend.mmPerYear.toFixed(6),
+            dataset.trend.rSquared.toFixed(6),
+            dataset.trend.slope.toFixed(6),
+            dataset.trend.intercept.toFixed(6)
+          ]);
+        }
+      });
+    }
+    const allRows = [headers, ...rows, ...trendRows];
+    const csvContent = allRows.map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, -5);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `time-series-${state.currentDataset}-${timestamp}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [chartData, state.showTrends, state.currentDataset]);
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -32428,19 +32469,33 @@ function TimeSeriesChart() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Time Series Analysis" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-controls", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: "pure-button",
-          onClick: () => dispatch({ type: "TOGGLE_TRENDS" }),
-          title: "Toggle trend analysis",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-chart-line" : "fa-chart-simple"}` }),
-            state.showTrends ? "Hide" : "Show",
-            " Trends"
-          ]
-        }
-      ) })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-controls", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "pure-button",
+            onClick: () => dispatch({ type: "TOGGLE_TRENDS" }),
+            title: "Toggle trend analysis",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-chart-line" : "fa-chart-simple"}` }),
+              state.showTrends ? "Hide" : "Show",
+              " Trends"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "pure-button",
+            onClick: handleExportToCSV,
+            title: "Export data to CSV",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-download" }),
+              "Export CSV"
+            ]
+          }
+        )
+      ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: formattedChartData, options: chartOptions }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-help", children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on chart points to sync map time • Trends show mm/year rates" }) })

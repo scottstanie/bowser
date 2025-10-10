@@ -117,6 +117,59 @@ export default function TimeSeriesChart() {
     }
   }, [chartData, dispatch]);
 
+  const handleExportToCSV = useCallback(() => {
+    if (!chartData || !chartData.datasets || chartData.datasets.length === 0) return;
+
+    // Build CSV header
+    const headers = ['Time', ...chartData.datasets.map(d => d.label)];
+
+    // Build data rows
+    const rows: string[][] = [];
+    chartData.labels.forEach((label, idx) => {
+      const row = [label];
+      chartData.datasets.forEach(dataset => {
+        const dataPoint = dataset.data[idx];
+        row.push(dataPoint ? dataPoint.y.toString() : '');
+      });
+      rows.push(row);
+    });
+
+    // Add trend information if available
+    const trendRows: string[][] = [];
+    if (state.showTrends && chartData.datasets.some(d => d.trend)) {
+      trendRows.push(['']); // Empty row separator
+      trendRows.push(['Point', 'Rate (mm/year)', 'R²', 'Slope', 'Intercept']);
+      chartData.datasets.forEach(dataset => {
+        if (dataset.trend) {
+          trendRows.push([
+            dataset.label,
+            dataset.trend.mmPerYear.toFixed(6),
+            dataset.trend.rSquared.toFixed(6),
+            dataset.trend.slope.toFixed(6),
+            dataset.trend.intercept.toFixed(6),
+          ]);
+        }
+      });
+    }
+
+    // Combine all rows and convert to CSV
+    const allRows = [headers, ...rows, ...trendRows];
+    const csvContent = allRows.map(row => row.join(',')).join('\n');
+
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `time-series-${state.currentDataset}-${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [chartData, state.showTrends, state.currentDataset]);
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -257,6 +310,14 @@ export default function TimeSeriesChart() {
           >
             <i className={`fa-solid ${state.showTrends ? 'fa-chart-line' : 'fa-chart-simple'}`}></i>
             {state.showTrends ? 'Hide' : 'Show'} Trends
+          </button>
+          <button
+            className="pure-button"
+            onClick={handleExportToCSV}
+            title="Export data to CSV"
+          >
+            <i className="fa-solid fa-download"></i>
+            Export CSV
           </button>
         </div>
       </div>
