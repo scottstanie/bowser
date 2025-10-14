@@ -119,7 +119,25 @@ To manually specify a raster/set of rasters, use the interactive `bowser set-dat
 
 `npm install` will install all dependencies.
 
-After making HTML or CSS changes, run `npm run build` to build the project.
+### Making changes to the UI
+
+After making `.tsx`, HTML or CSS changes, **you must run** `npm run build` to build the project:
+
+```bash
+$ npm run build
+
+> bowser-js@0.0.0 build
+> tsc && vite build
+
+vite v5.4.19 building for production...
+✓ 391 modules transformed.
+src/bowser/dist/index.html      0.85 kB │ gzip:   0.51 kB
+src/bowser/dist/index.css      25.68 kB │ gzip:   9.13 kB
+src/bowser/dist/index.js    1,086.17 kB │ gzip: 241.12 kB
+```
+
+This updates the `dist` directory, which is served when you run `bowser run ...`.
+
 Currently the `dist/` HTML and CSS files are checked in to git for easier deployment for non-javascript users.
 
 ## License

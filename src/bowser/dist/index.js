@@ -17207,14 +17207,16 @@ function RasterTileLayer() {
     if (!state.currentDataset || !state.datasetInfo[state.currentDataset]) {
       return;
     }
+    const controller = new AbortController();
+    const signal = controller.signal;
     const updateTileLayer2 = async () => {
       const currentDatasetInfo = state.datasetInfo[state.currentDataset];
-      const colormap = localStorage.getItem(`${state.currentDataset}-colormap_name`) || state.colormap;
-      const vmin = localStorage.getItem(`${state.currentDataset}-vmin`) ? parseFloat(localStorage.getItem(`${state.currentDataset}-vmin`)) : state.vmin;
-      const vmax = localStorage.getItem(`${state.currentDataset}-vmax`) ? parseFloat(localStorage.getItem(`${state.currentDataset}-vmax`)) : state.vmax;
+      const colormap = state.colormap;
+      const vmin = state.vmin;
+      const vmax = state.vmax;
       const maxIdx = currentDatasetInfo.x_values.length - 1;
       const timeIdx = Math.max(0, Math.min(state.currentTimeIndex, maxIdx));
-      let params = {
+      const params = {
         variable: state.currentDataset,
         time_idx: timeIdx.toString(),
         rescale: `${vmin},${vmax}`,
@@ -17240,14 +17242,18 @@ function RasterTileLayer() {
       const urlParams = new URLSearchParams(params).toString();
       const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${urlParams}` : `/cog/WebMercatorQuad/tilejson.json?${urlParams}`;
       try {
-        const response = await fetch(endpoint);
+        const response = await fetch(endpoint, { signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const tileInfo = await response.json();
-        setTileUrl(tileInfo.tiles[0]);
-      } catch (error) {
-        console.error("Error fetching tile info:", error);
+        if (!signal.aborted) setTileUrl(tileInfo.tiles[0]);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error("Error fetching tile info:", err);
+        }
       }
     };
     updateTileLayer2();
+    return () => controller.abort();
   }, [
     state.currentDataset,
     state.currentTimeIndex,
@@ -17265,7 +17271,8 @@ function RasterTileLayer() {
       url: tileUrl,
       opacity: state.opacity,
       maxZoom: 19
-    }
+    },
+    tileUrl
   );
 }
 function MarkerEventHandlers() {
@@ -17409,10 +17416,36 @@ const colormapOptions = [
 function ControlPanel() {
   const { state, dispatch } = useAppContext();
   const { fetchPointTimeSeries } = useApi();
+  const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
+  const [draftVmax, setDraftVmax] = reactExports.useState(String(state.vmax));
+  reactExports.useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
+  reactExports.useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
+  reactExports.useEffect(() => {
+    const datasetName = state.currentDataset;
+    if (!datasetName) return;
+    const safeNumToString = (x2) => Object.is(x2, -0) ? "-0" : String(x2);
+    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
+    localStorage.setItem(`${datasetName}-vmin`, safeNumToString(state.vmin));
+    localStorage.setItem(`${datasetName}-vmax`, safeNumToString(state.vmax));
+  }, [state.currentDataset, state.colormap, state.vmin, state.vmax]);
+  reactExports.useEffect(() => {
+    const datasetName = state.currentDataset;
+    if (!datasetName) return;
+    const colormap = localStorage.getItem(`${datasetName}-colormap_name`);
+    const vminStr = localStorage.getItem(`${datasetName}-vmin`);
+    const vmaxStr = localStorage.getItem(`${datasetName}-vmax`);
+    if (colormap) dispatch({ type: "SET_COLORMAP", payload: colormap });
+    if (vminStr !== null) {
+      const v2 = Number(vminStr);
+      if (!Number.isNaN(v2)) dispatch({ type: "SET_VMIN", payload: v2 });
+    }
+    if (vmaxStr !== null) {
+      const v2 = Number(vmaxStr);
+      if (!Number.isNaN(v2)) dispatch({ type: "SET_VMAX", payload: v2 });
+    }
+  }, [state.currentDataset, dispatch]);
   const handleDatasetChange = (datasetName) => {
-    savePreferences(state.currentDataset);
     dispatch({ type: "SET_CURRENT_DATASET", payload: datasetName });
-    loadPreferences(datasetName);
     const currentDatasetInfo2 = state.datasetInfo[datasetName];
     if ((currentDatasetInfo2 == null ? void 0 : currentDatasetInfo2.uses_spatial_ref) && !state.refValues[datasetName]) {
       setRefValues(datasetName);
@@ -17423,16 +17456,19 @@ function ControlPanel() {
   };
   const handleColormapChange = (colormap) => {
     dispatch({ type: "SET_COLORMAP", payload: colormap });
-    savePreferences(state.currentDataset);
   };
-  const handleVminChange = (vmin) => {
-    dispatch({ type: "SET_VMIN", payload: vmin });
-    savePreferences(state.currentDataset);
-  };
-  const handleVmaxChange = (vmax) => {
-    dispatch({ type: "SET_VMAX", payload: vmax });
-    savePreferences(state.currentDataset);
-  };
+  const commitVmin = reactExports.useCallback(() => {
+    const v2 = Number(draftVmin);
+    if (!Number.isNaN(v2)) {
+      dispatch({ type: "SET_VMIN", payload: v2 });
+    }
+  }, [draftVmin, dispatch]);
+  const commitVmax = reactExports.useCallback(() => {
+    const v2 = Number(draftVmax);
+    if (!Number.isNaN(v2)) {
+      dispatch({ type: "SET_VMAX", payload: v2 });
+    }
+  }, [draftVmax, dispatch]);
   const handleOpacityChange = (opacity) => {
     dispatch({ type: "SET_OPACITY", payload: opacity });
   };
@@ -17455,21 +17491,6 @@ function ControlPanel() {
     } catch (error) {
       console.error("Error setting reference values:", error);
     }
-  };
-  const savePreferences = (datasetName) => {
-    if (!datasetName) return;
-    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
-    localStorage.setItem(`${datasetName}-vmin`, state.vmin.toString());
-    localStorage.setItem(`${datasetName}-vmax`, state.vmax.toString());
-  };
-  const loadPreferences = (datasetName) => {
-    if (!datasetName) return;
-    const colormap = localStorage.getItem(`${datasetName}-colormap_name`);
-    const vmin = localStorage.getItem(`${datasetName}-vmin`);
-    const vmax = localStorage.getItem(`${datasetName}-vmax`);
-    if (colormap) dispatch({ type: "SET_COLORMAP", payload: colormap });
-    if (vmin) dispatch({ type: "SET_VMIN", payload: parseFloat(vmin) });
-    if (vmax) dispatch({ type: "SET_VMAX", payload: parseFloat(vmax) });
   };
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const currentTimeValue = currentDatasetInfo ? currentDatasetInfo.x_values[state.currentTimeIndex] : "";
@@ -17538,20 +17559,24 @@ function ControlPanel() {
             "input",
             {
               className: "input",
-              type: "number",
-              step: "0.01",
-              value: state.vmin,
-              onChange: (e) => handleVminChange(parseFloat(e.target.value))
+              type: "text",
+              inputMode: "decimal",
+              value: draftVmin,
+              onChange: (e) => setDraftVmin(e.target.value),
+              onBlur: commitVmin,
+              onKeyDown: (e) => e.key === "Enter" && commitVmin()
             }
           ) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
               className: "input",
-              type: "number",
-              step: "0.01",
-              value: state.vmax,
-              onChange: (e) => handleVmaxChange(parseFloat(e.target.value))
+              type: "text",
+              inputMode: "decimal",
+              value: draftVmax,
+              onChange: (e) => setDraftVmax(e.target.value),
+              onBlur: commitVmax,
+              onKeyDown: (e) => e.key === "Enter" && commitVmax()
             }
           ) })
         ] })
