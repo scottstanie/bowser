@@ -1,3 +1,4 @@
+import { useEffect, useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { baseMaps } from '../basemap';
 import { useApi } from '../hooks/useApi';
@@ -21,16 +22,50 @@ export default function ControlPanel() {
   const { state, dispatch } = useAppContext();
   const { fetchPointTimeSeries } = useApi();
 
-  const handleDatasetChange = (datasetName: string) => {
-    // Save current preferences
-    savePreferences(state.currentDataset);
+  // Local controlled drafts so users can type partial numbers like "-0."
+  const [draftVmin, setDraftVmin] = useState(String(state.vmin));
+  const [draftVmax, setDraftVmax] = useState(String(state.vmax));
 
+  // Keep drafts in sync when state changes from outside (dataset swap, loadPreferences, etc.)
+  useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
+  useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
+
+  // Persist *current* state to localStorage whenever it changes
+  useEffect(() => {
+    const datasetName = state.currentDataset;
+    if (!datasetName) return;
+
+    const safeNumToString = (x: number) => (Object.is(x, -0) ? '-0' : String(x));
+
+    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
+    localStorage.setItem(`${datasetName}-vmin`, safeNumToString(state.vmin));
+    localStorage.setItem(`${datasetName}-vmax`, safeNumToString(state.vmax));
+  }, [state.currentDataset, state.colormap, state.vmin, state.vmax]);
+
+  // On first load / dataset change, read preferences and push into state once
+  useEffect(() => {
+    const datasetName = state.currentDataset;
+    if (!datasetName) return;
+
+    const colormap = localStorage.getItem(`${datasetName}-colormap_name`);
+    const vminStr = localStorage.getItem(`${datasetName}-vmin`);
+    const vmaxStr = localStorage.getItem(`${datasetName}-vmax`);
+
+    if (colormap) dispatch({ type: 'SET_COLORMAP', payload: colormap });
+
+    if (vminStr !== null) {
+      const v = Number(vminStr);
+      if (!Number.isNaN(v)) dispatch({ type: 'SET_VMIN', payload: v });
+    }
+    if (vmaxStr !== null) {
+      const v = Number(vmaxStr);
+      if (!Number.isNaN(v)) dispatch({ type: 'SET_VMAX', payload: v });
+    }
+  }, [state.currentDataset, dispatch]);
+
+  const handleDatasetChange = (datasetName: string) => {
     dispatch({ type: 'SET_CURRENT_DATASET', payload: datasetName });
 
-    // Load preferences for new dataset
-    loadPreferences(datasetName);
-
-    // Set reference values if needed
     const currentDatasetInfo = state.datasetInfo[datasetName];
     if (currentDatasetInfo?.uses_spatial_ref && !state.refValues[datasetName]) {
       setRefValues(datasetName);
@@ -43,18 +78,21 @@ export default function ControlPanel() {
 
   const handleColormapChange = (colormap: string) => {
     dispatch({ type: 'SET_COLORMAP', payload: colormap });
-    savePreferences(state.currentDataset);
   };
 
-  const handleVminChange = (vmin: number) => {
-    dispatch({ type: 'SET_VMIN', payload: vmin });
-    savePreferences(state.currentDataset);
-  };
+  const commitVmin = useCallback(() => {
+    const v = Number(draftVmin);
+    if (!Number.isNaN(v)) {
+      dispatch({ type: 'SET_VMIN', payload: v });
+    }
+  }, [draftVmin, dispatch]);
 
-  const handleVmaxChange = (vmax: number) => {
-    dispatch({ type: 'SET_VMAX', payload: vmax });
-    savePreferences(state.currentDataset);
-  };
+  const commitVmax = useCallback(() => {
+    const v = Number(draftVmax);
+    if (!Number.isNaN(v)) {
+      dispatch({ type: 'SET_VMAX', payload: v });
+    }
+  }, [draftVmax, dispatch]);
 
   const handleOpacityChange = (opacity: number) => {
     dispatch({ type: 'SET_OPACITY', payload: opacity });
@@ -81,25 +119,6 @@ export default function ControlPanel() {
     } catch (error) {
       console.error('Error setting reference values:', error);
     }
-  };
-
-  const savePreferences = (datasetName: string) => {
-    if (!datasetName) return;
-    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
-    localStorage.setItem(`${datasetName}-vmin`, state.vmin.toString());
-    localStorage.setItem(`${datasetName}-vmax`, state.vmax.toString());
-  };
-
-  const loadPreferences = (datasetName: string) => {
-    if (!datasetName) return;
-
-    const colormap = localStorage.getItem(`${datasetName}-colormap_name`);
-    const vmin = localStorage.getItem(`${datasetName}-vmin`);
-    const vmax = localStorage.getItem(`${datasetName}-vmax`);
-
-    if (colormap) dispatch({ type: 'SET_COLORMAP', payload: colormap });
-    if (vmin) dispatch({ type: 'SET_VMIN', payload: parseFloat(vmin) });
-    if (vmax) dispatch({ type: 'SET_VMAX', payload: parseFloat(vmax) });
   };
 
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
@@ -178,19 +197,23 @@ export default function ControlPanel() {
             <div>
               <input
                 className="input"
-                type="number"
-                step="0.01"
-                value={state.vmin}
-                onChange={(e) => handleVminChange(parseFloat(e.target.value))}
+                type="text"
+                inputMode="decimal"
+                value={draftVmin}
+                onChange={(e) => setDraftVmin(e.target.value)}
+                onBlur={commitVmin}
+                onKeyDown={(e) => e.key === 'Enter' && commitVmin()}
               />
             </div>
             <div>
               <input
                 className="input"
-                type="number"
-                step="0.01"
-                value={state.vmax}
-                onChange={(e) => handleVmaxChange(parseFloat(e.target.value))}
+                type="text"
+                inputMode="decimal"
+                value={draftVmax}
+                onChange={(e) => setDraftVmax(e.target.value)}
+                onBlur={commitVmax}
+                onKeyDown={(e) => e.key === 'Enter' && commitVmax()}
               />
             </div>
           </div>

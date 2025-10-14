@@ -26,12 +26,12 @@ function MapEvents() {
   useMapEvents({
     click: (e) => {
       // Add new time series point on map click
-      dispatch({ 
-        type: 'ADD_TIME_SERIES_POINT', 
-        payload: { 
+      dispatch({
+        type: 'ADD_TIME_SERIES_POINT',
+        payload: {
           position: [e.latlng.lat, e.latlng.lng],
           name: `Point ${Date.now().toString().slice(-4)}` // Short unique name
-        } 
+        }
       });
     },
   });
@@ -63,24 +63,23 @@ function RasterTileLayer() {
       return;
     }
 
+    const controller = new AbortController();
+    const signal = controller.signal;
+
     const updateTileLayer = async () => {
       const currentDatasetInfo = state.datasetInfo[state.currentDataset];
 
-      // Load preferences for current dataset
-      const colormap = localStorage.getItem(`${state.currentDataset}-colormap_name`) || state.colormap;
-      const vmin = localStorage.getItem(`${state.currentDataset}-vmin`)
-        ? parseFloat(localStorage.getItem(`${state.currentDataset}-vmin`)!)
-        : state.vmin;
-      const vmax = localStorage.getItem(`${state.currentDataset}-vmax`)
-        ? parseFloat(localStorage.getItem(`${state.currentDataset}-vmax`)!)
-        : state.vmax;
+      // Use ONLY state — DO NOT read localStorage here
+      const colormap = state.colormap;
+      const vmin = state.vmin;
+      const vmax = state.vmax;
 
       // Ensure time index is within bounds
       const maxIdx = currentDatasetInfo.x_values.length - 1;
       const timeIdx = Math.max(0, Math.min(state.currentTimeIndex, maxIdx));
 
       // Build parameters
-      let params: Record<string, string> = {
+      const params: Record<string, string> = {
         variable: state.currentDataset,
         time_idx: timeIdx.toString(),
         rescale: `${vmin},${vmax}`,
@@ -117,15 +116,20 @@ function RasterTileLayer() {
         : `/cog/WebMercatorQuad/tilejson.json?${urlParams}`;
 
       try {
-        const response = await fetch(endpoint);
+        const response = await fetch(endpoint, { signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const tileInfo = await response.json();
-        setTileUrl(tileInfo.tiles[0]);
-      } catch (error) {
-        console.error('Error fetching tile info:', error);
+        // Only set if not aborted
+        if (!signal.aborted) setTileUrl(tileInfo.tiles[0]);
+      } catch (err) {
+        if ((err as any).name !== 'AbortError') {
+          console.error('Error fetching tile info:', err);
+        }
       }
     };
 
     updateTileLayer();
+    return () => controller.abort();
   }, [
     state.currentDataset,
     state.currentTimeIndex,
@@ -141,6 +145,7 @@ function RasterTileLayer() {
 
   return (
     <TileLayer
+      key={tileUrl}  // force refresh if URL changes
       url={tileUrl}
       opacity={state.opacity}
       maxZoom={19}
@@ -154,7 +159,7 @@ function MarkerEventHandlers() {
 
   const handleMarkerClick = (position: [number, number], pointName?: string) => {
     const [lat, lng] = position;
-    const content = pointName 
+    const content = pointName
       ? `${pointName} (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`
       : `Reference (lon, lat):\n(${lng.toFixed(6)}, ${lat.toFixed(6)})`;
     L.popup()
@@ -166,12 +171,12 @@ function MarkerEventHandlers() {
   const handleTsMarkerDragEnd = (pointId: string) => (e: L.DragEndEvent) => {
     const marker = e.target;
     const position = marker.getLatLng();
-    dispatch({ 
-      type: 'UPDATE_TIME_SERIES_POINT', 
-      payload: { 
-        id: pointId, 
-        updates: { position: [position.lat, position.lng] } 
-      } 
+    dispatch({
+      type: 'UPDATE_TIME_SERIES_POINT',
+      payload: {
+        id: pointId,
+        updates: { position: [position.lat, position.lng] }
+      }
     });
   };
 
@@ -223,7 +228,7 @@ function MarkerEventHandlers() {
           }}
         />
       ))}
-      
+
       {/* Reference Marker */}
       <Marker
         position={state.refMarkerPosition}
@@ -250,7 +255,7 @@ export default function MapContainer() {
       const centerLng = (bounds[0] + bounds[2]) / 2;
       return [centerLat, centerLng];
     }
-    
+
     // If no current dataset, try to get bounds from any available dataset
     const datasets = Object.values(state.datasetInfo);
     if (datasets.length > 0) {
@@ -259,7 +264,7 @@ export default function MapContainer() {
       const centerLng = (bounds[0] + bounds[2]) / 2;
       return [centerLat, centerLng];
     }
-    
+
     return [0, 0];
   };
 
