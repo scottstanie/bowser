@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { useApi } from '../hooks/useApi';
 import { useAppContext } from '../context/AppContext';
 import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
@@ -136,6 +137,7 @@ function RasterTileLayer() {
     state.datasetInfo,
     state.dataMode,
     state.refValues,
+    state.refMarkerPosition,
     state.colormap,
     state.vmin,
     state.vmax
@@ -155,6 +157,7 @@ function RasterTileLayer() {
 
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
+  const { fetchPointTimeSeries } = useApi();
   const map = useMap();
 
   const handleMarkerClick = (position: [number, number], pointName?: string) => {
@@ -180,10 +183,30 @@ function MarkerEventHandlers() {
     });
   };
 
-  const handleRefMarkerDragEnd = (e: L.DragEndEvent) => {
+  const handleRefMarkerDragEnd = async (e: L.DragEndEvent) => {
     const marker = e.target;
     const position = marker.getLatLng();
-    dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [position.lat, position.lng] });
+    const lat = position.lat;
+    const lng = position.lng;
+    // 1) update position in state
+    dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [lat, lng] });
+
+    // 2) if current dataset uses the "shift" algo, recompute ref values
+    const ds = state.currentDataset;
+    const info = ds ? state.datasetInfo[ds] : null;
+    if (ds && info?.algorithm === 'shift') {
+      try {
+        const values = await fetchPointTimeSeries(lng, lat, ds);
+        if (values) {
+          dispatch({
+            type: 'SET_REF_VALUES',
+            payload: { dataset: ds, values },
+          });
+        }
+      } catch (err) {
+        console.error('Error updating reference values after drag:', err);
+      }
+    }
   };
 
   const handleTsMarkerDoubleClick = (pointId: string) => () => {

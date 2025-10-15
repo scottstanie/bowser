@@ -17260,6 +17260,7 @@ function RasterTileLayer() {
     state.datasetInfo,
     state.dataMode,
     state.refValues,
+    state.refMarkerPosition,
     state.colormap,
     state.vmin,
     state.vmax
@@ -17277,6 +17278,7 @@ function RasterTileLayer() {
 }
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
+  const { fetchPointTimeSeries } = useApi();
   const map2 = useMap();
   const handleMarkerClick = (position, pointName) => {
     const [lat, lng] = position;
@@ -17296,10 +17298,27 @@ function MarkerEventHandlers() {
       }
     });
   };
-  const handleRefMarkerDragEnd = (e) => {
+  const handleRefMarkerDragEnd = async (e) => {
     const marker = e.target;
     const position = marker.getLatLng();
-    dispatch({ type: "SET_REF_MARKER_POSITION", payload: [position.lat, position.lng] });
+    const lat = position.lat;
+    const lng = position.lng;
+    dispatch({ type: "SET_REF_MARKER_POSITION", payload: [lat, lng] });
+    const ds = state.currentDataset;
+    const info = ds ? state.datasetInfo[ds] : null;
+    if (ds && (info == null ? void 0 : info.algorithm) === "shift") {
+      try {
+        const values = await fetchPointTimeSeries(lng, lat, ds);
+        if (values) {
+          dispatch({
+            type: "SET_REF_VALUES",
+            payload: { dataset: ds, values }
+          });
+        }
+      } catch (err) {
+        console.error("Error updating reference values after drag:", err);
+      }
+    }
   };
   const handleTsMarkerDoubleClick = (pointId) => () => {
     dispatch({ type: "REMOVE_TIME_SERIES_POINT", payload: pointId });
