@@ -34,15 +34,23 @@ h1 {
 
 body {
   margin: 0;
-  place-items: center;
+  padding: 0;
   min-width: 320px;
-  padding: 1rem;
-  text-align: center;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  width: 100vw;
+}
+
+.app-container {
   display: grid;
-  grid-template-areas:
-    "menu map";
+  grid-template-areas: "menu map";
   grid-template-columns: 20em auto;
-  height: 95vh;
+  height: 100vh;
+  width: 100vw;
 }
 
 
@@ -90,8 +98,10 @@ body {
 
 /* ********** */
 /* Map styles */
-#map-container {
-  height: 100%;
+.map-container {
+  grid-area: map;
+  position: relative;
+  height: 100vh;
   width: 100%;
 }
 
@@ -107,20 +117,67 @@ img.huechange {
 
 /* chart styles */
 #chart-container {
-  width: 30vw;
-  height: auto;
+  width: 35vw;
+  max-width: 500px;
+  height: 400px;
   /* Make the chart fixed to the bottom right corner of the screen */
   position: fixed;
-  bottom: 0;
-  right: 0;
+  bottom: 20px;
+  right: 20px;
   /* But also give it some padding */
   padding: 1rem;
-  margin: 4rem;
   /* Make the chart have a white background */
   background-color: white;
-  /* Have it on top of the leaflet map */
-  /*leaflet seems to have a big z-index*/
+  /* Have it on top of the leaflet map but below point manager */
   z-index: 3000;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #eee;
+}
+
+.chart-header h4 {
+  margin: 0;
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.chart-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.chart-content {
+  flex: 1;
+  position: relative;
+  min-height: 300px;
+}
+
+.chart-placeholder {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+  color: #666;
+  text-align: center;
+}
+
+.chart-help {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #eee;
+  color: #666;
+  text-align: center;
 }
 
 .leaflet-control-mouseposition {
@@ -130,4 +187,171 @@ img.huechange {
   margin: 0;
   color: #333;
   font: 11px/1.5 "Helvetica Neue", Arial, Helvetica, sans-serif;
+}
+
+/* Point Manager Panel Styles */
+.point-manager-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 4000;
+}
+
+.point-manager-panel {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 300px;
+  max-height: 60vh;
+  background-color: white;
+  border: 1px solid var(--border-dark);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 4000;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.point-manager-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid var(--border-mid);
+}
+
+.point-manager-header h3 {
+  margin: 0;
+  font-size: 1em;
+  font-weight: 600;
+}
+
+.point-manager-controls {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  gap: 8px;
+}
+
+.point-list {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 400px;
+}
+
+.no-points {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+.point-item {
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.point-item:hover {
+  background-color: #f8f9fa;
+}
+
+.point-item.selected {
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196f3;
+}
+
+.point-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.point-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid white;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+
+.point-name-input {
+  border: none;
+  background: transparent;
+  font-weight: 500;
+  font-size: 0.9em;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex: 1;
+}
+
+.point-name-input:focus {
+  outline: none;
+  background-color: white;
+  border: 1px solid #ccc;
+}
+
+.point-item-info {
+  margin-bottom: 8px;
+}
+
+.point-coordinates {
+  color: #666;
+  font-size: 0.8em;
+}
+
+.point-trend-info {
+  color: #2196f3;
+  font-size: 0.8em;
+  font-weight: 500;
+}
+
+.point-item-controls {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.point-item-controls button {
+  padding: 4px 8px;
+  font-size: 0.8em;
+  min-width: auto;
+}
+
+.point-manager-help {
+  padding: 12px 16px;
+  background-color: #f8f9fa;
+  border-top: 1px solid #eee;
+  color: #666;
+  font-size: 0.8em;
+  line-height: 1.4;
+}
+
+/* Custom colored marker styles */
+.custom-colored-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Button utility classes */
+.button-warning {
+  background-color: #ff9800;
+  color: white;
+}
+
+.button-warning:hover {
+  background-color: #f57c00;
+}
+
+.button-error {
+  background-color: #f44336;
+  color: white;
+}
+
+.button-error:hover {
+  background-color: #d32f2f;
 }
