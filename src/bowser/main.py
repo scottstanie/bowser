@@ -14,7 +14,6 @@ from fastapi import Body, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pyproj import CRS, Transformer
 from rio_tiler.io.xarray import XarrayReader
-from scipy import stats
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette_cramjam.middleware import CompressionMiddleware
@@ -26,7 +25,7 @@ from titiler.core.factory import TilerFactory
 from .config import settings
 from .readers import CustomReader
 from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
-from .utils import desensitize_mpl_case, generate_colorbar
+from .utils import calculate_trend, desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger("bowser")
 warnings.filterwarnings(
@@ -292,40 +291,6 @@ async def chart_point(
     dataset_item = values_to_chart_data(values.tolist())
 
     return JSONResponse({"datasets": [{"data": dataset_item}], "labels": x_values})
-
-
-def calculate_trend(values: np.ndarray, _x_values: list[str]) -> dict[str, float]:
-    """Calculate linear trend for time series data."""
-    # Filter out NaN values
-    valid_mask = ~np.isnan(values)
-    if valid_mask.sum() < 2:
-        return {
-            "slope": 0.0,
-            "intercept": 0.0,
-            "r_squared": 0.0,
-            "mm_per_year": 0.0,
-        }
-
-    valid_values = values[valid_mask]
-    valid_indices = np.arange(len(values))[valid_mask]
-
-    # Calculate linear regression
-    slope, intercept, r_value, p_value, std_err = stats.linregress(
-        valid_indices, valid_values
-    )
-
-    # Convert slope to mm/year assuming time series is in years
-    # For displacement data, slope is typically in meters per time step
-    # Convert to mm per year: slope * 1000 (m to mm) * (time steps per year)
-    time_steps_per_year = 365.25 / 12  # Assuming monthly data, adjust as needed
-    mm_per_year = slope * 1000 * time_steps_per_year
-
-    return {
-        "slope": float(slope),
-        "intercept": float(intercept),
-        "r_squared": float(r_value**2),
-        "mm_per_year": float(mm_per_year),
-    }
 
 
 @app.post(

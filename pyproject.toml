@@ -16,7 +16,7 @@ dependencies = [
   "uvicorn",
   "typing_extensions",
   "tqdm",
-  "opera-utils[disp]",
+  "opera-utils[all]",
   "rioxarray",
   "matplotlib",
   "pydantic-settings",
@@ -50,7 +50,7 @@ widget = [
   "ipyleaflet",
   "bqplot>=0.12",
 ]
-test = ["pytest", "httpx", "ipython"]
+test = ["pytest", "httpx", "ipython", "types-python-dateutil"]
 
 # [project.urls]
 # Homepage = "https://github.com/opera-adt/bowser"
@@ -86,6 +86,7 @@ opera-utils = "*"
 rioxarray = "*"
 matplotlib = "*"
 pydantic-settings = "*"
+python-dateutil = ">=2.9.0.post0,<3"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
