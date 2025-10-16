@@ -4,13 +4,13 @@ import os
 import time
 import warnings
 from pathlib import Path
-from typing import Annotated, Callable, Optional
+from typing import Annotated, Any, Callable, Optional
 
 import matplotlib
 import numpy as np
 import rasterio
 import xarray as xr
-from fastapi import FastAPI, HTTPException, Query, Response
+from fastapi import Body, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pyproj import CRS, Transformer
 from rio_tiler.io.xarray import XarrayReader
@@ -25,7 +25,7 @@ from titiler.core.factory import TilerFactory
 from .config import settings
 from .readers import CustomReader
 from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
-from .utils import desensitize_mpl_case, generate_colorbar
+from .utils import calculate_trend, desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger("bowser")
 warnings.filterwarnings(
@@ -291,6 +291,184 @@ async def chart_point(
     dataset_item = values_to_chart_data(values.tolist())
 
     return JSONResponse({"datasets": [{"data": dataset_item}], "labels": x_values})
+
+
+@app.post(
+    "/multi_point",
+    response_class=JSONResponse,
+    responses={200: {"description": "Return time series data for multiple points"}},
+)
+async def multi_point(
+    points: list[dict[str, Any]] = Body(
+        ..., description="List of points with id, lat, lon"
+    ),
+    dataset_name: str = Body(..., description="Dataset name"),
+    ref_lon: Optional[float] = Body(None, description="Reference longitude"),
+    ref_lat: Optional[float] = Body(None, description="Reference latitude"),
+    calculate_trends: bool = Body(
+        False, description="Whether to calculate trend analysis"
+    ),
+):
+    """Fetch time series data for multiple points efficiently."""
+    # Get time values based on data mode
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = XARRAY_DATASET[dataset_name]
+        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+    else:  # cog mode
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = RASTER_GROUPS[dataset_name]
+        x_values = rg.x_values
+
+    # Get reference values if provided
+    ref_values = None
+    if ref_lon is not None and ref_lat is not None:
+        ref_values = await _get_point_values(dataset_name, ref_lon, ref_lat)
+
+    # Process each point
+    results = []
+    for point_info in points:
+        point_id = point_info.get("id")
+        lat = point_info.get("lat")
+        lon = point_info.get("lon")
+        color = point_info.get("color", "#1f77b4")
+        name = point_info.get("name", f"Point {point_id}")
+
+        if not all([point_id, lat is not None, lon is not None]):
+            continue
+
+        try:
+            # Get values at the point
+            values = await _get_point_values(dataset_name, float(lon), float(lat))
+
+            # Apply reference subtraction if provided
+            if ref_values is not None:
+                values = values - ref_values
+
+            # Convert to chart data format
+            chart_data = [
+                {"x": x, "y": float(y)}
+                for x, y in zip(x_values, np.atleast_1d(values).tolist())
+                if not np.isnan(y)
+            ]
+
+            # Calculate trend if requested
+            trend_data = None
+            if calculate_trends and len(chart_data) > 1:
+                trend_result = calculate_trend(values, x_values)
+                # Convert to frontend format
+                trend_data = {
+                    "slope": trend_result["slope"],
+                    "intercept": trend_result["intercept"],
+                    "rSquared": trend_result["r_squared"],
+                    "mmPerYear": trend_result["mm_per_year"],
+                }
+
+            results.append(
+                {
+                    "pointId": point_id,
+                    "label": name,
+                    "data": chart_data,
+                    "borderColor": color,
+                    "backgroundColor": color + "20",
+                    "trend": trend_data,
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing point {point_id}: {e}")
+            continue
+
+    return JSONResponse(
+        {
+            "labels": x_values,
+            "datasets": results,
+        }
+    )
+
+
+@app.get(
+    "/trend_analysis/{dataset_name}",
+    response_class=JSONResponse,
+    responses={200: {"description": "Return trend analysis for a point"}},
+)
+async def trend_analysis(
+    dataset_name: str,
+    lon: Annotated[float, Query(title="Longitude", ge=-180, le=180)],
+    lat: Annotated[float, Query(title="Latitude", ge=-90, le=90)],
+    ref_lon: Annotated[
+        float | None, Query(title="Reference longitude", ge=-180, le=180)
+    ] = None,
+    ref_lat: Annotated[
+        float | None, Query(title="Reference latitude", ge=-90, le=90)
+    ] = None,
+):
+    """Calculate trend analysis (mm/year rate) for a single point."""
+    # Get time values based on data mode
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = XARRAY_DATASET[dataset_name]
+        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+    else:  # cog mode
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = RASTER_GROUPS[dataset_name]
+        x_values = rg.x_values
+
+    # Get values at the point
+    values = await _get_point_values(dataset_name, lon, lat)
+
+    # Apply reference subtraction if provided
+    if ref_lon is not None and ref_lat is not None:
+        ref_values = await _get_point_values(dataset_name, ref_lon, ref_lat)
+        values = values - ref_values
+
+    # Calculate trend
+    trend_data = calculate_trend(values, x_values)
+
+    return JSONResponse(trend_data)
+
+
+@app.get("/datasets/{dataset_name}/time_bounds")
+async def get_time_bounds(dataset_name: str):
+    """Get time bounds for a dataset to help with trend calculations."""
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = XARRAY_DATASET[dataset_name]
+        time_values = da.time.values
+        start_time = str(time_values[0])
+        end_time = str(time_values[-1])
+    else:  # cog mode
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = RASTER_GROUPS[dataset_name]
+        x_values = rg.x_values
+        start_time = str(x_values[0])
+        end_time = str(x_values[-1])
+
+    return JSONResponse(
+        {
+            "start_time": start_time,
+            "end_time": end_time,
+            "num_time_steps": len(time_values) if DATA_MODE == "md" else len(x_values),
+        }
+    )
 
 
 @app.get("/colorbar/{cmap_name}")

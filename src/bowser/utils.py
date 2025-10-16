@@ -1,10 +1,139 @@
 import json
 import subprocess
+from datetime import datetime
 from functools import cache
+from typing import Sequence, TypeVar
+
+import numpy as np
+from dateutil import parser
+from scipy import stats
 
 
 class CredentialsError(Exception):
     """Raised when AWS credentials have expired."""
+
+
+DateOrDatetimeT = TypeVar("DateOrDatetimeT", datetime, np.datetime64)
+
+
+def _parse_x_values(x_values: list[str | int]) -> np.ndarray:
+    """Parse x_values to get numeric time values in days.
+
+    Parameters
+    ----------
+    x_values : list[str | int]
+        List of x values which can be:
+        - integers (no time information)
+        - datetime strings in "%Y-%m-%d" format (xarray mode)
+        - datetime strings in "%Y%m%d" or "%Y%m%d_%Y%m%d" format (COG mode)
+
+    Returns
+    -------
+    np.ndarray
+        Numeric time values in days since first time value
+
+    """
+    if not x_values:
+        return np.array([])
+
+    # If x_values are integers, just use them as-is
+    if isinstance(x_values[0], int):
+        return np.array(x_values, dtype=float)
+
+    # Otherwise, parse datetime strings
+    dates = []
+    for x in x_values:
+        if isinstance(x, str) and "_" in x:
+            # Multiple dates in the string (e.g., "20160708_20160801")
+            # Use index 1 (second date) as per requirement
+            parts = x.split("_")
+            date_str = parts[1] if len(parts) > 1 else parts[0]
+        elif isinstance(x, int):
+            date_str = str(x)
+        else:
+            date_str = x
+
+        try:
+            date = parser.parse(date_str)
+            dates.append(date)
+        except ValueError as e:
+            raise ValueError(f"Could not parse date string: {date_str}") from e
+
+    return datetime_to_float(dates)
+
+
+def calculate_trend(
+    values: np.ndarray, x_values: list[str | int | DateOrDatetimeT]
+) -> dict[str, float]:
+    """Calculate linear trend for time series data.
+
+    Parameters
+    ----------
+    values : np.ndarray
+        Time series values (e.g., displacement in meters)
+    x_values : list[str | int]
+        Time values as strings (datetime format) or integers
+
+    Returns
+    -------
+    dict[str, float]
+        Dictionary with slope (m/day), intercept (m), r_squared, and mm_per_year
+
+    """
+    # Filter out NaN values
+    valid_mask = ~np.isnan(values)
+    if valid_mask.sum() < 2:
+        return {
+            "slope": 0.0,
+            "intercept": 0.0,
+            "r_squared": 0.0,
+            "mm_per_year": 0.0,
+        }
+
+    valid_values = values[valid_mask]
+
+    # Parse x_values to get numeric time values in days
+    time_days = _parse_x_values(x_values)
+    valid_time = time_days[valid_mask]
+
+    # Calculate linear regression using actual time values
+    slope, intercept, r_value, p_value, std_err = stats.linregress(
+        valid_time, valid_values
+    )
+
+    # Convert slope to mm/year
+    # slope is in meters/day, so convert to mm/year
+    mm_per_year = slope * 1000 * 365.25
+
+    return {
+        "slope": float(slope),
+        "intercept": float(intercept),
+        "r_squared": float(r_value**2),
+        "mm_per_year": float(mm_per_year),
+    }
+
+
+def datetime_to_float(dates: Sequence[DateOrDatetimeT]) -> np.ndarray:
+    """Convert a sequence of datetime objects to a float representation.
+
+    Output units are in days since the first item in `dates`.
+
+    Parameters
+    ----------
+    dates : Sequence[DateOrDatetimeT]
+        List of datetime objects to convert to floats
+
+    Returns
+    -------
+    date_arr : np.array 1D
+        The float representation of the datetime objects
+
+    """
+    sec_per_day = 60 * 60 * 24
+    date_arr = np.asarray(dates).astype("datetime64[s]")
+    # Reference the 0 to the first date
+    date_arr = date_arr - date_arr[0]
+    return date_arr.astype(float) / sec_per_day
 
 
 def list_bucket(
@@ -36,6 +165,7 @@ def list_bucket(
     -------
     list[str]
         List of items in the bucket.
+
     """
     cmd = ["s5cmd", "--json", "--numworkers", str(num_workers)]
     if aws_profile:
@@ -81,6 +211,7 @@ def generate_colorbar(cmap_name: str) -> bytes:
     -------
     bytes
         WEBP image data as bytes
+
     """
     from io import BytesIO
 

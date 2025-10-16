@@ -1,11 +1,8 @@
 import { defineConfig } from "vite"
-// https://github.com/richardtallent/vite-plugin-singlefile
-// Bundles JS/CSS into a single HTML file
-// import { viteSingleFile } from "vite-plugin-singlefile"
+import react from "@vitejs/plugin-react"
 
 export default defineConfig({
-	// plugins: [viteSingleFile()],
-	// https://stackoverflow.com/a/69746868/4174466
+	plugins: [react()],
 	base: './',
 	build: {
 		outDir: 'src/bowser/dist/',
@@ -13,7 +10,6 @@ export default defineConfig({
 		cssMinify: false,
 		rollupOptions: {
 			output: {
-				// https://github.com/vitejs/vite/issues/378
 				entryFileNames: `[name].js`,
 				assetFileNames: `[name].[ext]`
 			}
