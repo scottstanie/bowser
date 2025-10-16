@@ -1,10 +1,12 @@
 import json
 import logging
+import os
 import time
 import warnings
 from pathlib import Path
 from typing import Annotated, Any, Callable, Optional
 
+import matplotlib
 import numpy as np
 import rasterio
 import xarray as xr
@@ -12,6 +14,7 @@ from fastapi import Body, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pyproj import CRS, Transformer
 from rio_tiler.io.xarray import XarrayReader
+from scipy import stats
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette_cramjam.middleware import CompressionMiddleware
@@ -19,9 +22,6 @@ from titiler.core.algorithm import algorithms as default_algorithms
 from titiler.core.dependencies import DefaultDependency
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import TilerFactory
-from titiler.core.middleware import CacheControlMiddleware
-
-from scipy import stats
 
 from .config import settings
 from .readers import CustomReader
@@ -34,6 +34,11 @@ warnings.filterwarnings(
 )
 
 t0 = time.time()
+
+# Set up matplotlib backend for thread safety BEFORE any matplotlib imports
+
+matplotlib.use("Agg")
+
 # Set up logging
 h = logging.StreamHandler()
 h.setLevel(settings.LOG_LEVEL)
@@ -58,8 +63,6 @@ app = FastAPI(
 
 def load_data_sources():
     """Load data sources and determine which mode to use (MD or COG)."""
-    import os
-
     # Check for xarray stack file first (MD mode)
     if settings.BOWSER_STACK_DATA_FILE:
         stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
@@ -126,11 +129,13 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
     # Create info for each variable that has spatial dimensions
     dataset_info = {}
 
+    skip_spatial_reference = os.getenv("BOWSER_SPATIAL_REFERENCE_DISP") == "NO"
     for var_name, var in ds.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
             use_moving_reference = (
                 "displacement" in str(var_name).lower()
                 and "short_wave" not in str(var_name).lower()
+                and not skip_spatial_reference
             )
             dataset_info[var_name] = {
                 "name": var_name,
@@ -532,12 +537,6 @@ app.add_middleware(
     compression_level=6,
 )
 
-app.add_middleware(
-    CacheControlMiddleware,
-    cachecontrol="public, max-age=3600",
-    exclude_path={r"/healthz"},
-)
-
 # Set up algorithms
 algorithms = default_algorithms.register(
     {"phase": Phase, "amplitude": Amplitude, "shift": Shift, "rewrap": Rewrap}
@@ -582,9 +581,12 @@ def XarrayPathDependency(
 ) -> xr.DataArray:
     """Create a DataArray from query parameters."""
     da = XARRAY_DATASET[variable]
+    skip_recommended_mask = os.getenv("BOWSER_USE_RECOMMENDED_MASK") == "NO"
     if mask_variable is not None:
         mask_da = XARRAY_DATASET[mask_variable]
-    elif variable == "displacement" and "recommended_mask" in XARRAY_DATASET.data_vars:
+    elif variable == "displacement" and (
+        "recommended_mask" in XARRAY_DATASET.data_vars and not skip_recommended_mask
+    ):
         mask_da = XARRAY_DATASET["recommended_mask"]
     else:
         mask_da = None

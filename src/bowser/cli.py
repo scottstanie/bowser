@@ -1,18 +1,14 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import click
-
-from .add_overviews import addo
 
 
 @click.group()
 def cli_app():
     """CLI for bowser."""
-
-
-cli_app.add_command(addo)
 
 
 @cli_app.command()
@@ -64,8 +60,28 @@ cli_app.add_command(addo)
         " for local reading)."
     ),
 )
+@click.option(
+    "--no-spatial-reference",
+    "--ns",
+    is_flag=True,
+    help="Don't add a moving spatial reference point for `displacement` ",
+)
+@click.option(
+    "--no-recommended-mask",
+    "--no-mask",
+    is_flag=True,
+    help="Don't use recommended mask for `displacement` ",
+)
 def run(
-    stack_file, rasters_file, port, reload, workers, log_level, ignore_sidecar_files
+    stack_file,
+    rasters_file,
+    port,
+    reload,
+    workers,
+    log_level,
+    ignore_sidecar_files,
+    no_spatial_reference,
+    no_recommended_mask,
 ):
     """Run the web server."""
     import uvicorn
@@ -77,6 +93,10 @@ def run(
         os.environ["BOWSER_STACK_DATA_FILE"] = stack_file
     else:
         os.environ["BOWSER_DATASET_CONFIG_FILE"] = rasters_file
+    os.environ["BOWSER_SPATIAL_REFERENCE_DISP"] = (
+        "NO" if no_spatial_reference else "YES"
+    )
+    os.environ["BOWSER_USE_RECOMMENDED_MASK"] = "NO" if no_recommended_mask else "YES"
 
     print(f"Setting up on http://localhost:{port}")
     uvicorn.run(
@@ -125,7 +145,7 @@ def set_data(output: Path):
     raster_groups = []
 
     # Make an interactive loop
-    def add_files():
+    def add_files() -> None:
         file_list: list[str] = []
         while not file_list:
             g = click.prompt(
@@ -238,6 +258,7 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
             return []
 
     wd = dolphin_work_dir.rstrip("/")
+
     dolphin_outputs = [
         {
             "name": "time series",
@@ -289,15 +310,31 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         },
         {
             "name": "Temporal coherence",
-            "file_list": _glob(f"{wd}/interferograms/temporal_coherence*.tif"),
+            "file_list": _glob(f"{wd}/interferograms/temporal_coherence_[0-9]*.tif"),
+        },
+        {
+            "name": "Average temporal coherence",
+            "file_list": _glob(f"{wd}/interferograms/temporal_coherence_average*.tif"),
         },
         {
             "name": "Phase cosine similarity",
-            "file_list": _glob(f"{wd}/interferograms/similarity*.tif"),
+            "file_list": _glob(f"{wd}/interferograms/similarity_[0-9]*.tif"),
+        },
+        {
+            "name": "Phase cosine similarity (full)",
+            "file_list": _glob(f"{wd}/interferograms/similarity_full*.tif"),
         },
         {
             "name": "Standard deviation of estimated CRLB",
             "file_list": _glob(f"{wd}/interferograms/crlb_2*[0-9].tif"),
+        },
+        {
+            "name": "Closure phase",
+            "file_list": _glob(f"{wd}/interferograms/closure_phase_*[0-9].tif"),
+        },
+        {
+            "name": "Cumulative closure phase",
+            "file_list": _glob(f"{wd}/interferograms/cumulative_closure_phase_*[0-9].tif"),
         },
         {
             "name": "Amplitude dispersion",
@@ -525,7 +562,7 @@ def setup_hyp3(hyp3_dir: str, output: str):
             matching_files.extend(str(f) for f in matches)
         return sorted(matching_files)
 
-    hyp3_outputs = [
+    hyp3_outputs: list[dict[str, Any]] = [
         {
             "name": "Unwrapped Phase",
             "file_list": _glob_all_products("*_unw_phase.tif"),

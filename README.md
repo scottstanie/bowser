@@ -1,19 +1,28 @@
 # Bowser
 
+## Quickstart
+
+1. Install [`uv`](https://docs.astral.sh/uv/#installation)
+2. Run `uvx --with bowser-insar --stack-file example-stack.zarr`
+
 ![](docs/demo-timeseries.jpg)
 
 ## Install
 
 ```bash
+pip install bowser-insar`
+```
+
+```bash
+uv add bowser-insar
+```
+
+For local development, clone and create a conda environment:
+```bash
+git clone git@github.com:opera-adt/bowser.git && cd bowser
 mamba env create
 conda activate bowser-env
 pip install .
-```
-
-Note: if viewing files on S3, please install `s5cmd`:
-
-```bash
-mamba install s5cmd
 ```
 
 ## Quickstart for dolphin
@@ -41,10 +50,21 @@ Click on the `http://127.0.0.1:8000` link to open the map.
 **Note for running over ssh**: you will need to run an ssh command creating a tunnel from your local computer to wherever the `bowser` server is.
 For example, if you machine is `myserver`, you would run in a local terminal
 
-```
+```bash
 ssh -N -L 8000:localhost:8000 myserver
 ```
+
 after starting the web server.
+
+## Running in Jupyter
+
+```python
+from bowser._widget import make_bowser_widget
+
+# Automatically starts server and creates widget
+widget = make_bowser_widget(rasters_file="bowser_rasters.json")
+widget
+```
 
 ## Quickstart for DISP-S1 NetCDFs
 

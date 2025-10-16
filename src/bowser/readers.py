@@ -377,6 +377,7 @@ class RasterStackReader(BaseStackReader):
         nodata: Optional[float] = None,
         file_date_fmt: str | None = "%Y%m%d",
         num_parallel_open: int = 15,
+        disable_tqdm: bool = False,
     ) -> RasterStackReader:
         """Create a RasterStackReader from a list of files.
 
@@ -401,6 +402,8 @@ class RasterStackReader(BaseStackReader):
         num_parallel_open : int
             Parallelism to use when opening files for the first time.
             Default is 15.
+        disable_tqdm : bool
+            Disable tqdm progress bar while loading files.
 
         Returns
         -------
@@ -422,6 +425,7 @@ class RasterStackReader(BaseStackReader):
             list(zip(file_list, bands)),
             max_workers=num_parallel_open,
             desc="Reading raster metadata",
+            disable=disable_tqdm,
         )
         # Check if nodata values were found in the files
         nds = {r.nodata for r in readers}
