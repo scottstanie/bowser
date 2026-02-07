@@ -298,6 +298,10 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
             "file_list": _glob(f"{wd}/timeseries/nonzero_conncomp_count_*.tif"),
         },
         {
+            "name": "Multi-looked coherence",
+            "file_list": _glob(f"{wd}/interferograms/multilooked_coh*.tif"),
+        },
+        {
             "name": "Re-wrapped phase",
             "file_list": _glob(f"{wd}/unwrapped/2*[0-9].unw.tif"),
             "algorithm": Algorithm.REWRAP.value,
