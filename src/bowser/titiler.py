@@ -190,8 +190,13 @@ def _find_files(glob_str: str) -> list[str]:
     return file_list
 
 
-def _format_dates(*dates, fmt="%Y%m%d") -> str:
-    return "_".join(f"{d.strftime(fmt)}" for d in dates)
+def _format_dates(*dates) -> str:
+    """Format date(s) as an ISO date string for Chart.js TimeScale.
+
+    For multi-date filenames (e.g. interferograms with reference_secondary),
+    uses the last date as the temporal x-axis position.
+    """
+    return dates[-1].strftime("%Y-%m-%d")
 
 
 # https://github.com/developmentseed/titiler/blob/0fddd7ed268557e82a5e1520cdd7fdf084afa1b8/src/titiler/core/titiler/core/resources/responses.py#L15
