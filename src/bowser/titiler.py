@@ -146,7 +146,7 @@ class RasterGroup(BaseModel):
         """Vales to use for the x axis of a time series plot."""
         # if len(self.file_list) == 1:
         dates = self._reader.dates
-        if not dates or any(d is None for d in dates):
+        if not dates or any(not d for d in dates):
             # otherwise, use indexes
             x_values = np.arange(len(self.file_list)).tolist()
         else:
@@ -158,7 +158,7 @@ class RasterGroup(BaseModel):
     def reference_date(self) -> str | None:
         """Common reference date if all files share the same first date."""
         dates = self._reader.dates
-        if not dates or any(d is None for d in dates):
+        if not dates or any(not d for d in dates):
             return None
         # Check for multi-date filenames (e.g., interferograms)
         if not all(len(d) > 1 for d in dates):
