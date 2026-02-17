@@ -161,7 +161,7 @@ class RasterGroup(BaseModel):
     def reference_date(self) -> str | None:
         """Common reference date if all files share the same first date."""
         dates = self._reader.dates
-        if not dates or any(d is None for d in dates):
+        if not dates or any(not d for d in dates):
             return None
         # Check for multi-date filenames (e.g., interferograms)
         if not all(len(d) > 1 for d in dates):
