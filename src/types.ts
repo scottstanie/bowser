@@ -11,6 +11,7 @@ export interface RasterGroup {
   available_mask_vars: string[];
   label?: string;
   unit?: string;
+  reference_date?: string | null;
 }
 
 export interface TimeSeriesPoint {

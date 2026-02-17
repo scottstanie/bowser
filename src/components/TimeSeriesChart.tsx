@@ -301,12 +301,20 @@ export default function TimeSeriesChart({ windowId }: { windowId: string }) {
     const mutedColor = cssVar('--sb-muted',  '#7880a8');
     const gridColor  = cssVar('--sb-border', '#2c2f4a');
 
+    const referenceDate = state.currentDataset
+      ? state.datasetInfo[state.currentDataset]?.reference_date
+      : null;
+
     // Per-dataset y-axes: first on left, extras on right
     const scales: any = {
       x: {
         type: 'time' as const,
         time: { displayFormats: { month: 'MMM yyyy', day: 'MMM d', year: 'yyyy' } },
-        title: { display: true, text: 'Date', color: mutedColor },
+        title: {
+          display: true,
+          text: referenceDate ? `Date (ref: ${referenceDate})` : 'Date',
+          color: mutedColor,
+        },
         grid: { color: gridColor },
         ticks: { color: mutedColor },
       },
