@@ -169,6 +169,7 @@ def create_rastergroup_dataset_info(raster_groups: dict) -> dict:
             "bounds": list(rg.bounds),
             "latlon_bounds": list(rg.latlon_bounds),
             "x_values": rg.x_values,
+            "reference_date": rg.reference_date,
         }
     return dataset_info
 

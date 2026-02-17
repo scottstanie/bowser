@@ -154,6 +154,20 @@ class RasterGroup(BaseModel):
 
         return x_values
 
+    @computed_field
+    def reference_date(self) -> str | None:
+        """Common reference date if all files share the same first date."""
+        dates = self._reader.dates
+        if not dates or any(d is None for d in dates):
+            return None
+        # Check for multi-date filenames (e.g., interferograms)
+        if not all(len(d) > 1 for d in dates):
+            return None
+        first_dates = {d[0] for d in dates}
+        if len(first_dates) == 1:
+            return first_dates.pop().strftime("%Y-%m-%d")
+        return None
+
     @classmethod
     def from_glob(
         cls,

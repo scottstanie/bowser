@@ -32288,7 +32288,7 @@ function TimeSeriesChart() {
       return;
     }
     setIsLoading(true);
-    const currentDatasetInfo = state.datasetInfo[state.currentDataset];
+    const currentDatasetInfo2 = state.datasetInfo[state.currentDataset];
     const visiblePoints = state.timeSeriesPoints.filter((p2) => p2.visible);
     if (visiblePoints.length === 0) {
       setChartData(null);
@@ -32304,7 +32304,7 @@ function TimeSeriesChart() {
         name: point.name
       }));
       let refLon, refLat;
-      if (currentDatasetInfo == null ? void 0 : currentDatasetInfo.uses_spatial_ref) {
+      if (currentDatasetInfo2 == null ? void 0 : currentDatasetInfo2.uses_spatial_ref) {
         [refLat, refLon] = state.refMarkerPosition;
       }
       const tsData = await fetchMultiPointTimeSeries(
@@ -32407,6 +32407,8 @@ function TimeSeriesChart() {
     link.click();
     document.body.removeChild(link);
   }, [chartData, state.showTrends, state.currentDataset]);
+  const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+  const referenceDate = currentDatasetInfo == null ? void 0 : currentDatasetInfo.reference_date;
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -32467,7 +32469,7 @@ function TimeSeriesChart() {
         },
         title: {
           display: true,
-          text: "Time"
+          text: referenceDate ? `Time (ref: ${referenceDate})` : "Time"
         }
       },
       y: {
