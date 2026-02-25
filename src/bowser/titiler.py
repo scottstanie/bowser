@@ -164,9 +164,9 @@ class RasterGroup(BaseModel):
         if not dates or any(not d for d in dates):
             return None
         # Check for multi-date filenames (e.g., interferograms)
-        if not all(len(d) > 1 for d in dates):
+        if not all(len(d) > 1 for d in dates):  # type: ignore[arg-type]
             return None
-        first_dates = {d[0] for d in dates}
+        first_dates = {d[0] for d in dates}  # type: ignore[index]
         if len(first_dates) == 1:
             return first_dates.pop().strftime("%Y-%m-%d")
         return None
