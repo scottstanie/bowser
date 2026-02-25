@@ -153,7 +153,7 @@ class RasterGroup(BaseModel):
         else:
             # For time series plotting, use only the last date (secondary/end date)
             # For interferograms: first date is reference, second is secondary
-            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # noqa: ignore[misc]
+            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[index]
 
         return x_values
 
@@ -164,9 +164,9 @@ class RasterGroup(BaseModel):
         if not dates or any(not d for d in dates):
             return None
         # Check for multi-date filenames (e.g., interferograms)
-        if not all(len(d) > 1 for d in dates):
+        if not all(len(d) > 1 for d in dates):  # type: ignore[arg-type]
             return None
-        first_dates = {d[0] for d in dates}
+        first_dates = {d[0] for d in dates}  # type: ignore[index]
         if len(first_dates) == 1:
             return first_dates.pop().strftime("%Y-%m-%d")
         return None
