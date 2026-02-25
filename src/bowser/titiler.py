@@ -153,9 +153,23 @@ class RasterGroup(BaseModel):
         else:
             # For time series plotting, use only the last date (secondary/end date)
             # For interferograms: first date is reference, second is secondary
-            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[misc]
+            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # noqa: ignore[misc]
 
         return x_values
+
+    @computed_field
+    def reference_date(self) -> str | None:
+        """Common reference date if all files share the same first date."""  # noqa: D401
+        dates = self._reader.dates
+        if not dates or any(not d for d in dates):
+            return None
+        # Check for multi-date filenames (e.g., interferograms)
+        if not all(len(d) > 1 for d in dates):
+            return None
+        first_dates = {d[0] for d in dates}
+        if len(first_dates) == 1:
+            return first_dates.pop().strftime("%Y-%m-%d")
+        return None
 
     @classmethod
     def from_glob(
@@ -193,8 +207,13 @@ def _find_files(glob_str: str) -> list[str]:
     return file_list
 
 
-def _format_dates(*dates, fmt="%Y-%m-%d") -> str:
-    return "_".join(f"{d.strftime(fmt)}" for d in dates)
+def _format_dates(*dates, fmt: str = "%Y-%m-%d") -> str:
+    """Format date(s) as an ISO date string for Chart.js TimeScale.
+
+    For multi-date filenames (e.g. interferograms with reference_secondary),
+    uses the last date as the temporal x-axis position.
+    """
+    return dates[-1].strftime(fmt)
 
 
 # https://github.com/developmentseed/titiler/blob/0fddd7ed268557e82a5e1520cdd7fdf084afa1b8/src/titiler/core/titiler/core/resources/responses.py#L15

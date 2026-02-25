@@ -170,6 +170,9 @@ export default function TimeSeriesChart() {
     document.body.removeChild(link);
   }, [chartData, state.showTrends, state.currentDataset]);
 
+  const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+  const referenceDate = currentDatasetInfo?.reference_date;
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -232,7 +235,7 @@ export default function TimeSeriesChart() {
         },
         title: {
           display: true,
-          text: 'Time',
+          text: referenceDate ? `Time (ref: ${referenceDate})` : 'Time',
         },
       },
       y: {

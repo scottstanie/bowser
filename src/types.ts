@@ -8,6 +8,7 @@ export interface RasterGroup {
   algorithm: string | null;
   latlon_bounds: [number, number, number, number];
   x_values: Array<number | string>;
+  reference_date?: string | null;
 }
 
 export interface TimeSeriesPoint {
