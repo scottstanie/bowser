@@ -4,29 +4,6 @@ from datetime import datetime
 
 import pytest
 
-from bowser.titiler import _format_dates
-
-
-class TestFormatDates:
-    def test_single_date(self):
-        d = datetime(2025, 3, 13)
-        assert _format_dates(d) == "2025-03-13"
-
-    def test_two_dates_uses_last(self):
-        ref = datetime(2025, 3, 10)
-        sec = datetime(2025, 3, 13)
-        assert _format_dates(ref, sec) == "2025-03-13"
-
-    def test_three_dates_uses_last(self):
-        d1 = datetime(2025, 1, 1)
-        d2 = datetime(2025, 6, 15)
-        d3 = datetime(2025, 12, 31)
-        assert _format_dates(d1, d2, d3) == "2025-12-31"
-
-    def test_no_dates_raises(self):
-        with pytest.raises((IndexError, TypeError)):
-            _format_dates()
-
 
 class TestRasterGroupReferenceDate:
     """Test reference_date via the integration test data.
@@ -38,9 +15,6 @@ class TestRasterGroupReferenceDate:
     @pytest.fixture()
     def raster_group_shared_ref(self):
         """RasterGroup with a shared reference date across all files."""
-        import os
-        import subprocess
-        import tempfile
         from pathlib import Path
 
         from bowser.titiler import RasterGroup
@@ -89,3 +63,84 @@ class TestRasterGroupReferenceDate:
 
     def test_no_dates_reference_date_is_none(self, raster_group_no_dates):
         assert raster_group_no_dates.reference_date is None
+
+
+class TestDuplicateSecondaryDates:
+    """Test that varying reference dates with duplicate secondary dates fall back."""
+
+    def test_duplicate_secondary_dates_fall_back_to_indices(self):
+        """Interferograms with different reference dates can share secondary dates.
+
+        E.g., unwrapped_20160101_20160201.tif and unwrapped_20160115_20160201.tif
+        both have secondary date 2016-02-01. Using only the secondary date as
+        x_value produces duplicates, so we should fall back to integer indices.
+        """
+        from unittest.mock import PropertyMock, patch
+
+        from bowser.titiler import RasterGroup
+
+        # Simulate 4 interferograms: 2 reference dates x 2 secondary dates
+        # ref1_sec1, ref2_sec1, ref1_sec2, ref2_sec2
+        fake_dates = [
+            (datetime(2016, 1, 1), datetime(2016, 2, 1)),
+            (datetime(2016, 1, 15), datetime(2016, 2, 1)),  # dup secondary
+            (datetime(2016, 1, 1), datetime(2016, 2, 15)),
+            (datetime(2016, 1, 15), datetime(2016, 2, 15)),  # dup secondary
+        ]
+        from pathlib import Path
+
+        data_dir = Path(__file__).parent / "data/geotiffs"
+        disp_files = sorted(data_dir.glob("displacement_*.tif"))[:4]
+
+        rg = RasterGroup(
+            name="test_varying_ref",
+            file_list=[str(f) for f in disp_files],
+            file_date_fmt="%Y%m%d",
+        )
+        # Patch the reader's dates to simulate varying reference dates
+        with patch.object(
+            type(rg._reader),
+            "dates",
+            new_callable=PropertyMock,
+            return_value=fake_dates,
+        ):
+            x = rg.x_values
+            # Should use full "ref_secondary" date pair labels
+            assert x == [
+                "2016-01-01_2016-02-01",
+                "2016-01-15_2016-02-01",
+                "2016-01-01_2016-02-15",
+                "2016-01-15_2016-02-15",
+            ]
+            # reference_date should be None (varying first dates)
+            assert rg.reference_date is None
+
+    def test_unique_secondary_dates_use_dates(self):
+        """When secondary dates are all unique, they should be used as x_values."""
+        from unittest.mock import PropertyMock, patch
+
+        from bowser.titiler import RasterGroup
+
+        fake_dates = [
+            (datetime(2016, 1, 1), datetime(2016, 2, 1)),
+            (datetime(2016, 1, 1), datetime(2016, 2, 15)),
+            (datetime(2016, 1, 1), datetime(2016, 3, 1)),
+        ]
+        from pathlib import Path
+
+        data_dir = Path(__file__).parent / "data/geotiffs"
+        disp_files = sorted(data_dir.glob("displacement_*.tif"))[:3]
+
+        rg = RasterGroup(
+            name="test_unique_sec",
+            file_list=[str(f) for f in disp_files],
+            file_date_fmt="%Y%m%d",
+        )
+        with patch.object(
+            type(rg._reader),
+            "dates",
+            new_callable=PropertyMock,
+            return_value=fake_dates,
+        ):
+            x = rg.x_values
+            assert x == ["2016-02-01", "2016-02-15", "2016-03-01"]

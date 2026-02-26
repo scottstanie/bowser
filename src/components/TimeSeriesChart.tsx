@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useDraggableResizable } from '../hooks/useDraggableResizable.tsx';
-import { Chart as ChartJS, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
+import { Chart as ChartJS, TimeScale, LinearScale, CategoryScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import zoomPlugin from 'chartjs-plugin-zoom';
@@ -43,7 +43,7 @@ const linkedLegendPlugin = {
 
 ChartJS.register(linkedLegendPlugin);
 
-ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, zoomPlugin);
+ChartJS.register(TimeScale, LinearScale, CategoryScale, PointElement, LineElement, Title, Tooltip, Legend, zoomPlugin);
 
 /** Read a CSS variable from the document root at call time. */
 function cssVar(name: string, fallback: string): string {
@@ -305,20 +305,44 @@ export default function TimeSeriesChart({ windowId }: { windowId: string }) {
       ? state.datasetInfo[state.currentDataset]?.reference_date
       : null;
 
+    // Determine x-axis scale type from label format of the first active dataset:
+    // - integer → linear; "YYYY-MM-DD_YYYY-MM-DD" → category; ISO date → time
+    const firstLabel = activeChartDs.length > 0
+      ? chartDataMap[activeChartDs[0]]?.labels?.[0]
+      : undefined;
+    const labelType: 'time' | 'category' | 'linear' =
+      typeof firstLabel === 'number' ? 'linear'
+      : typeof firstLabel === 'string' && firstLabel.includes('_') ? 'category'
+      : 'time';
+
+    const xScale: any = labelType === 'time'
+      ? {
+          type: 'time' as const,
+          time: { displayFormats: { month: 'MMM yyyy', day: 'MMM d', year: 'yyyy' } },
+          title: {
+            display: true,
+            text: referenceDate ? `Date (ref: ${referenceDate})` : 'Date',
+            color: mutedColor,
+          },
+          grid: { color: gridColor },
+          ticks: { color: mutedColor },
+        }
+      : labelType === 'category'
+      ? {
+          type: 'category' as const,
+          title: { display: true, text: 'Date pair (reference_secondary)', color: mutedColor },
+          grid: { color: gridColor },
+          ticks: { color: mutedColor, maxRotation: 45, autoSkip: true },
+        }
+      : {
+          type: 'linear' as const,
+          title: { display: true, text: 'Image index', color: mutedColor },
+          grid: { color: gridColor },
+          ticks: { color: mutedColor, stepSize: 1 },
+        };
+
     // Per-dataset y-axes: first on left, extras on right
-    const scales: any = {
-      x: {
-        type: 'time' as const,
-        time: { displayFormats: { month: 'MMM yyyy', day: 'MMM d', year: 'yyyy' } },
-        title: {
-          display: true,
-          text: referenceDate ? `Date (ref: ${referenceDate})` : 'Date',
-          color: mutedColor,
-        },
-        grid: { color: gridColor },
-        ticks: { color: mutedColor },
-      },
-    };
+    const scales: any = { x: xScale };
 
     activeChartDs.forEach((ds, i) => {
       const info = state.datasetInfo[ds];
