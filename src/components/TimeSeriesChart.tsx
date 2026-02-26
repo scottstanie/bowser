@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Chart as ChartJS, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
+import { Chart as ChartJS, TimeScale, LinearScale, CategoryScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import { useAppContext } from '../context/AppContext';
@@ -7,7 +7,7 @@ import { useApi } from '../hooks/useApi';
 import { MultiPointTimeSeriesData } from '../types';
 
 // Register Chart.js components
-ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
+ChartJS.register(TimeScale, LinearScale, CategoryScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
@@ -173,6 +173,53 @@ export default function TimeSeriesChart() {
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const referenceDate = currentDatasetInfo?.reference_date;
 
+  // Determine x-axis scale type based on label format:
+  // - "2016-01-01" (ISO date string) → time scale
+  // - "2016-01-01_2016-02-01" (date pair) → category scale
+  // - 0, 1, 2 (integers) → linear scale
+  const firstLabel = chartData?.labels?.[0];
+  const labelType: 'time' | 'category' | 'linear' =
+    typeof firstLabel === 'number' ? 'linear'
+    : typeof firstLabel === 'string' && firstLabel.includes('_') ? 'category'
+    : 'time';
+
+  const xScale = labelType === 'time'
+    ? {
+        type: 'time' as const,
+        time: {
+          displayFormats: {
+            month: 'MMM yyyy',
+            year: 'yyyy',
+          },
+        },
+        title: {
+          display: true,
+          text: referenceDate ? `Time (ref: ${referenceDate})` : 'Time',
+        },
+      }
+    : labelType === 'category'
+    ? {
+        type: 'category' as const,
+        title: {
+          display: true,
+          text: 'Date pair (reference_secondary)',
+        },
+        ticks: {
+          maxRotation: 45,
+          autoSkip: true,
+        },
+      }
+    : {
+        type: 'linear' as const,
+        title: {
+          display: true,
+          text: 'Image index',
+        },
+        ticks: {
+          stepSize: 1,
+        },
+      };
+
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -225,19 +272,7 @@ export default function TimeSeriesChart() {
       },
     },
     scales: {
-      x: {
-        type: 'time' as const,
-        time: {
-          displayFormats: {
-            month: 'MMM yyyy',
-            year: 'yyyy',
-          },
-        },
-        title: {
-          display: true,
-          text: referenceDate ? `Time (ref: ${referenceDate})` : 'Time',
-        },
-      },
+      x: xScale,
       y: {
         title: {
           display: true,

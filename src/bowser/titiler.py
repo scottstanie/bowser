@@ -144,16 +144,22 @@ class RasterGroup(BaseModel):
     @computed_field
     def x_values(self) -> list[str | int]:
         """Vales to use for the x axis of a time series plot."""
-        # if len(self.file_list) == 1:
         dates = self._reader.dates
         # Check if all dates are valid and non-empty
         if not dates or any((d is None or not d) for d in dates):
-            # otherwise, use indexes
-            x_values = np.arange(len(self.file_list)).tolist()
-        else:
-            # For time series plotting, use only the last date (secondary/end date)
-            # For interferograms: first date is reference, second is secondary
-            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[index]
+            return np.arange(len(self.file_list)).tolist()
+
+        # For time series plotting, use the last date (secondary/end date)
+        x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[index]
+
+        # If secondary dates have duplicates (e.g., interferograms with varying
+        # reference dates), use full "ref_secondary" date pair labels instead.
+        # The frontend renders these with a category scale.
+        if len(set(x_values)) != len(x_values):
+            return [
+                "_".join(d.strftime("%Y-%m-%d") for d in k)  # type: ignore[union-attr]
+                for k in dates
+            ]
 
         return x_values
 
@@ -205,15 +211,6 @@ def _find_files(glob_str: str) -> list[str]:
     else:
         file_list = sorted(glob(glob_str))
     return file_list
-
-
-def _format_dates(*dates, fmt: str = "%Y-%m-%d") -> str:
-    """Format date(s) as an ISO date string for Chart.js TimeScale.
-
-    For multi-date filenames (e.g. interferograms with reference_secondary),
-    uses the last date as the temporal x-axis position.
-    """
-    return dates[-1].strftime(fmt)
 
 
 # https://github.com/developmentseed/titiler/blob/0fddd7ed268557e82a5e1520cdd7fdf084afa1b8/src/titiler/core/titiler/core/resources/responses.py#L15
