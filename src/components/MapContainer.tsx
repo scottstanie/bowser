@@ -150,7 +150,7 @@ function RasterTileLayer() {
       key={tileUrl}  // force refresh if URL changes
       url={tileUrl}
       opacity={state.opacity}
-      maxZoom={19}
+      maxZoom={22}
     />
   );
 }
@@ -307,7 +307,7 @@ export default function MapContainer() {
       <TileLayer
         url={selectedBasemap.url}
         attribution={selectedBasemap.attribution}
-        maxZoom={19}
+        maxZoom={22}
       />
       <RasterTileLayer />
       <MarkerEventHandlers />

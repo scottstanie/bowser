@@ -17271,7 +17271,7 @@ function RasterTileLayer() {
     {
       url: tileUrl,
       opacity: state.opacity,
-      maxZoom: 19
+      maxZoom: 22
     },
     tileUrl
   );
@@ -17406,7 +17406,7 @@ function MapContainer() {
           {
             url: selectedBasemap.url,
             attribution: selectedBasemap.attribution,
-            maxZoom: 19
+            maxZoom: 22
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(RasterTileLayer, {}),
@@ -22856,11 +22856,11 @@ function sample(arr, numItems) {
 }
 function getPixelForGridLine(scale, index, offsetGridLines) {
   const length = scale.ticks.length;
-  const validIndex = Math.min(index, length - 1);
+  const validIndex2 = Math.min(index, length - 1);
   const start = scale._startPixel;
   const end = scale._endPixel;
   const epsilon = 1e-6;
-  let lineValue = scale.getPixelForTick(validIndex);
+  let lineValue = scale.getPixelForTick(validIndex2);
   let offset;
   if (offsetGridLines) {
     if (length === 1) {
@@ -22868,9 +22868,9 @@ function getPixelForGridLine(scale, index, offsetGridLines) {
     } else if (index === 0) {
       offset = (scale.getPixelForTick(1) - lineValue) / 2;
     } else {
-      offset = (lineValue - scale.getPixelForTick(validIndex - 1)) / 2;
+      offset = (lineValue - scale.getPixelForTick(validIndex2 - 1)) / 2;
     }
-    lineValue += validIndex < index ? offset : -offset;
+    lineValue += validIndex2 < index ? offset : -offset;
     if (lineValue < start - epsilon || lineValue > end + epsilon) {
       return;
     }
@@ -27668,6 +27668,127 @@ var plugin_tooltip = {
     "interaction"
   ]
 };
+const addIfString = (labels, raw, index, addedLabels) => {
+  if (typeof raw === "string") {
+    index = labels.push(raw) - 1;
+    addedLabels.unshift({
+      index,
+      label: raw
+    });
+  } else if (isNaN(raw)) {
+    index = null;
+  }
+  return index;
+};
+function findOrAddLabel(labels, raw, index, addedLabels) {
+  const first = labels.indexOf(raw);
+  if (first === -1) {
+    return addIfString(labels, raw, index, addedLabels);
+  }
+  const last = labels.lastIndexOf(raw);
+  return first !== last ? index : first;
+}
+const validIndex = (index, max) => index === null ? null : _limitValue(Math.round(index), 0, max);
+function _getLabelForValue(value) {
+  const labels = this.getLabels();
+  if (value >= 0 && value < labels.length) {
+    return labels[value];
+  }
+  return value;
+}
+class CategoryScale extends Scale {
+  constructor(cfg) {
+    super(cfg);
+    this._startValue = void 0;
+    this._valueRange = 0;
+    this._addedLabels = [];
+  }
+  init(scaleOptions) {
+    const added = this._addedLabels;
+    if (added.length) {
+      const labels = this.getLabels();
+      for (const { index, label } of added) {
+        if (labels[index] === label) {
+          labels.splice(index, 1);
+        }
+      }
+      this._addedLabels = [];
+    }
+    super.init(scaleOptions);
+  }
+  parse(raw, index) {
+    if (isNullOrUndef(raw)) {
+      return null;
+    }
+    const labels = this.getLabels();
+    index = isFinite(index) && labels[index] === raw ? index : findOrAddLabel(labels, raw, valueOrDefault(index, raw), this._addedLabels);
+    return validIndex(index, labels.length - 1);
+  }
+  determineDataLimits() {
+    const { minDefined, maxDefined } = this.getUserBounds();
+    let { min, max } = this.getMinMax(true);
+    if (this.options.bounds === "ticks") {
+      if (!minDefined) {
+        min = 0;
+      }
+      if (!maxDefined) {
+        max = this.getLabels().length - 1;
+      }
+    }
+    this.min = min;
+    this.max = max;
+  }
+  buildTicks() {
+    const min = this.min;
+    const max = this.max;
+    const offset = this.options.offset;
+    const ticks = [];
+    let labels = this.getLabels();
+    labels = min === 0 && max === labels.length - 1 ? labels : labels.slice(min, max + 1);
+    this._valueRange = Math.max(labels.length - (offset ? 0 : 1), 1);
+    this._startValue = this.min - (offset ? 0.5 : 0);
+    for (let value = min; value <= max; value++) {
+      ticks.push({
+        value
+      });
+    }
+    return ticks;
+  }
+  getLabelForValue(value) {
+    return _getLabelForValue.call(this, value);
+  }
+  configure() {
+    super.configure();
+    if (!this.isHorizontal()) {
+      this._reversePixels = !this._reversePixels;
+    }
+  }
+  getPixelForValue(value) {
+    if (typeof value !== "number") {
+      value = this.parse(value);
+    }
+    return value === null ? NaN : this.getPixelForDecimal((value - this._startValue) / this._valueRange);
+  }
+  getPixelForTick(index) {
+    const ticks = this.ticks;
+    if (index < 0 || index > ticks.length - 1) {
+      return null;
+    }
+    return this.getPixelForValue(ticks[index].value);
+  }
+  getValueForPixel(pixel) {
+    return Math.round(this._startValue + this.getDecimalForPixel(pixel) * this._valueRange);
+  }
+  getBasePixel() {
+    return this.bottom;
+  }
+}
+__publicField(CategoryScale, "id", "category");
+__publicField(CategoryScale, "defaults", {
+  ticks: {
+    callback: _getLabelForValue
+  }
+});
 function generateTicks$1(generationOptions, dataRange) {
   const ticks = [];
   const MIN_SPACING = 1e-14;
@@ -32276,8 +32397,9 @@ adapters._date.override({
     }
   }
 });
-Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend);
+Chart$1.register(TimeScale, LinearScale, CategoryScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend);
 function TimeSeriesChart() {
+  var _a2;
   const { state, dispatch } = useAppContext();
   const { fetchMultiPointTimeSeries } = useApi();
   const [chartData, setChartData] = reactExports.useState(null);
@@ -32409,6 +32531,40 @@ function TimeSeriesChart() {
   }, [chartData, state.showTrends, state.currentDataset]);
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const referenceDate = currentDatasetInfo == null ? void 0 : currentDatasetInfo.reference_date;
+  const firstLabel = (_a2 = chartData == null ? void 0 : chartData.labels) == null ? void 0 : _a2[0];
+  const labelType = typeof firstLabel === "number" ? "linear" : typeof firstLabel === "string" && firstLabel.includes("_") ? "category" : "time";
+  const xScale = labelType === "time" ? {
+    type: "time",
+    time: {
+      displayFormats: {
+        month: "MMM yyyy",
+        year: "yyyy"
+      }
+    },
+    title: {
+      display: true,
+      text: referenceDate ? `Time (ref: ${referenceDate})` : "Time"
+    }
+  } : labelType === "category" ? {
+    type: "category",
+    title: {
+      display: true,
+      text: "Date pair (reference_secondary)"
+    },
+    ticks: {
+      maxRotation: 45,
+      autoSkip: true
+    }
+  } : {
+    type: "linear",
+    title: {
+      display: true,
+      text: "Image index"
+    },
+    ticks: {
+      stepSize: 1
+    }
+  };
   const chartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -32442,12 +32598,12 @@ function TimeSeriesChart() {
       tooltip: {
         callbacks: {
           title: (context) => {
-            var _a2;
-            return `Time: ${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
+            var _a3;
+            return `Time: ${((_a3 = context[0]) == null ? void 0 : _a3.label) || ""}`;
           },
           label: (context) => {
-            var _a2;
-            const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
+            var _a3;
+            const dataset = (_a3 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a3[context.datasetIndex];
             if (!dataset) return "";
             let label = `${dataset.label}: ${context.parsed.y.toFixed(3)}`;
             if (dataset.trend && dataset.trend.mmPerYear !== void 0 && state.showTrends) {
@@ -32459,19 +32615,7 @@ function TimeSeriesChart() {
       }
     },
     scales: {
-      x: {
-        type: "time",
-        time: {
-          displayFormats: {
-            month: "MMM yyyy",
-            year: "yyyy"
-          }
-        },
-        title: {
-          display: true,
-          text: referenceDate ? `Time (ref: ${referenceDate})` : "Time"
-        }
-      },
+      x: xScale,
       y: {
         title: {
           display: true,
