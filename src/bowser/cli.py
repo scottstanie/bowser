@@ -319,20 +319,36 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
 
     dolphin_outputs = [
         {
-            "name": "time series",
+            "name": "Time series",
             "file_list": _glob(f"{wd}/timeseries/2*[0-9].tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
-            "name": "velocity",
+            "name": "Velocity",
             "file_list": _glob(f"{wd}/timeseries/velocity.tif"),
             "uses_spatial_ref": True,
             "algorithm": Algorithm.SHIFT.value,
         },
         {
+            "name": "Velocity Std. Err.",
+            "file_list": _glob(f"{wd}/timeseries/velocity_stderr.tif"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
+        },
+        {
+            "name": "Velocity Confidence Interval Margin",
+            "file_list": _glob(f"{wd}/timeseries/velocity_ci_margin.tif"),
+        },
+        {
             "name": "Filtered time series",
             "file_list": _glob(f"{wd}/filtered_timeseries*/2*[0-9].tif"),
+        },
+        {
+            "name": "Filtered time series (deramped)",
+            "file_list": _glob(f"{wd}/filtered_timeseries*/2*[0-9]_deramped.tif"),
+            "uses_spatial_ref": True,
+            "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Filtered velocity",
@@ -426,6 +442,14 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         {
             "name": "Time series residuals",
             "file_list": _glob(f"{wd}/timeseries/residuals_2*[0-9].tif"),
+        },
+        {
+            "name": "Point height correction",
+            "file_list": _glob(f"{wd}/timeseries/point_height_correction.tif"),
+        },
+        {
+            "name": "Point height correction std. err.",
+            "file_list": _glob(f"{wd}/timeseries/point_height_correction_stderr.tif"),
         },
         {
             "name": "Time series residuals (total sum)",
