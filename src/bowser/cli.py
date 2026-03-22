@@ -24,6 +24,13 @@ def cli_app():
     help="Name of JSON file from `bowser set-data`.",
 )
 @click.option(
+    "-m",
+    "--manifest",
+    "manifest_file",
+    default=None,
+    help="Path to bowser_manifest.json (V2 mode with point layer support).",
+)
+@click.option(
     "--port",
     "-p",
     default=None,
@@ -75,6 +82,7 @@ def cli_app():
 def run(
     stack_file,
     rasters_file,
+    manifest_file,
     port,
     reload,
     workers,
@@ -89,7 +97,9 @@ def run(
     if port is None:
         port = _find_available_port(8000)
     _setup_gdal_env(ignore_sidecar_files)
-    if stack_file:
+    if manifest_file:
+        os.environ["BOWSER_MANIFEST_FILE"] = manifest_file
+    elif stack_file:
         os.environ["BOWSER_STACK_DATA_FILE"] = stack_file
     else:
         os.environ["BOWSER_DATASET_CONFIG_FILE"] = rasters_file
@@ -277,8 +287,6 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         {
             "name": "Velocity Std. Err.",
             "file_list": [f"{wd}/timeseries/velocity_stderr.tif"],
-            "uses_spatial_ref": True,
-            "algorithm": Algorithm.SHIFT.value,
         },
         {
             "name": "Velocity Confidence Interval Margin",
@@ -685,3 +693,52 @@ def setup_nisar_gunw(nisar_dir: str, output: str):
         raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
+
+
+@cli_app.group()
+def convert():
+    """Convert InSAR data to GeoParquet point cloud format."""
+
+
+@convert.command()
+@click.argument(
+    "dolphin_work_dir",
+    type=click.Path(exists=True, file_okay=False, dir_okay=True),
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    required=True,
+    help="Directory to write output GeoParquet and manifest files.",
+)
+@click.option(
+    "--coherence-threshold",
+    default=0.5,
+    type=float,
+    show_default=True,
+    help="Minimum temporal coherence to include a pixel.",
+)
+@click.option(
+    "--amplitude-dispersion-threshold",
+    default=None,
+    type=float,
+    help="Maximum amplitude dispersion to include a pixel (lower = more stable).",
+)
+def dolphin(
+    dolphin_work_dir, output_dir, coherence_threshold, amplitude_dispersion_threshold
+):
+    """Convert dolphin workflow outputs to GeoParquet point cloud.
+
+    Reads raster time series and quality layers from DOLPHIN_WORK_DIR,
+    masks by quality thresholds, and writes points.parquet +
+    timeseries.parquet + bowser_manifest.json to OUTPUT_DIR.
+    """
+    from ._convert_dolphin import convert_dolphin
+
+    manifest_path = convert_dolphin(
+        work_dir=dolphin_work_dir,
+        output_dir=output_dir,
+        coherence_threshold=coherence_threshold,
+        amplitude_dispersion_threshold=amplitude_dispersion_threshold,
+    )
+    click.echo(f"\nDone! To view:\n  bowser run --manifest {manifest_path}")

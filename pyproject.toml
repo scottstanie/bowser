@@ -20,6 +20,11 @@ dependencies = [
   "rioxarray",
   "matplotlib",
   "pydantic-settings",
+  # V2: point cloud support
+  "geopandas",
+  "pyarrow",
+  "duckdb",
+  "shapely>=2",
 ]
 
 classifiers = [
@@ -144,4 +149,8 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 addopts = "-W ignore::PendingDeprecationWarning "
-filterwarnings = ["error"]
+filterwarnings = [
+  "error",
+  "default::DeprecationWarning:shapely",
+  "default::DeprecationWarning:geopandas",
+]
