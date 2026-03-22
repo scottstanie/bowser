@@ -742,3 +742,37 @@ def dolphin(
         amplitude_dispersion_threshold=amplitude_dispersion_threshold,
     )
     click.echo(f"\nDone! To view:\n  bowser run --manifest {manifest_path}")
+
+
+@convert.command()
+@click.argument(
+    "input_file",
+    type=click.Path(exists=True, file_okay=True, dir_okay=False),
+)
+@click.option(
+    "-o",
+    "--output-dir",
+    required=True,
+    help="Directory to write output GeoParquet and manifest files.",
+)
+@click.option(
+    "--layer-name",
+    default="ps_points",
+    show_default=True,
+    help="Name for the point layer in the manifest.",
+)
+def wide_parquet(input_file, output_dir, layer_name):
+    """Convert a wide-form point cloud parquet to Bowser V2 format.
+
+    Handles parquet files where displacement time series are stored as
+    date-named columns (e.g., '20240626_20240629'). Splits into separate
+    points.parquet + timeseries.parquet files.
+    """
+    from ._convert_wide_parquet import convert_wide_parquet
+
+    manifest_path = convert_wide_parquet(
+        input_file=input_file,
+        output_dir=output_dir,
+        layer_name=layer_name,
+    )
+    click.echo(f"\nDone! To view:\n  bowser run --manifest {manifest_path}")
