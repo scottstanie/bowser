@@ -34,6 +34,9 @@ const initialState: AppState = {
   showChart: false,
   selectedPointId: null,
   showTrends: false,
+  activePointLayer: null,
+  pointLayerBounds: null,
+  clickedPoints: [],
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -175,6 +178,24 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, opacity: action.payload };
     case 'TOGGLE_CHART':
       return { ...state, showChart: !state.showChart };
+
+    // V2 point layer actions
+    case 'SET_ACTIVE_POINT_LAYER':
+      return { ...state, activePointLayer: action.payload };
+    case 'SET_POINT_LAYER_BOUNDS':
+      return { ...state, pointLayerBounds: action.payload };
+    case 'SET_CLICKED_POINT_TIMESERIES':
+      return {
+        ...state,
+        showChart: true,
+        clickedPoints: [
+          ...state.clickedPoints.filter(p => p.pointId !== action.payload.pointId),
+          action.payload,
+        ],
+      };
+    case 'CLEAR_CLICKED_POINTS':
+      return { ...state, clickedPoints: [] };
+
     default:
       return state;
   }

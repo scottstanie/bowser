@@ -43,6 +43,11 @@ export interface BaseMapItem {
   attribution: string;
 }
 
+export interface ClickedPointTimeseries {
+  pointId: number;
+  timeseries: Array<{ date: string; displacement: number }>;
+}
+
 export interface AppState {
   datasetInfo: { [key: string]: RasterGroup };
   timeSeriesPoints: TimeSeriesPoint[];
@@ -59,6 +64,10 @@ export interface AppState {
   showChart: boolean;
   selectedPointId: string | null;
   showTrends: boolean;
+  // V2 point layer state
+  activePointLayer: string | null;
+  pointLayerBounds: [number, number, number, number] | null;
+  clickedPoints: ClickedPointTimeseries[];
 }
 
 export type AppAction =
@@ -80,7 +89,12 @@ export type AppAction =
   | { type: 'SET_OPACITY'; payload: number }
   | { type: 'TOGGLE_CHART' }
   | { type: 'SET_SELECTED_POINT'; payload: string | null }
-  | { type: 'TOGGLE_TRENDS' };
+  | { type: 'TOGGLE_TRENDS' }
+  // V2 point layer actions
+  | { type: 'SET_ACTIVE_POINT_LAYER'; payload: string }
+  | { type: 'SET_POINT_LAYER_BOUNDS'; payload: [number, number, number, number] }
+  | { type: 'SET_CLICKED_POINT_TIMESERIES'; payload: ClickedPointTimeseries }
+  | { type: 'CLEAR_CLICKED_POINTS' };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };
