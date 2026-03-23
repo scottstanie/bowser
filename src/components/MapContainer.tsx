@@ -17,10 +17,19 @@ function valueToRdBuR(value: number, vmin: number, vmax: number): [number, numbe
   return [r, g, b, 220];
 }
 
-const BASEMAPS: Record<string, string> = {
-  satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-  osm: 'https://tile.openstreetmap.org/{z}/{y}/{x}.png',
-  dark: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+const BASEMAPS: Record<string, { url: string; maxZoom: number }> = {
+  satellite: {
+    url: 'https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+    maxZoom: 21,
+  },
+  osm: {
+    url: 'https://tile.openstreetmap.org/{z}/{y}/{x}.png',
+    maxZoom: 19,
+  },
+  dark: {
+    url: 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+    maxZoom: 20,
+  },
 };
 
 export default function MapContainer() {
@@ -50,8 +59,9 @@ export default function MapContainer() {
         sources: {
           'basemap': {
             type: 'raster',
-            tiles: [BASEMAPS.satellite],
+            tiles: [BASEMAPS.satellite.url],
             tileSize: 256,
+            maxzoom: BASEMAPS.satellite.maxZoom,
           }
         },
         layers: [{
@@ -62,6 +72,7 @@ export default function MapContainer() {
       },
       center: [-99.077, 19.315], // Default; will be overridden by data bounds
       zoom: 12,
+      maxZoom: 22,
       attributionControl: false,
     });
 
