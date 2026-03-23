@@ -68,6 +68,10 @@ export interface AppState {
   activePointLayer: string | null;
   pointLayerBounds: [number, number, number, number] | null;
   clickedPoints: ClickedPointTimeseries[];
+  pointColorBy: string;
+  pointVmin: number;
+  pointVmax: number;
+  pointAttributes: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }>;
 }
 
 export type AppAction =
@@ -94,7 +98,11 @@ export type AppAction =
   | { type: 'SET_ACTIVE_POINT_LAYER'; payload: string }
   | { type: 'SET_POINT_LAYER_BOUNDS'; payload: [number, number, number, number] }
   | { type: 'SET_CLICKED_POINT_TIMESERIES'; payload: ClickedPointTimeseries }
-  | { type: 'CLEAR_CLICKED_POINTS' };
+  | { type: 'CLEAR_CLICKED_POINTS' }
+  | { type: 'SET_POINT_COLOR_BY'; payload: string }
+  | { type: 'SET_POINT_VMIN'; payload: number }
+  | { type: 'SET_POINT_VMAX'; payload: number }
+  | { type: 'SET_POINT_ATTRIBUTES'; payload: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }> };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

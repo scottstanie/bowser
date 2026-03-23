@@ -32,10 +32,12 @@ export default function MapContainer() {
 
   const [pointData, setPointData] = useState<PointData | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
-  const [pointVmin, setPointVmin] = useState<number>(-10);
-  const [pointVmax, setPointVmax] = useState<number>(10);
-  const [colorBy, _setColorBy] = useState<string>('velocity');
   const [pointCount, setPointCount] = useState<number>(0);
+
+  // Read point viz state from global state (controlled by PointControlsPanel)
+  const colorBy = state.pointColorBy;
+  const pointVmin = state.pointVmin;
+  const pointVmax = state.pointVmax;
 
   // Initialize map
   useEffect(() => {
@@ -113,15 +115,6 @@ export default function MapContainer() {
         });
         setPointData(data);
         setPointCount(data.count);
-
-        // Auto-set vmin/vmax from data range (2nd/98th percentile approximation)
-        if (data.count > 0) {
-          const sorted = [...data.colorValues].sort((a, b) => a - b);
-          const p2 = sorted[Math.floor(sorted.length * 0.02)];
-          const p98 = sorted[Math.floor(sorted.length * 0.98)];
-          setPointVmin(p2);
-          setPointVmax(p98);
-        }
       } catch (err) {
         console.error('Error loading points:', err);
       }

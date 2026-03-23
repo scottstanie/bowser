@@ -6,6 +6,7 @@ import MapContainer from './MapContainer';
 import ControlPanel from './ControlPanel';
 import TimeSeriesChart from './TimeSeriesChart';
 import PointManagerPanel from './PointManagerPanel';
+import PointControlsPanel from './PointControlsPanel';
 import '../style.css';
 
 function AppContent() {
@@ -29,6 +30,7 @@ function AppContent() {
 
             // Get attributes to learn about the data
             const attrs = await fetchPointAttributes(firstLayer);
+            dispatch({ type: 'SET_POINT_ATTRIBUTES', payload: attrs.attributes });
 
             // Set bounds from lon/lat ranges
             const lonAttr = attrs.attributes.longitude;
@@ -39,6 +41,21 @@ function AppContent() {
                 type: 'SET_POINT_LAYER_BOUNDS',
                 payload: [lonAttr.min, latAttr.min, lonAttr.max, latAttr.max],
               });
+            }
+
+            // Auto-set vmin/vmax from default color-by attribute
+            const defaultColorBy = pointLayers[firstLayer].default_color_by || 'velocity';
+            dispatch({ type: 'SET_POINT_COLOR_BY', payload: defaultColorBy });
+            const colorAttr = attrs.attributes[defaultColorBy];
+            if (colorAttr?.min != null && colorAttr?.max != null) {
+              if (defaultColorBy.includes('velocity')) {
+                const absMax = Math.max(Math.abs(colorAttr.min), Math.abs(colorAttr.max));
+                dispatch({ type: 'SET_POINT_VMIN', payload: -absMax });
+                dispatch({ type: 'SET_POINT_VMAX', payload: absMax });
+              } else {
+                dispatch({ type: 'SET_POINT_VMIN', payload: colorAttr.min });
+                dispatch({ type: 'SET_POINT_VMAX', payload: colorAttr.max });
+              }
             }
           }
         } catch {
@@ -78,6 +95,7 @@ function AppContent() {
       {!isPointMode && <ControlPanel />}
       <div className="map-container" style={isPointMode ? { gridColumn: '1 / -1' } : undefined}>
         <MapContainer />
+        {isPointMode && <PointControlsPanel />}
         {!isPointMode && <PointManagerPanel />}
         {state.showChart && <TimeSeriesChart />}
       </div>

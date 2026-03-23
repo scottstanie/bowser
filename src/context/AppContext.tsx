@@ -37,6 +37,10 @@ const initialState: AppState = {
   activePointLayer: null,
   pointLayerBounds: null,
   clickedPoints: [],
+  pointColorBy: 'velocity',
+  pointVmin: -10,
+  pointVmax: 10,
+  pointAttributes: {},
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -195,6 +199,14 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       };
     case 'CLEAR_CLICKED_POINTS':
       return { ...state, clickedPoints: [] };
+    case 'SET_POINT_COLOR_BY':
+      return { ...state, pointColorBy: action.payload };
+    case 'SET_POINT_VMIN':
+      return { ...state, pointVmin: action.payload };
+    case 'SET_POINT_VMAX':
+      return { ...state, pointVmax: action.payload };
+    case 'SET_POINT_ATTRIBUTES':
+      return { ...state, pointAttributes: action.payload };
 
     default:
       return state;
