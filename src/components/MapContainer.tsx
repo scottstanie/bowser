@@ -5,17 +5,7 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
 import { useAppContext } from '../context/AppContext';
 import { usePointsApi, PointData } from '../hooks/usePointsApi';
-
-// Color scale: map a value in [vmin, vmax] to RdBu_r-like RGB
-function valueToRdBuR(value: number, vmin: number, vmax: number): [number, number, number, number] {
-  const t = Math.max(0, Math.min(1, (value - vmin) / (vmax - vmin || 1)));
-  // RdBu_r: blue (low/negative) → white (zero) → red (high/positive)
-  // Reversed so negative = red, positive = blue (subsidence convention)
-  const r = t < 0.5 ? Math.round(33 + (255 - 33) * (t * 2)) : Math.round(255 - (255 - 33) * ((t - 0.5) * 2));
-  const g = t < 0.5 ? Math.round(102 + (255 - 102) * (t * 2)) : Math.round(255 - (255 - 102) * ((t - 0.5) * 2));
-  const b = t < 0.5 ? Math.round(172 + (255 - 172) * (t * 2)) : Math.round(255 - (255 - 172) * ((t - 0.5) * 2));
-  return [r, g, b, 220];
-}
+import { valueToColor } from '../colorscales';
 
 const BASEMAPS: Record<string, { url: string; maxZoom: number }> = {
   satellite: {
@@ -49,6 +39,7 @@ export default function MapContainer() {
   const pointVmax = state.pointVmax;
   const pointFilter = state.pointFilter;
   const pointBasemap = state.pointBasemap;
+  const pointColormap = state.pointColormap;
 
   // Initialize map
   useEffect(() => {
@@ -189,7 +180,7 @@ export default function MapContainer() {
         if (selectedPointId !== null && pointData.point_id[index] === selectedPointId) {
           return [255, 255, 0, 255]; // Highlight selected
         }
-        return valueToRdBuR(v, pointVmin, pointVmax);
+        return valueToColor(v, pointVmin, pointVmax, pointColormap);
       },
       getRadius: 3,
       radiusMinPixels: 2,
@@ -201,12 +192,12 @@ export default function MapContainer() {
         }
       },
       updateTriggers: {
-        getFillColor: [pointVmin, pointVmax, selectedPointId],
+        getFillColor: [pointVmin, pointVmax, pointColormap, selectedPointId],
       },
     });
 
     overlay.setProps({ layers: [layer] });
-  }, [pointData, pointVmin, pointVmax, selectedPointId, onPointClick]);
+  }, [pointData, pointVmin, pointVmax, pointColormap, selectedPointId, onPointClick]);
 
   // Raster tile layer for V1 datasets
   useEffect(() => {

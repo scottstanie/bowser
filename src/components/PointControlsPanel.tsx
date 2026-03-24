@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
+import { COLORMAP_NAMES, colormapGradientCSS } from '../colorscales';
 
 const FILTER_OPERATORS = ['>', '<', '>=', '<=', '='] as const;
 
@@ -171,6 +172,33 @@ export default function PointControlsPanel() {
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Colormap selector */}
+      <div style={sectionGap}>
+        <label style={labelStyle}>Colormap</label>
+        <select
+          value={state.pointColormap}
+          onChange={e => dispatch({ type: 'SET_POINT_COLORMAP', payload: e.target.value })}
+          style={selectStyle}
+        >
+          {COLORMAP_NAMES.map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Colorbar */}
+      <div style={{ marginBottom: 8 }}>
+        <div style={{
+          height: 12, borderRadius: 2,
+          background: colormapGradientCSS(state.pointColormap),
+        }} />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#999', marginTop: 2 }}>
+          <span>{state.pointVmin.toFixed(1)}</span>
+          <span>{((state.pointVmin + state.pointVmax) / 2).toFixed(1)}</span>
+          <span>{state.pointVmax.toFixed(1)}</span>
+        </div>
       </div>
 
       {/* Vmin / Vmax */}
