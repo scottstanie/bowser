@@ -102,6 +102,7 @@ export type AppAction =
   | { type: 'SET_POINT_LAYER_BOUNDS'; payload: [number, number, number, number] }
   | { type: 'SET_CLICKED_POINT_TIMESERIES'; payload: ClickedPointTimeseries }
   | { type: 'CLEAR_CLICKED_POINTS' }
+  | { type: 'REMOVE_CLICKED_POINT'; payload: number }
   | { type: 'SET_POINT_COLOR_BY'; payload: string }
   | { type: 'SET_POINT_VMIN'; payload: number }
   | { type: 'SET_POINT_VMAX'; payload: number }

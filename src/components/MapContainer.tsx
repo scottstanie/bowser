@@ -139,10 +139,19 @@ export default function MapContainer() {
     loadPoints();
   }, [state.activePointLayer, colorBy, pointFilter, fetchPoints]);
 
+  // Track which point IDs are currently displayed in the chart
+  const clickedPointIds = new Set(state.clickedPoints.map(p => p.pointId));
+
   // Handle point click → fetch timeseries
-  const onPointClick = useCallback(async (pointId: number) => {
+  // shiftKey=true adds to selection, false replaces
+  const onPointClick = useCallback(async (pointId: number, shiftKey: boolean) => {
     if (!state.activePointLayer) return;
     setSelectedPointId(pointId);
+
+    // If not shift-clicking, clear previous selections first
+    if (!shiftKey) {
+      dispatch({ type: 'CLEAR_CLICKED_POINTS' });
+    }
 
     try {
       const ts = await fetchPointTimeseries(state.activePointLayer, pointId);
@@ -176,23 +185,28 @@ export default function MapContainer() {
       },
       getPosition: (_, { index }) => [pointData.lon[index], pointData.lat[index]],
       getFillColor: (_, { index }) => {
-        const v = pointData.colorValues[index];
-        if (selectedPointId !== null && pointData.point_id[index] === selectedPointId) {
-          return [255, 255, 0, 255]; // Highlight selected
+        const pid = pointData.point_id[index];
+        if (clickedPointIds.has(pid)) {
+          return [255, 255, 0, 255]; // Highlight selected/clicked
         }
+        const v = pointData.colorValues[index];
         return valueToColor(v, pointVmin, pointVmax, pointColormap);
       },
-      getRadius: 3,
+      getRadius: (_, { index }) => {
+        return clickedPointIds.has(pointData.point_id[index]) ? 5 : 3;
+      },
       radiusMinPixels: 2,
-      radiusMaxPixels: 10,
+      radiusMaxPixels: 12,
       pickable: true,
-      onClick: (info) => {
+      onClick: (info, event) => {
         if (info.index >= 0) {
-          onPointClick(pointData.point_id[info.index]);
+          const shiftKey = (event as unknown as { srcEvent?: MouseEvent }).srcEvent?.shiftKey ?? false;
+          onPointClick(pointData.point_id[info.index], shiftKey);
         }
       },
       updateTriggers: {
-        getFillColor: [pointVmin, pointVmax, pointColormap, selectedPointId],
+        getFillColor: [pointVmin, pointVmax, pointColormap, ...clickedPointIds],
+        getRadius: [...clickedPointIds],
       },
     });
 
@@ -277,6 +291,8 @@ export default function MapContainer() {
         }}>
           {pointCount.toLocaleString()} points | color: {colorBy}
           | [{pointVmin.toFixed(1)}, {pointVmax.toFixed(1)}]
+          {state.clickedPoints.length > 0 && ` | ${state.clickedPoints.length} selected`}
+          {state.clickedPoints.length === 0 && ' | click point for TS, shift+click to compare'}
         </div>
       )}
     </div>

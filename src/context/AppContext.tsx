@@ -202,6 +202,11 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       };
     case 'CLEAR_CLICKED_POINTS':
       return { ...state, clickedPoints: [] };
+    case 'REMOVE_CLICKED_POINT':
+      return {
+        ...state,
+        clickedPoints: state.clickedPoints.filter(p => p.pointId !== action.payload),
+      };
     case 'SET_POINT_COLOR_BY':
       return { ...state, pointColorBy: action.payload };
     case 'SET_POINT_VMIN':
