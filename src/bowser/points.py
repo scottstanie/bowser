@@ -227,7 +227,7 @@ async def get_points(
     """
 
     try:
-        arrow_table = conn.execute(sql).fetch_arrow_table()
+        arrow_table = conn.execute(sql).arrow().read_all()
     except duckdb.Error as e:
         raise HTTPException(status_code=400, detail=f"Query error: {e}")
 
