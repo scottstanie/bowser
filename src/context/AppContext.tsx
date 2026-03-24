@@ -41,6 +41,8 @@ const initialState: AppState = {
   pointVmin: -10,
   pointVmax: 10,
   pointAttributes: {},
+  pointFilter: '',
+  pointBasemap: 'satellite',
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -207,6 +209,10 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, pointVmax: action.payload };
     case 'SET_POINT_ATTRIBUTES':
       return { ...state, pointAttributes: action.payload };
+    case 'SET_POINT_FILTER':
+      return { ...state, pointFilter: action.payload };
+    case 'SET_POINT_BASEMAP':
+      return { ...state, pointBasemap: action.payload };
 
     default:
       return state;

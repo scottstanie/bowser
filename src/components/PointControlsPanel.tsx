@@ -1,12 +1,47 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
+
+const FILTER_OPERATORS = ['>', '<', '>=', '<=', '='] as const;
+
+const inputStyle = {
+  width: '100%',
+  padding: '3px 5px',
+  background: '#2a2a4a',
+  color: '#ddd',
+  border: '1px solid #444',
+  borderRadius: 3,
+  fontSize: 12,
+  boxSizing: 'border-box' as const,
+};
+
+const selectStyle = {
+  ...inputStyle,
+  padding: '4px 6px',
+};
+
+const labelStyle = { fontSize: 11, color: '#aaa', display: 'block' as const, marginBottom: 2 };
+
+const sectionGap = { marginBottom: 10 };
+
+const basemapLabels: Record<string, string> = {
+  satellite: 'Satellite',
+  osm: 'OpenStreetMap',
+  dark: 'Dark',
+};
 
 export default function PointControlsPanel() {
   const { state, dispatch } = useAppContext();
   const [draftVmin, setDraftVmin] = useState(String(state.pointVmin));
   const [draftVmax, setDraftVmax] = useState(String(state.pointVmax));
 
-  // Only show numeric (non-geometry, non-id) attributes in the dropdown
+  // Filter draft state
+  const [filterAttr, setFilterAttr] = useState('');
+  const [filterOp, setFilterOp] = useState<string>('>');
+  const [filterVal, setFilterVal] = useState('');
+  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+
+  // Only show numeric (non-geometry, non-id) attributes in dropdowns
   const numericAttrs = Object.entries(state.pointAttributes).filter(
     ([name, info]) =>
       name !== 'geometry' &&
@@ -18,21 +53,19 @@ export default function PointControlsPanel() {
 
   const handleColorByChange = (value: string) => {
     dispatch({ type: 'SET_POINT_COLOR_BY', payload: value });
-    // Auto-set vmin/vmax from the attribute range
     const attr = state.pointAttributes[value];
     if (attr?.min != null && attr?.max != null) {
-      // Use symmetric range around 0 for velocity-like attributes
       if (value.includes('velocity')) {
         const absMax = Math.max(Math.abs(attr.min), Math.abs(attr.max));
         dispatch({ type: 'SET_POINT_VMIN', payload: -absMax });
         dispatch({ type: 'SET_POINT_VMAX', payload: absMax });
-        setDraftVmin(String(-absMax.toFixed(2)));
-        setDraftVmax(String(absMax.toFixed(2)));
+        setDraftVmin((-absMax).toFixed(2));
+        setDraftVmax(absMax.toFixed(2));
       } else {
         dispatch({ type: 'SET_POINT_VMIN', payload: attr.min });
         dispatch({ type: 'SET_POINT_VMAX', payload: attr.max });
-        setDraftVmin(String(attr.min.toFixed(2)));
-        setDraftVmax(String(attr.max.toFixed(2)));
+        setDraftVmin(attr.min.toFixed(2));
+        setDraftVmax(attr.max.toFixed(2));
       }
     }
   };
@@ -47,8 +80,36 @@ export default function PointControlsPanel() {
     if (!isNaN(v)) dispatch({ type: 'SET_POINT_VMAX', payload: v });
   };
 
+  const addFilter = () => {
+    if (!filterAttr || !filterVal) return;
+    const v = parseFloat(filterVal);
+    if (isNaN(v)) return;
+    const expr = `${filterAttr}${filterOp}${v}`;
+    const next = [...activeFilters, expr];
+    setActiveFilters(next);
+    dispatch({ type: 'SET_POINT_FILTER', payload: next.join(' AND ') });
+    setFilterVal('');
+    filterInputRef.current?.focus();
+  };
+
+  const removeFilter = (index: number) => {
+    const next = activeFilters.filter((_, i) => i !== index);
+    setActiveFilters(next);
+    dispatch({ type: 'SET_POINT_FILTER', payload: next.join(' AND ') });
+  };
+
+  const clearFilters = () => {
+    setActiveFilters([]);
+    dispatch({ type: 'SET_POINT_FILTER', payload: '' });
+  };
+
   const currentAttr = state.pointAttributes[state.pointColorBy];
   const pointCount = currentAttr?.count;
+
+  // Set default filter attribute
+  if (!filterAttr && numericAttrs.length > 0) {
+    setFilterAttr(numericAttrs[0][0]);
+  }
 
   return (
     <div style={{
@@ -56,9 +117,11 @@ export default function PointControlsPanel() {
       background: 'rgba(20, 20, 40, 0.92)', color: '#ddd',
       borderRadius: 6, padding: '10px 14px',
       fontSize: 13, fontFamily: 'system-ui, sans-serif',
-      minWidth: 220, backdropFilter: 'blur(8px)',
+      minWidth: 240, maxWidth: 280, backdropFilter: 'blur(8px)',
       border: '1px solid rgba(255,255,255,0.1)',
+      maxHeight: 'calc(100vh - 40px)', overflowY: 'auto',
     }}>
+      {/* Header */}
       <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
         Point Cloud
         {pointCount != null && (
@@ -68,31 +131,52 @@ export default function PointControlsPanel() {
         )}
       </div>
 
+      {/* Basemap switcher */}
+      <div style={sectionGap}>
+        <label style={labelStyle}>Basemap</label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['satellite', 'osm', 'dark'] as const).map(key => (
+            <button
+              key={key}
+              onClick={() => dispatch({ type: 'SET_POINT_BASEMAP', payload: key })}
+              style={{
+                flex: 1, padding: '3px 6px', fontSize: 11,
+                background: state.pointBasemap === key ? '#5566cc' : '#2a2a4a',
+                color: state.pointBasemap === key ? '#fff' : '#aaa',
+                border: state.pointBasemap === key ? '1px solid #7788ee' : '1px solid #444',
+                borderRadius: 3, cursor: 'pointer',
+              }}
+            >
+              {basemapLabels[key]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Separator */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
       {/* Color by dropdown */}
-      <label style={{ fontSize: 11, color: '#aaa', display: 'block', marginBottom: 2 }}>
-        Color by
-      </label>
-      <select
-        value={state.pointColorBy}
-        onChange={e => handleColorByChange(e.target.value)}
-        style={{
-          width: '100%', padding: '4px 6px', marginBottom: 8,
-          background: '#2a2a4a', color: '#ddd', border: '1px solid #444',
-          borderRadius: 3, fontSize: 12,
-        }}
-      >
-        {numericAttrs.map(([name, info]) => (
-          <option key={name} value={name}>
-            {name}
-            {info.min != null ? ` [${info.min.toFixed(2)}, ${info.max!.toFixed(2)}]` : ''}
-          </option>
-        ))}
-      </select>
+      <div style={sectionGap}>
+        <label style={labelStyle}>Color by</label>
+        <select
+          value={state.pointColorBy}
+          onChange={e => handleColorByChange(e.target.value)}
+          style={selectStyle}
+        >
+          {numericAttrs.map(([name, info]) => (
+            <option key={name} value={name}>
+              {name}
+              {info.min != null ? ` [${info.min.toFixed(2)}, ${info.max!.toFixed(2)}]` : ''}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {/* Vmin / Vmax */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+      <div style={{ display: 'flex', gap: 8, ...sectionGap }}>
         <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 11, color: '#aaa' }}>Min</label>
+          <label style={labelStyle}>Min</label>
           <input
             type="number"
             step="any"
@@ -100,15 +184,11 @@ export default function PointControlsPanel() {
             onChange={e => setDraftVmin(e.target.value)}
             onBlur={commitVmin}
             onKeyDown={e => e.key === 'Enter' && commitVmin()}
-            style={{
-              width: '100%', padding: '3px 5px',
-              background: '#2a2a4a', color: '#ddd', border: '1px solid #444',
-              borderRadius: 3, fontSize: 12,
-            }}
+            style={inputStyle}
           />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={{ fontSize: 11, color: '#aaa' }}>Max</label>
+          <label style={labelStyle}>Max</label>
           <input
             type="number"
             step="any"
@@ -116,21 +196,101 @@ export default function PointControlsPanel() {
             onChange={e => setDraftVmax(e.target.value)}
             onBlur={commitVmax}
             onKeyDown={e => e.key === 'Enter' && commitVmax()}
-            style={{
-              width: '100%', padding: '3px 5px',
-              background: '#2a2a4a', color: '#ddd', border: '1px solid #444',
-              borderRadius: 3, fontSize: 12,
-            }}
+            style={inputStyle}
           />
         </div>
       </div>
 
       {/* Current attribute stats */}
       {currentAttr?.mean != null && (
-        <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
           mean: {currentAttr.mean.toFixed(3)}
         </div>
       )}
+
+      {/* Separator */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+      {/* Filter section */}
+      <div>
+        <label style={labelStyle}>Filter</label>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+          <select
+            value={filterAttr}
+            onChange={e => setFilterAttr(e.target.value)}
+            style={{ ...selectStyle, flex: 3 }}
+          >
+            {numericAttrs.map(([name]) => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <select
+            value={filterOp}
+            onChange={e => setFilterOp(e.target.value)}
+            style={{ ...selectStyle, flex: 1, textAlign: 'center' }}
+          >
+            {FILTER_OPERATORS.map(op => (
+              <option key={op} value={op}>{op}</option>
+            ))}
+          </select>
+          <input
+            ref={filterInputRef}
+            type="number"
+            step="any"
+            placeholder="val"
+            value={filterVal}
+            onChange={e => setFilterVal(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && addFilter()}
+            style={{ ...inputStyle, flex: 2 }}
+          />
+          <button
+            onClick={addFilter}
+            style={{
+              padding: '3px 8px', fontSize: 12, cursor: 'pointer',
+              background: '#3a5a3a', color: '#cfc', border: '1px solid #4a7a4a',
+              borderRadius: 3,
+            }}
+          >
+            +
+          </button>
+        </div>
+
+        {/* Active filters */}
+        {activeFilters.length > 0 && (
+          <div style={{ marginBottom: 4 }}>
+            {activeFilters.map((f, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  background: '#1a2a3a', padding: '2px 6px', borderRadius: 3,
+                  marginBottom: 2, fontSize: 11, fontFamily: 'monospace',
+                }}
+              >
+                <span style={{ color: '#8cf' }}>{f}</span>
+                <button
+                  onClick={() => removeFilter(i)}
+                  style={{
+                    background: 'none', border: 'none', color: '#f88',
+                    cursor: 'pointer', fontSize: 12, padding: '0 2px',
+                  }}
+                >
+                  x
+                </button>
+              </div>
+            ))}
+            <button
+              onClick={clearFilters}
+              style={{
+                background: 'none', border: 'none', color: '#888',
+                cursor: 'pointer', fontSize: 10, padding: '2px 0',
+              }}
+            >
+              Clear all filters
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

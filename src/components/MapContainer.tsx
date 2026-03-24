@@ -47,6 +47,8 @@ export default function MapContainer() {
   const colorBy = state.pointColorBy;
   const pointVmin = state.pointVmin;
   const pointVmax = state.pointVmax;
+  const pointFilter = state.pointFilter;
+  const pointBasemap = state.pointBasemap;
 
   // Initialize map
   useEffect(() => {
@@ -95,6 +97,17 @@ export default function MapContainer() {
     };
   }, []);
 
+  // Switch basemap tiles
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const basemap = BASEMAPS[pointBasemap];
+    const source = map.getSource('basemap') as maplibregl.RasterTileSource | undefined;
+    if (source) {
+      source.setTiles([basemap.url]);
+    }
+  }, [pointBasemap]);
+
   // Fit map to data bounds from point layer or raster dataset
   useEffect(() => {
     const map = mapRef.current;
@@ -122,6 +135,7 @@ export default function MapContainer() {
       try {
         const data = await fetchPoints(state.activePointLayer!, {
           colorBy,
+          filter: pointFilter || undefined,
           maxPoints: 200000,
         });
         setPointData(data);
@@ -132,7 +146,7 @@ export default function MapContainer() {
     };
 
     loadPoints();
-  }, [state.activePointLayer, colorBy, fetchPoints]);
+  }, [state.activePointLayer, colorBy, pointFilter, fetchPoints]);
 
   // Handle point click → fetch timeseries
   const onPointClick = useCallback(async (pointId: number) => {

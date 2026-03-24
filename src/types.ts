@@ -72,6 +72,8 @@ export interface AppState {
   pointVmin: number;
   pointVmax: number;
   pointAttributes: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }>;
+  pointFilter: string;
+  pointBasemap: 'satellite' | 'osm' | 'dark';
 }
 
 export type AppAction =
@@ -102,7 +104,9 @@ export type AppAction =
   | { type: 'SET_POINT_COLOR_BY'; payload: string }
   | { type: 'SET_POINT_VMIN'; payload: number }
   | { type: 'SET_POINT_VMAX'; payload: number }
-  | { type: 'SET_POINT_ATTRIBUTES'; payload: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }> };
+  | { type: 'SET_POINT_ATTRIBUTES'; payload: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }> }
+  | { type: 'SET_POINT_FILTER'; payload: string }
+  | { type: 'SET_POINT_BASEMAP'; payload: 'satellite' | 'osm' | 'dark' };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };
