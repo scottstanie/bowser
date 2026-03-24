@@ -75,6 +75,8 @@ export interface AppState {
   pointFilter: string;
   pointBasemap: 'satellite' | 'osm' | 'dark';
   pointColormap: string;
+  referencePointId: number | null;
+  referenceTimeseries: Array<{ date: string; displacement: number }>;
 }
 
 export type AppAction =
@@ -109,7 +111,9 @@ export type AppAction =
   | { type: 'SET_POINT_ATTRIBUTES'; payload: Record<string, { type: string; min?: number; max?: number; mean?: number; count?: number }> }
   | { type: 'SET_POINT_FILTER'; payload: string }
   | { type: 'SET_POINT_BASEMAP'; payload: 'satellite' | 'osm' | 'dark' }
-  | { type: 'SET_POINT_COLORMAP'; payload: string };
+  | { type: 'SET_POINT_COLORMAP'; payload: string }
+  | { type: 'SET_REFERENCE_POINT'; payload: { pointId: number; timeseries: Array<{ date: string; displacement: number }> } }
+  | { type: 'CLEAR_REFERENCE_POINT' };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

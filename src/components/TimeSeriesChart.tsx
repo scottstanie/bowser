@@ -11,18 +11,37 @@ export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
   const hasMultipleClicked = state.clickedPoints.length > 1;
 
+  // Build a lookup from date → displacement for the reference point
+  const refLookup = useMemo(() => {
+    if (state.referenceTimeseries.length === 0) return null;
+    const map = new Map<string, number>();
+    for (const entry of state.referenceTimeseries) {
+      map.set(entry.date, entry.displacement);
+    }
+    return map;
+  }, [state.referenceTimeseries]);
+
   const traces = useMemo(() => {
     // V2 point layer mode: show clicked points
     if (state.clickedPoints.length > 0) {
-      return state.clickedPoints.map((cp, i) => ({
-        x: cp.timeseries.map(t => t.date),
-        y: cp.timeseries.map(t => t.displacement),
-        type: 'scattergl' as const,
-        mode: 'lines+markers' as const,
-        name: `Point ${cp.pointId}`,
-        marker: { color: COLORS[i % COLORS.length], size: 5 },
-        line: { color: COLORS[i % COLORS.length], width: 1.5 },
-      }));
+      return state.clickedPoints.map((cp, i) => {
+        const y = cp.timeseries.map(t => {
+          if (refLookup) {
+            const refVal = refLookup.get(t.date) ?? 0;
+            return t.displacement - refVal;
+          }
+          return t.displacement;
+        });
+        return {
+          x: cp.timeseries.map(t => t.date),
+          y,
+          type: 'scattergl' as const,
+          mode: 'lines+markers' as const,
+          name: `Point ${cp.pointId}`,
+          marker: { color: COLORS[i % COLORS.length], size: 5 },
+          line: { color: COLORS[i % COLORS.length], width: 1.5 },
+        };
+      });
     }
 
     // V1 raster mode: show time series points (existing behavior)
@@ -46,7 +65,7 @@ export default function TimeSeriesChart() {
     }
 
     return [];
-  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo]);
+  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup]);
 
   if (traces.length === 0) return null;
 
@@ -63,17 +82,37 @@ export default function TimeSeriesChart() {
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Selection bar for multi-point */}
-      {hasMultipleClicked && (
+      {/* Reference indicator + Selection bar */}
+      {(hasMultipleClicked || state.referencePointId != null) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '3px 10px', background: '#12122a',
           borderBottom: '1px solid #2a2a4a', fontSize: 11,
           flexShrink: 0,
         }}>
-          <span style={{ color: '#999' }}>
-            {state.clickedPoints.length} points selected
-          </span>
+          {state.referencePointId != null && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              background: '#1a3a2a', padding: '1px 6px', borderRadius: 3,
+              color: '#0f8', fontSize: 11,
+            }}>
+              ref: {state.referencePointId}
+              <button
+                onClick={() => dispatch({ type: 'CLEAR_REFERENCE_POINT' })}
+                style={{
+                  background: 'none', border: 'none', color: '#888',
+                  cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1,
+                }}
+              >
+                x
+              </button>
+            </span>
+          )}
+          {hasMultipleClicked && (
+            <span style={{ color: '#999' }}>
+              {state.clickedPoints.length} pts
+            </span>
+          )}
           {state.clickedPoints.map((cp, i) => (
             <span
               key={cp.pointId}
@@ -114,7 +153,7 @@ export default function TimeSeriesChart() {
           dispatch({ type: 'CLEAR_CLICKED_POINTS' });
         }}
         style={{
-          position: 'absolute', top: hasMultipleClicked ? 28 : 4, right: 8, zIndex: 1001,
+          position: 'absolute', top: (hasMultipleClicked || state.referencePointId != null) ? 28 : 4, right: 8, zIndex: 1001,
           background: 'transparent', border: 'none', color: '#888',
           cursor: 'pointer', fontSize: 16,
         }}
@@ -137,7 +176,7 @@ export default function TimeSeriesChart() {
             },
             yaxis: {
               gridcolor: '#2a3a5e',
-              title: { text: 'Displacement (mm)' },
+              title: { text: refLookup ? 'Relative Displacement (mm)' : 'Displacement (mm)' },
             },
             legend: {
               bgcolor: 'rgba(0,0,0,0.3)',

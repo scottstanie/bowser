@@ -44,6 +44,8 @@ const initialState: AppState = {
   pointFilter: '',
   pointBasemap: 'satellite',
   pointColormap: 'rdbu_r',
+  referencePointId: null,
+  referenceTimeseries: [],
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -221,6 +223,14 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, pointBasemap: action.payload };
     case 'SET_POINT_COLORMAP':
       return { ...state, pointColormap: action.payload };
+    case 'SET_REFERENCE_POINT':
+      return {
+        ...state,
+        referencePointId: action.payload.pointId,
+        referenceTimeseries: action.payload.timeseries,
+      };
+    case 'CLEAR_REFERENCE_POINT':
+      return { ...state, referencePointId: null, referenceTimeseries: [] };
 
     default:
       return state;

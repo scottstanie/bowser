@@ -143,18 +143,25 @@ export default function MapContainer() {
   const clickedPointIds = new Set(state.clickedPoints.map(p => p.pointId));
 
   // Handle point click → fetch timeseries
-  // shiftKey=true adds to selection, false replaces
-  const onPointClick = useCallback(async (pointId: number, shiftKey: boolean) => {
+  // shiftKey=true adds to selection, ctrlKey=true sets reference point
+  const onPointClick = useCallback(async (pointId: number, shiftKey: boolean, ctrlKey: boolean) => {
     if (!state.activePointLayer) return;
     setSelectedPointId(pointId);
 
-    // If not shift-clicking, clear previous selections first
-    if (!shiftKey) {
-      dispatch({ type: 'CLEAR_CLICKED_POINTS' });
-    }
-
     try {
       const ts = await fetchPointTimeseries(state.activePointLayer, pointId);
+
+      if (ctrlKey) {
+        // Ctrl+click → set as reference point
+        dispatch({ type: 'SET_REFERENCE_POINT', payload: { pointId, timeseries: ts } });
+        return;
+      }
+
+      // If not shift-clicking, clear previous selections first
+      if (!shiftKey) {
+        dispatch({ type: 'CLEAR_CLICKED_POINTS' });
+      }
+
       dispatch({
         type: 'SET_CLICKED_POINT_TIMESERIES',
         payload: { pointId, timeseries: ts },
@@ -186,27 +193,35 @@ export default function MapContainer() {
       getPosition: (_, { index }) => [pointData.lon[index], pointData.lat[index]],
       getFillColor: (_, { index }) => {
         const pid = pointData.point_id[index];
+        if (pid === state.referencePointId) {
+          return [0, 255, 128, 255]; // Green for reference point
+        }
         if (clickedPointIds.has(pid)) {
-          return [255, 255, 0, 255]; // Highlight selected/clicked
+          return [255, 255, 0, 255]; // Yellow for selected/clicked
         }
         const v = pointData.colorValues[index];
         return valueToColor(v, pointVmin, pointVmax, pointColormap);
       },
       getRadius: (_, { index }) => {
-        return clickedPointIds.has(pointData.point_id[index]) ? 5 : 3;
+        const pid = pointData.point_id[index];
+        if (pid === state.referencePointId) return 7;
+        if (clickedPointIds.has(pid)) return 5;
+        return 3;
       },
       radiusMinPixels: 2,
-      radiusMaxPixels: 12,
+      radiusMaxPixels: 14,
       pickable: true,
       onClick: (info, event) => {
         if (info.index >= 0) {
-          const shiftKey = (event as unknown as { srcEvent?: MouseEvent }).srcEvent?.shiftKey ?? false;
-          onPointClick(pointData.point_id[info.index], shiftKey);
+          const srcEvent = (event as unknown as { srcEvent?: MouseEvent }).srcEvent;
+          const shiftKey = srcEvent?.shiftKey ?? false;
+          const ctrlKey = srcEvent?.ctrlKey ?? srcEvent?.metaKey ?? false;
+          onPointClick(pointData.point_id[info.index], shiftKey, ctrlKey);
         }
       },
       updateTriggers: {
-        getFillColor: [pointVmin, pointVmax, pointColormap, ...clickedPointIds],
-        getRadius: [...clickedPointIds],
+        getFillColor: [pointVmin, pointVmax, pointColormap, state.referencePointId, ...clickedPointIds],
+        getRadius: [state.referencePointId, ...clickedPointIds],
       },
     });
 
@@ -292,7 +307,8 @@ export default function MapContainer() {
           {pointCount.toLocaleString()} points | color: {colorBy}
           | [{pointVmin.toFixed(1)}, {pointVmax.toFixed(1)}]
           {state.clickedPoints.length > 0 && ` | ${state.clickedPoints.length} selected`}
-          {state.clickedPoints.length === 0 && ' | click point for TS, shift+click to compare'}
+          {state.referencePointId != null && ` | ref: ${state.referencePointId}`}
+          {state.clickedPoints.length === 0 && ' | click: TS, shift: compare, ctrl: ref'}
         </div>
       )}
     </div>
