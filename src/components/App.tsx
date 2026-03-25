@@ -17,7 +17,10 @@ function AppContent() {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Try to load point layers first (V2 mode)
+        // Try to load BOTH raster datasets and point layers.
+        // They can coexist — the manifest may define both.
+
+        // 1) Try point layers
         let hasPointLayers = false;
         try {
           const pointLayers = await fetchPointLayers();
@@ -26,9 +29,7 @@ function AppContent() {
             hasPointLayers = true;
             const firstLayer = layerNames[0];
             dispatch({ type: 'SET_ACTIVE_POINT_LAYER', payload: firstLayer });
-            dispatch({ type: 'SET_DATA_MODE', payload: 'points' });
 
-            // Get attributes to learn about the data
             const attrs = await fetchPointAttributes(firstLayer);
             dispatch({ type: 'SET_POINT_ATTRIBUTES', payload: attrs.attributes });
 
@@ -59,19 +60,21 @@ function AppContent() {
             }
           }
         } catch {
-          // No point layers endpoint — V1 mode
+          // No point layers endpoint — that's fine
         }
 
-        if (!hasPointLayers) {
-          // V1 initialization: fetch data mode and datasets
+        // 2) Try raster datasets (always, regardless of point layers)
+        let hasRasterLayers = false;
+        try {
           const mode = await fetchDataMode();
-          dispatch({ type: 'SET_DATA_MODE', payload: mode });
-
           const datasets = await fetchDatasets();
-          dispatch({ type: 'SET_DATASETS', payload: datasets });
+          const datasetNames = Object.keys(datasets);
+          if (datasetNames.length > 0) {
+            hasRasterLayers = true;
+            dispatch({ type: 'SET_DATA_MODE', payload: mode });
+            dispatch({ type: 'SET_DATASETS', payload: datasets });
 
-          const firstDataset = Object.keys(datasets)[0];
-          if (firstDataset) {
+            const firstDataset = datasetNames[0];
             dispatch({ type: 'SET_CURRENT_DATASET', payload: firstDataset });
 
             const bounds = datasets[firstDataset].latlon_bounds;
@@ -79,7 +82,16 @@ function AppContent() {
             const centerLng = (bounds[0] + bounds[2]) / 2;
             dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [centerLat, centerLng] });
           }
+        } catch {
+          // No raster datasets — that's fine if we have points
         }
+
+        // Set data mode based on what's available
+        if (hasPointLayers && !hasRasterLayers) {
+          dispatch({ type: 'SET_DATA_MODE', payload: 'points' });
+        }
+        // If both exist, dataMode is already set from fetchDataMode (cog/md).
+        // If only raster, dataMode is already set.
       } catch (error) {
         console.error('Error initializing app:', error);
       }
@@ -88,15 +100,24 @@ function AppContent() {
     initializeApp();
   }, [fetchDatasets, fetchDataMode, fetchPointLayers, fetchPointAttributes, dispatch]);
 
-  const isPointMode = state.dataMode === 'points';
+  const hasRasters = Object.keys(state.datasetInfo).length > 0;
+  const hasPoints = state.activePointLayer != null;
+  const pointOnlyMode = hasPoints && !hasRasters;
 
   return (
     <div className="app-container">
-      {!isPointMode && <ControlPanel />}
-      <div className="map-container" style={isPointMode ? { gridColumn: '1 / -1' } : undefined}>
+      {/* V1 raster control panel in sidebar */}
+      {hasRasters && <ControlPanel />}
+
+      <div className="map-container" style={pointOnlyMode ? { gridColumn: '1 / -1' } : undefined}>
         <MapContainer />
-        {isPointMode && <PointControlsPanel />}
-        {!isPointMode && <PointManagerPanel />}
+
+        {/* Point controls overlay on map */}
+        {hasPoints && <PointControlsPanel />}
+
+        {/* V1 multi-point manager (raster click mode) */}
+        {hasRasters && !hasPoints && <PointManagerPanel />}
+
         {state.showChart && <TimeSeriesChart />}
       </div>
     </div>

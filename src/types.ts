@@ -77,6 +77,10 @@ export interface AppState {
   pointColormap: string;
   referencePointId: number | null;
   referenceTimeseries: Array<{ date: string; displacement: number }>;
+  // Layer visibility
+  rasterLayerVisible: boolean;
+  pointLayerVisible: boolean;
+  pointOpacity: number;
 }
 
 export type AppAction =
@@ -113,7 +117,10 @@ export type AppAction =
   | { type: 'SET_POINT_BASEMAP'; payload: 'satellite' | 'osm' | 'dark' }
   | { type: 'SET_POINT_COLORMAP'; payload: string }
   | { type: 'SET_REFERENCE_POINT'; payload: { pointId: number; timeseries: Array<{ date: string; displacement: number }> } }
-  | { type: 'CLEAR_REFERENCE_POINT' };
+  | { type: 'CLEAR_REFERENCE_POINT' }
+  | { type: 'SET_RASTER_LAYER_VISIBLE'; payload: boolean }
+  | { type: 'SET_POINT_LAYER_VISIBLE'; payload: boolean }
+  | { type: 'SET_POINT_OPACITY'; payload: number };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

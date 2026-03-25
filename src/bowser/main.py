@@ -211,8 +211,10 @@ async def datasets():
     """Return the JSON describing all available datasets."""
     if DATA_MODE == "md":
         return create_xarray_dataset_info(XARRAY_DATASET)
-    else:  # cog mode
+    elif RASTER_GROUPS:
         return create_rastergroup_dataset_info(RASTER_GROUPS)
+    else:
+        return {}
 
 
 @app.get("/mode")

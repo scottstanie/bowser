@@ -124,13 +124,60 @@ export default function PointControlsPanel() {
     }}>
       {/* Header */}
       <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>
-        Point Cloud
-        {pointCount != null && (
-          <span style={{ fontWeight: 400, color: '#999', marginLeft: 8, fontSize: 12 }}>
-            {pointCount.toLocaleString()} pts
-          </span>
+        Layers
+      </div>
+
+      {/* Layer toggles */}
+      <div style={sectionGap}>
+        {/* Point layer toggle */}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+          <input
+            type="checkbox"
+            checked={state.pointLayerVisible}
+            onChange={e => dispatch({ type: 'SET_POINT_LAYER_VISIBLE', payload: e.target.checked })}
+            style={{ accentColor: '#5566cc' }}
+          />
+          <span>Points</span>
+          {pointCount != null && (
+            <span style={{ color: '#999', fontSize: 11 }}>
+              ({pointCount.toLocaleString()})
+            </span>
+          )}
+        </label>
+
+        {/* Raster layer toggle — only show when rasters are loaded */}
+        {Object.keys(state.datasetInfo).length > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+            <input
+              type="checkbox"
+              checked={state.rasterLayerVisible}
+              onChange={e => dispatch({ type: 'SET_RASTER_LAYER_VISIBLE', payload: e.target.checked })}
+              style={{ accentColor: '#5566cc' }}
+            />
+            <span>Raster ({state.currentDataset || 'none'})</span>
+          </label>
+        )}
+
+        {/* Point opacity slider */}
+        {state.pointLayerVisible && (
+          <div style={{ marginTop: 4 }}>
+            <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Point opacity</span>
+              <span>{state.pointOpacity.toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              min="0" max="1" step="0.05"
+              value={state.pointOpacity}
+              onChange={e => dispatch({ type: 'SET_POINT_OPACITY', payload: parseFloat(e.target.value) })}
+              style={{ width: '100%' }}
+            />
+          </div>
         )}
       </div>
+
+      {/* Separator */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '8px 0' }} />
 
       {/* Basemap switcher */}
       <div style={sectionGap}>

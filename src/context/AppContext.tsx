@@ -46,6 +46,9 @@ const initialState: AppState = {
   pointColormap: 'rdbu_r',
   referencePointId: null,
   referenceTimeseries: [],
+  rasterLayerVisible: true,
+  pointLayerVisible: true,
+  pointOpacity: 1,
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -231,6 +234,12 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       };
     case 'CLEAR_REFERENCE_POINT':
       return { ...state, referencePointId: null, referenceTimeseries: [] };
+    case 'SET_RASTER_LAYER_VISIBLE':
+      return { ...state, rasterLayerVisible: action.payload };
+    case 'SET_POINT_LAYER_VISIBLE':
+      return { ...state, pointLayerVisible: action.payload };
+    case 'SET_POINT_OPACITY':
+      return { ...state, pointOpacity: action.payload };
 
     default:
       return state;

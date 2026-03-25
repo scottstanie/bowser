@@ -174,7 +174,13 @@ export default function MapContainer() {
   // Update deck.gl layers whenever point data changes
   useEffect(() => {
     const overlay = deckOverlayRef.current;
-    if (!overlay || !pointData) return;
+    if (!overlay) return;
+
+    // If no point data or points layer hidden, clear deck.gl layers
+    if (!pointData || !state.pointLayerVisible) {
+      overlay.setProps({ layers: [] });
+      return;
+    }
 
     const positions = new Float64Array(pointData.count * 2);
     for (let i = 0; i < pointData.count; i++) {
@@ -191,6 +197,7 @@ export default function MapContainer() {
         },
       },
       getPosition: (_, { index }) => [pointData.lon[index], pointData.lat[index]],
+      opacity: state.pointOpacity,
       getFillColor: (_, { index }) => {
         const pid = pointData.point_id[index];
         if (pid === state.referencePointId) {
@@ -226,7 +233,19 @@ export default function MapContainer() {
     });
 
     overlay.setProps({ layers: [layer] });
-  }, [pointData, pointVmin, pointVmax, pointColormap, selectedPointId, onPointClick]);
+  }, [pointData, pointVmin, pointVmax, pointColormap, selectedPointId, onPointClick,
+      state.pointLayerVisible, state.pointOpacity]);
+
+  // Raster tile layer visibility toggle
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const layer = map.getLayer('raster-layer');
+    if (layer) {
+      map.setLayoutProperty('raster-layer', 'visibility',
+        state.rasterLayerVisible ? 'visible' : 'none');
+    }
+  }, [state.rasterLayerVisible]);
 
   // Raster tile layer for V1 datasets
   useEffect(() => {
