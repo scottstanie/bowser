@@ -62,8 +62,20 @@ app = FastAPI(
 
 
 def load_data_sources():
-    """Load data sources and determine which mode to use (MD or COG)."""
-    # Check for manifest file first (V2 mode with potential point layers)
+    """Load data sources and determine which mode to use (MD or COG).
+
+    When a manifest is provided, point layers are loaded from it. Raster
+    sources are loaded from the manifest's raster layers OR from the
+    traditional BOWSER_STACK_DATA_FILE / BOWSER_DATASET_CONFIG_FILE env
+    vars, enabling both raster and point layers to coexist.
+    """
+    manifest = None
+    data_mode = "points"
+    xarray_dataset = None
+    raster_groups = None
+    transformer = None
+
+    # 1) Load manifest (point layers + optional raster layers)
     manifest_file = os.environ.get("BOWSER_MANIFEST_FILE", "")
     if manifest_file and Path(manifest_file).exists():
         logger.info(f"Loading V2 manifest from {manifest_file}")
@@ -77,53 +89,56 @@ def load_data_sources():
             init_point_layers(point_layers)
             logger.info(f"Loaded {len(point_layers)} point layer(s)")
 
-        # Also load raster layers as RasterGroups if any
-        raster_layers = manifest.get_raster_layers()
-        raster_groups = {}
-        for name, rl in raster_layers.items():
-            rg = RasterGroup(name=name, file_list=[rl.source])
-            raster_groups[name] = rg
+        # Load raster layers from manifest if any
+        raster_layer_configs = manifest.get_raster_layers()
+        if raster_layer_configs:
+            raster_groups = {}
+            for name, rl in raster_layer_configs.items():
+                rg = RasterGroup(name=name, file_list=[rl.source])
+                raster_groups[name] = rg
+            data_mode = "cog"
 
-        if raster_groups:
-            return "cog", None, raster_groups, None, manifest
-        return "points", None, None, None, manifest
-
-    # Check for xarray stack file first (MD mode)
-    if settings.BOWSER_STACK_DATA_FILE:
-        stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
-        logger.info(f"Loading xarray dataset from {stack_file} (MD mode)")
-        ds = (
-            xr.open_zarr(stack_file)
-            if stack_file.endswith(".zarr")
-            else xr.open_dataset(stack_file)
-        )
-        crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
-        ds.rio.write_crs(crs, inplace=True)
-        transformer = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
-        return "md", ds, None, transformer, None
-
-    # Check for RasterGroup JSON config (COG mode)
-    elif Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
-        logger.info(
-            f"Loading RasterGroups from {settings.BOWSER_DATASET_CONFIG_FILE} (COG)"
-        )
-        data_js_list = json.loads(Path(settings.BOWSER_DATASET_CONFIG_FILE).read_text())
-        raster_groups = {}
-        for d in data_js_list:
-            rg = RasterGroup.model_validate(d)
-            raster_groups[rg.name] = rg
-        logger.info(
-            (
-                f"Found {len(raster_groups)} RasterGroup configs:"
-                " {list(raster_groups.keys())}"
+    # 2) Load traditional raster sources (if no rasters loaded yet)
+    if raster_groups is None:
+        if settings.BOWSER_STACK_DATA_FILE:
+            stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
+            logger.info(f"Loading xarray dataset from {stack_file} (MD mode)")
+            ds = (
+                xr.open_zarr(stack_file)
+                if stack_file.endswith(".zarr")
+                else xr.open_dataset(stack_file)
             )
-        )
-        return "cog", None, raster_groups, None, None
+            crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
+            ds.rio.write_crs(crs, inplace=True)
+            transformer = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
+            xarray_dataset = ds
+            data_mode = "md"
 
-    else:
+        elif Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
+            logger.info(
+                f"Loading RasterGroups from"
+                f" {settings.BOWSER_DATASET_CONFIG_FILE} (COG)"
+            )
+            data_js_list = json.loads(
+                Path(settings.BOWSER_DATASET_CONFIG_FILE).read_text()
+            )
+            raster_groups = {}
+            for d in data_js_list:
+                rg = RasterGroup.model_validate(d)
+                raster_groups[rg.name] = rg
+            logger.info(
+                f"Found {len(raster_groups)} RasterGroup configs:"
+                f" {list(raster_groups.keys())}"
+            )
+            data_mode = "cog"
+
+    if not manifest and not xarray_dataset and not raster_groups:
         raise ValueError(
-            "No data files specified - need either manifest, stack file, or JSON config"
+            "No data files specified - need either manifest, stack file,"
+            " or JSON config"
         )
+
+    return data_mode, xarray_dataset, raster_groups, transformer, manifest
 
 
 # Global data sources - load once at startup
