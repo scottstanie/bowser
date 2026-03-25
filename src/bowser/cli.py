@@ -695,6 +695,59 @@ def setup_nisar_gunw(nisar_dir: str, output: str):
     _dump_raster_groups(raster_groups, output=output)
 
 
+@cli_app.command("generate-testdata")
+@click.option(
+    "-o",
+    "--output-dir",
+    required=True,
+    help="Directory to write output GeoParquet and manifest files.",
+)
+@click.option(
+    "-n",
+    "--n-points",
+    default=50_000,
+    type=int,
+    show_default=True,
+    help="Number of synthetic measurement points.",
+)
+@click.option(
+    "--n-dates",
+    default=20,
+    type=int,
+    show_default=True,
+    help="Number of SAR acquisition dates.",
+)
+@click.option("--center-lon", default=-99.13, type=float, show_default=True)
+@click.option("--center-lat", default=19.43, type=float, show_default=True)
+@click.option(
+    "--spread",
+    default=0.15,
+    type=float,
+    show_default=True,
+    help="Approximate AOI radius in degrees.",
+)
+@click.option("--seed", default=42, type=int, show_default=True)
+def generate_testdata(
+    output_dir, n_points, n_dates, center_lon, center_lat, spread, seed
+):
+    """Generate synthetic point cloud data for testing.
+
+    Creates realistic clustered point distributions with velocity trends,
+    suitable for testing the V2 point cloud viewer.
+    """
+    from ._generate_testdata import generate_testdata as _gen
+
+    _gen(
+        output_dir=output_dir,
+        n_points=n_points,
+        n_dates=n_dates,
+        center_lon=center_lon,
+        center_lat=center_lat,
+        spread_deg=spread,
+        seed=seed,
+    )
+
+
 @cli_app.group()
 def convert():
     """Convert InSAR data to GeoParquet point cloud format."""
