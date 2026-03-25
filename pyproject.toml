@@ -55,7 +55,7 @@ widget = [
   "ipyleaflet",
   "bqplot>=0.12",
 ]
-test = ["pytest", "httpx", "ipython", "types-python-dateutil"]
+test = ["pytest", "httpx", "ipython", "types-python-dateutil", "pytest-playwright"]
 
 # [project.urls]
 # Homepage = "https://github.com/opera-adt/bowser"
