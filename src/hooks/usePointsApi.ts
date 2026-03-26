@@ -35,11 +35,13 @@ export interface PointData {
 export function usePointsApi() {
   const fetchPointLayers = useCallback(async (): Promise<Record<string, PointLayerInfo>> => {
     const response = await fetch('/points/layers');
+    if (!response.ok) throw new Error(`${response.status}`);
     return await response.json();
   }, []);
 
   const fetchPointAttributes = useCallback(async (layerName: string): Promise<PointAttributes> => {
     const response = await fetch(`/points/${layerName}/attributes`);
+    if (!response.ok) throw new Error(`${response.status}`);
     return await response.json();
   }, []);
 
@@ -67,6 +69,7 @@ export function usePointsApi() {
     }
 
     const response = await fetch(`/points/${layerName}?${params}`);
+    if (!response.ok) throw new Error(`${response.status}`);
     const buffer = await response.arrayBuffer();
     const table = tableFromIPC(new Uint8Array(buffer));
 

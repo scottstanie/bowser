@@ -214,13 +214,16 @@ export default function TimeSeriesChart() {
         </div>
       )}
 
-      {/* Toolbar: date range + trend toggle + close */}
+      {/* Toolbar row: date range + trend toggle + close */}
       <div style={{
-        position: 'absolute', top: (hasMultipleClicked || state.referencePointId != null) ? 28 : 4, right: 8, zIndex: 1001,
-        display: 'flex', gap: 6, alignItems: 'center',
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '3px 10px', background: '#12122a',
+        borderBottom: '1px solid #2a2a4a', fontSize: 11,
+        flexShrink: 0,
       }}>
         {state.clickedPoints.length > 0 && (
           <>
+            <span style={{ color: '#888', fontSize: 10 }}>Date range:</span>
             <input
               type="date"
               value={dateStart}
@@ -229,8 +232,8 @@ export default function TimeSeriesChart() {
                 background: '#2a2a4a', color: '#ccc', border: '1px solid #444',
                 borderRadius: 3, fontSize: 10, padding: '1px 4px', width: 110,
               }}
-              title="Start date filter"
             />
+            <span style={{ color: '#666' }}>to</span>
             <input
               type="date"
               value={dateEnd}
@@ -239,7 +242,6 @@ export default function TimeSeriesChart() {
                 background: '#2a2a4a', color: '#ccc', border: '1px solid #444',
                 borderRadius: 3, fontSize: 10, padding: '1px 4px', width: 110,
               }}
-              title="End date filter"
             />
             {(dateStart || dateEnd) && (
               <button
@@ -248,7 +250,6 @@ export default function TimeSeriesChart() {
                   background: 'none', border: 'none', color: '#888',
                   cursor: 'pointer', fontSize: 10, padding: 0,
                 }}
-                title="Clear date filter"
               >
                 reset
               </button>
@@ -256,12 +257,11 @@ export default function TimeSeriesChart() {
             <button
               onClick={() => setShowTrends(!showTrends)}
               style={{
-                background: showTrends ? '#3a4a6a' : 'transparent',
-                border: showTrends ? '1px solid #5566cc' : '1px solid transparent',
-                color: showTrends ? '#aaf' : '#888',
+                background: showTrends ? '#3a4a6a' : '#2a2a4a',
+                border: showTrends ? '1px solid #5566cc' : '1px solid #444',
+                color: showTrends ? '#aaf' : '#ccc',
                 cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
               }}
-              title="Toggle trend lines"
             >
               Trend
             </button>
@@ -273,8 +273,9 @@ export default function TimeSeriesChart() {
             dispatch({ type: 'CLEAR_CLICKED_POINTS' });
           }}
           style={{
+            marginLeft: 'auto',
             background: 'transparent', border: 'none', color: '#888',
-            cursor: 'pointer', fontSize: 16,
+            cursor: 'pointer', fontSize: 14,
           }}
         >
           x

@@ -138,10 +138,10 @@ export default function PointControlsPanel() {
   };
 
   const addFilter = () => {
-    if (!filterAttr || !filterVal) return;
+    if (!effectiveFilterAttr || !filterVal) return;
     const v = parseFloat(filterVal);
     if (isNaN(v)) return;
-    const expr = `${filterAttr}${filterOp}${v}`;
+    const expr = `${effectiveFilterAttr}${filterOp}${v}`;
     const next = [...activeFilters, expr];
     setActiveFilters(next);
     dispatch({ type: 'SET_POINT_FILTER', payload: next.join(' AND ') });
@@ -165,10 +165,8 @@ export default function PointControlsPanel() {
   const hasPoints = state.activePointLayer != null;
   const hasRasters = Object.keys(state.datasetInfo).length > 0;
 
-  // Set default filter attribute
-  if (!filterAttr && numericAttrs.length > 0) {
-    setFilterAttr(numericAttrs[0][0]);
-  }
+  // Set default filter attribute (only when point data is available)
+  const effectiveFilterAttr = filterAttr || (numericAttrs.length > 0 ? numericAttrs[0][0] : '');
 
   return (
     <div style={{
@@ -475,7 +473,7 @@ export default function PointControlsPanel() {
         <label style={labelStyle}>Filter</label>
         <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
           <select
-            value={filterAttr}
+            value={effectiveFilterAttr}
             onChange={e => setFilterAttr(e.target.value)}
             style={{ ...selectStyle, flex: 3 }}
           >
