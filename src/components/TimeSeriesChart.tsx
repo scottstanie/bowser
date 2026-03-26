@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Plot from 'react-plotly.js';
 import { useAppContext } from '../context/AppContext';
 
@@ -7,9 +7,43 @@ const COLORS = [
   '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
 ];
 
+// Client-side linear regression on date strings → displacement values
+function linearFit(dates: string[], values: number[]): { slope: number; intercept: number; r2: number; mmPerYear: number } | null {
+  if (dates.length < 2) return null;
+
+  // Convert dates to days since first date
+  const t0 = new Date(dates[0]).getTime();
+  const x = dates.map(d => (new Date(d).getTime() - t0) / 86_400_000); // days
+  const y = values;
+  const n = x.length;
+
+  const sumX = x.reduce((a, b) => a + b, 0);
+  const sumY = y.reduce((a, b) => a + b, 0);
+  const sumXY = x.reduce((a, xi, i) => a + xi * y[i], 0);
+  const sumXX = x.reduce((a, xi) => a + xi * xi, 0);
+
+  const denom = n * sumXX - sumX * sumX;
+  if (Math.abs(denom) < 1e-12) return null;
+
+  const slope = (n * sumXY - sumX * sumY) / denom;
+  const intercept = (sumY - slope * sumX) / n;
+
+  // R²
+  const meanY = sumY / n;
+  const ssRes = y.reduce((a, yi, i) => a + (yi - (slope * x[i] + intercept)) ** 2, 0);
+  const ssTot = y.reduce((a, yi) => a + (yi - meanY) ** 2, 0);
+  const r2 = ssTot > 0 ? 1 - ssRes / ssTot : 0;
+
+  // mm/year: slope is mm/day
+  const mmPerYear = slope * 365.25;
+
+  return { slope, intercept, r2, mmPerYear };
+}
+
 export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
   const hasMultipleClicked = state.clickedPoints.length > 1;
+  const [showTrends, setShowTrends] = useState(false);
 
   // Build a lookup from date → displacement for the reference point
   const refLookup = useMemo(() => {
@@ -22,9 +56,13 @@ export default function TimeSeriesChart() {
   }, [state.referenceTimeseries]);
 
   const traces = useMemo(() => {
+    const result: Array<Record<string, unknown>> = [];
+
     // V2 point layer mode: show clicked points
     if (state.clickedPoints.length > 0) {
-      return state.clickedPoints.map((cp, i) => {
+      for (let i = 0; i < state.clickedPoints.length; i++) {
+        const cp = state.clickedPoints[i];
+        const x = cp.timeseries.map(t => t.date);
         const y = cp.timeseries.map(t => {
           if (refLookup) {
             const refVal = refLookup.get(t.date) ?? 0;
@@ -32,40 +70,62 @@ export default function TimeSeriesChart() {
           }
           return t.displacement;
         });
-        return {
-          x: cp.timeseries.map(t => t.date),
-          y,
-          type: 'scattergl' as const,
-          mode: 'lines+markers' as const,
+        const color = COLORS[i % COLORS.length];
+
+        // Data trace
+        result.push({
+          x, y,
+          type: 'scattergl',
+          mode: 'lines+markers',
           name: `Point ${cp.pointId}`,
-          marker: { color: COLORS[i % COLORS.length], size: 5 },
-          line: { color: COLORS[i % COLORS.length], width: 1.5 },
-        };
-      });
+          marker: { color, size: 5 },
+          line: { color, width: 1.5 },
+        });
+
+        // Trend line trace
+        if (showTrends) {
+          const fit = linearFit(x, y);
+          if (fit) {
+            const t0 = new Date(x[0]).getTime();
+            const trendY = x.map(d => {
+              const days = (new Date(d).getTime() - t0) / 86_400_000;
+              return fit.slope * days + fit.intercept;
+            });
+            result.push({
+              x, y: trendY,
+              type: 'scattergl',
+              mode: 'lines',
+              name: `${fit.mmPerYear >= 0 ? '+' : ''}${fit.mmPerYear.toFixed(1)} mm/yr (R²=${fit.r2.toFixed(2)})`,
+              line: { color, width: 1, dash: 'dash' },
+              showlegend: true,
+            });
+          }
+        }
+      }
+      return result;
     }
 
     // V1 raster mode: show time series points (existing behavior)
     if (state.timeSeriesPoints.length > 0 && state.currentDataset) {
-      return state.timeSeriesPoints
-        .filter(p => p.visible && p.data?.[state.currentDataset])
-        .map(p => {
-          const data = p.data![state.currentDataset];
-          const info = state.datasetInfo[state.currentDataset];
-          const xValues = info?.x_values || data.map((_, i) => i);
-          return {
-            x: xValues,
-            y: data,
-            type: 'scattergl' as const,
-            mode: 'lines+markers' as const,
-            name: p.name,
-            marker: { color: p.color, size: 5 },
-            line: { color: p.color, width: 1.5 },
-          };
+      for (const p of state.timeSeriesPoints) {
+        if (!p.visible || !p.data?.[state.currentDataset]) continue;
+        const data = p.data![state.currentDataset];
+        const info = state.datasetInfo[state.currentDataset];
+        const xValues = info?.x_values || data.map((_, i) => i);
+        result.push({
+          x: xValues,
+          y: data,
+          type: 'scattergl',
+          mode: 'lines+markers',
+          name: p.name,
+          marker: { color: p.color, size: 5 },
+          line: { color: p.color, width: 1.5 },
         });
+      }
     }
 
-    return [];
-  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup]);
+    return result;
+  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup, showTrends]);
 
   if (traces.length === 0) return null;
 
@@ -146,20 +206,38 @@ export default function TimeSeriesChart() {
         </div>
       )}
 
-      {/* Close button */}
-      <button
-        onClick={() => {
-          dispatch({ type: 'TOGGLE_CHART' });
-          dispatch({ type: 'CLEAR_CLICKED_POINTS' });
-        }}
-        style={{
-          position: 'absolute', top: (hasMultipleClicked || state.referencePointId != null) ? 28 : 4, right: 8, zIndex: 1001,
-          background: 'transparent', border: 'none', color: '#888',
-          cursor: 'pointer', fontSize: 16,
-        }}
-      >
-        x
-      </button>
+      {/* Trend toggle + Close button */}
+      <div style={{
+        position: 'absolute', top: (hasMultipleClicked || state.referencePointId != null) ? 28 : 4, right: 8, zIndex: 1001,
+        display: 'flex', gap: 6, alignItems: 'center',
+      }}>
+        {state.clickedPoints.length > 0 && (
+          <button
+            onClick={() => setShowTrends(!showTrends)}
+            style={{
+              background: showTrends ? '#3a4a6a' : 'transparent',
+              border: showTrends ? '1px solid #5566cc' : '1px solid transparent',
+              color: showTrends ? '#aaf' : '#888',
+              cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
+            }}
+            title="Toggle trend lines"
+          >
+            Trend
+          </button>
+        )}
+        <button
+          onClick={() => {
+            dispatch({ type: 'TOGGLE_CHART' });
+            dispatch({ type: 'CLEAR_CLICKED_POINTS' });
+          }}
+          style={{
+            background: 'transparent', border: 'none', color: '#888',
+            cursor: 'pointer', fontSize: 16,
+          }}
+        >
+          x
+        </button>
+      </div>
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <Plot
