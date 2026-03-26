@@ -4,6 +4,20 @@ import { COLORMAP_NAMES, colormapGradientCSS, valueToColor } from '../colorscale
 
 const FILTER_OPERATORS = ['>', '<', '>=', '<=', '='] as const;
 
+const RASTER_COLORMAPS = [
+  { value: 'rdbu_r', label: 'Blue-Red' },
+  { value: 'viridis', label: 'Viridis' },
+  { value: 'magma', label: 'Magma' },
+  { value: 'twilight', label: 'Twilight (cyclic)' },
+  { value: 'cfastie', label: 'CFastie' },
+  { value: 'rplumbo', label: 'RPlumbo' },
+  { value: 'schwarzwald', label: 'Schwarzwald' },
+  { value: 'bugn', label: 'Blue-Green' },
+  { value: 'ylgn', label: 'Yellow-Green' },
+  { value: 'gist_earth', label: 'Earth' },
+  { value: 'terrain', label: 'Terrain' },
+];
+
 const inputStyle = {
   width: '100%',
   padding: '3px 5px',
@@ -72,6 +86,10 @@ export default function PointControlsPanel() {
   const [draftVmin, setDraftVmin] = useState(String(state.pointVmin));
   const [draftVmax, setDraftVmax] = useState(String(state.pointVmax));
   const [exportWithTs, setExportWithTs] = useState(false);
+
+  // Raster vmin/vmax drafts
+  const [draftRasterVmin, setDraftRasterVmin] = useState(String(state.vmin));
+  const [draftRasterVmax, setDraftRasterVmax] = useState(String(state.vmax));
 
   // Filter draft state
   const [filterAttr, setFilterAttr] = useState('');
@@ -144,6 +162,8 @@ export default function PointControlsPanel() {
 
   const currentAttr = state.pointAttributes[state.pointColorBy];
   const pointCount = currentAttr?.count;
+  const hasPoints = state.activePointLayer != null;
+  const hasRasters = Object.keys(state.datasetInfo).length > 0;
 
   // Set default filter attribute
   if (!filterAttr && numericAttrs.length > 0) {
@@ -168,23 +188,25 @@ export default function PointControlsPanel() {
       {/* Layer toggles */}
       <div style={sectionGap}>
         {/* Point layer toggle */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
-          <input
-            type="checkbox"
-            checked={state.pointLayerVisible}
-            onChange={e => dispatch({ type: 'SET_POINT_LAYER_VISIBLE', payload: e.target.checked })}
-            style={{ accentColor: '#5566cc' }}
-          />
-          <span>Points</span>
-          {pointCount != null && (
-            <span style={{ color: '#999', fontSize: 11 }}>
-              ({pointCount.toLocaleString()})
-            </span>
-          )}
-        </label>
+        {hasPoints && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+            <input
+              type="checkbox"
+              checked={state.pointLayerVisible}
+              onChange={e => dispatch({ type: 'SET_POINT_LAYER_VISIBLE', payload: e.target.checked })}
+              style={{ accentColor: '#5566cc' }}
+            />
+            <span>Points</span>
+            {pointCount != null && (
+              <span style={{ color: '#999', fontSize: 11 }}>
+                ({pointCount.toLocaleString()})
+              </span>
+            )}
+          </label>
+        )}
 
-        {/* Raster layer toggle + controls — only show when rasters are loaded */}
-        {Object.keys(state.datasetInfo).length > 0 && (
+        {/* Raster layer toggle + controls */}
+        {hasRasters && (
           <>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
               <input
@@ -231,8 +253,53 @@ export default function PointControlsPanel() {
                   </div>
                 )}
 
+                {/* Raster colormap */}
+                <div style={{ marginBottom: 4 }}>
+                  <label style={labelStyle}>Colormap</label>
+                  <select
+                    value={state.colormap}
+                    onChange={e => dispatch({ type: 'SET_COLORMAP', payload: e.target.value })}
+                    style={selectStyle}
+                  >
+                    {RASTER_COLORMAPS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <img
+                    src={`/colorbar/${state.colormap}`}
+                    style={{ width: '100%', height: 12, borderRadius: 2, marginTop: 2 }}
+                    alt="Raster colorbar"
+                  />
+                </div>
+
+                {/* Raster vmin/vmax */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 4 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Min</label>
+                    <input
+                      type="number" step="any"
+                      value={draftRasterVmin}
+                      onChange={e => setDraftRasterVmin(e.target.value)}
+                      onBlur={() => { const v = parseFloat(draftRasterVmin); if (!isNaN(v)) dispatch({ type: 'SET_VMIN', payload: v }); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { const v = parseFloat(draftRasterVmin); if (!isNaN(v)) dispatch({ type: 'SET_VMIN', payload: v }); } }}
+                      style={inputStyle}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>Max</label>
+                    <input
+                      type="number" step="any"
+                      value={draftRasterVmax}
+                      onChange={e => setDraftRasterVmax(e.target.value)}
+                      onBlur={() => { const v = parseFloat(draftRasterVmax); if (!isNaN(v)) dispatch({ type: 'SET_VMAX', payload: v }); }}
+                      onKeyDown={e => { if (e.key === 'Enter') { const v = parseFloat(draftRasterVmax); if (!isNaN(v)) dispatch({ type: 'SET_VMAX', payload: v }); } }}
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+
                 {/* Raster opacity */}
-                <div>
+                <div style={{ marginBottom: 4 }}>
                   <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
                     <span>Opacity</span>
                     <span>{state.opacity.toFixed(2)}</span>
@@ -245,13 +312,26 @@ export default function PointControlsPanel() {
                     style={{ width: '100%' }}
                   />
                 </div>
+
+                {/* Show timeseries button (raster click mode) */}
+                <button
+                  onClick={() => dispatch({ type: 'TOGGLE_CHART' })}
+                  style={{
+                    width: '100%', padding: '4px 8px', fontSize: 11, cursor: 'pointer',
+                    background: state.showChart ? '#5566cc' : '#2a2a4a',
+                    color: state.showChart ? '#fff' : '#ccc',
+                    border: '1px solid #444', borderRadius: 3,
+                  }}
+                >
+                  {state.showChart ? 'Hide time series' : 'Show time series'}
+                </button>
               </div>
             )}
           </>
         )}
 
         {/* Point opacity slider */}
-        {state.pointLayerVisible && (
+        {hasPoints && state.pointLayerVisible && (
           <div style={{ marginTop: 4 }}>
             <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
               <span>Point opacity</span>
@@ -293,6 +373,8 @@ export default function PointControlsPanel() {
         </div>
       </div>
 
+      {/* Point-specific controls */}
+      {hasPoints && (<>
       {/* Separator */}
       <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '8px 0' }} />
 
@@ -506,6 +588,7 @@ export default function PointControlsPanel() {
           ))}
         </div>
       </div>
+      </>)}
     </div>
   );
 }

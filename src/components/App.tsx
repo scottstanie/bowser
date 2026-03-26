@@ -3,9 +3,7 @@ import { AppProvider, useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { usePointsApi } from '../hooks/usePointsApi';
 import MapContainer from './MapContainer';
-import ControlPanel from './ControlPanel';
 import TimeSeriesChart from './TimeSeriesChart';
-import PointManagerPanel from './PointManagerPanel';
 import PointControlsPanel from './PointControlsPanel';
 import '../style.css';
 
@@ -100,25 +98,11 @@ function AppContent() {
     initializeApp();
   }, [fetchDatasets, fetchDataMode, fetchPointLayers, fetchPointAttributes, dispatch]);
 
-  const hasRasters = Object.keys(state.datasetInfo).length > 0;
-  const hasPoints = state.activePointLayer != null;
-  // V1 sidebar only when rasters exist WITHOUT points
-  const showV1Sidebar = hasRasters && !hasPoints;
-
   return (
     <div className="app-container">
-      {/* V1 raster control panel — only when no point layer (pure raster mode) */}
-      {showV1Sidebar && <ControlPanel />}
-
-      <div className="map-container" style={!showV1Sidebar ? { gridColumn: '1 / -1' } : undefined}>
+      <div className="map-container" style={{ gridColumn: '1 / -1' }}>
         <MapContainer />
-
-        {/* V2 point controls overlay (also manages raster toggles when both exist) */}
-        {hasPoints && <PointControlsPanel />}
-
-        {/* V1 multi-point manager (raster click mode, no points) */}
-        {showV1Sidebar && <PointManagerPanel />}
-
+        <PointControlsPanel />
         {state.showChart && <TimeSeriesChart />}
       </div>
     </div>
