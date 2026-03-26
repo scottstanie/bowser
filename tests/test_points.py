@@ -180,6 +180,42 @@ def test_get_stats(test_app, synthetic_point_data):
     assert "velocity_mean" in data
 
 
+def test_export_csv(test_app, synthetic_point_data):
+    """Test exporting points as CSV."""
+    response = test_app.get("/points/test_layer/export?format=csv")
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    text = response.content.decode()
+    assert "point_id" in text
+    assert "longitude" in text
+    lines = [
+        line for line in text.strip().split("\n") if line and not line.startswith("#")
+    ]
+    # header + data rows
+    assert len(lines) == synthetic_point_data["n_points"] + 1
+
+
+def test_export_geojson(test_app):
+    """Test exporting points as GeoJSON."""
+    response = test_app.get("/points/test_layer/export?format=geojson")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["type"] == "FeatureCollection"
+    assert len(data["features"]) > 0
+    assert data["features"][0]["geometry"]["type"] == "Point"
+
+
+def test_export_parquet(test_app):
+    """Test exporting points as Parquet."""
+    import pyarrow.parquet as pq
+
+    response = test_app.get("/points/test_layer/export?format=parquet")
+    assert response.status_code == 200
+    table = pq.read_table(pa.BufferReader(response.content))
+    assert "point_id" in table.column_names
+    assert "longitude" in table.column_names
+
+
 def test_unknown_layer_404(test_app):
     """Test that requesting an unknown layer returns 404."""
     response = test_app.get("/points/nonexistent/attributes")

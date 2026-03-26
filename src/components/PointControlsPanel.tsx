@@ -366,6 +366,34 @@ export default function PointControlsPanel() {
           </div>
         )}
       </div>
+
+      {/* Separator */}
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', margin: '8px 0' }} />
+
+      {/* Export */}
+      <div>
+        <label style={labelStyle}>Export</label>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['csv', 'geojson', 'parquet'] as const).map(fmt => (
+            <button
+              key={fmt}
+              onClick={() => {
+                const params = new URLSearchParams();
+                params.set('format', fmt);
+                if (state.pointFilter) params.set('filter', state.pointFilter);
+                window.open(`/points/${state.activePointLayer}/export?${params}`, '_blank');
+              }}
+              style={{
+                flex: 1, padding: '4px 6px', fontSize: 11, cursor: 'pointer',
+                background: '#2a2a4a', color: '#ccc', border: '1px solid #444',
+                borderRadius: 3,
+              }}
+            >
+              {fmt.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

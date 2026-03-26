@@ -6,6 +6,7 @@ from GeoParquet point cloud datasets.
 
 from __future__ import annotations
 
+import io
 import logging
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.ipc as ipc
 from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 if TYPE_CHECKING:
@@ -386,6 +388,152 @@ async def get_stats(
             stats[name] = val
 
     return stats
+
+
+@router.get("/{layer_name}/export")
+async def export_points(
+    layer_name: str,
+    export_format: str = Query(
+        "csv", alias="format", description="Export format: csv, geojson, parquet"
+    ),
+    bbox: str | None = Query(None, description="Bounding box: west,south,east,north"),
+    point_filter: str | None = Query(
+        None, alias="filter", description="Filter expression"
+    ),
+    max_points: int = Query(500_000, description="Maximum points to export"),
+    include_timeseries: bool = Query(
+        False, description="Include displacement time series in export"
+    ),
+) -> StreamingResponse:
+    """Export filtered points as CSV, GeoJSON, or GeoParquet."""
+    _require_layer(layer_name)
+    conn = _get_conn()
+    safe = _safe_identifier(layer_name)
+
+    where_parts: list[str] = []
+    if bbox:
+        parts = [float(x) for x in bbox.split(",")]
+        assert len(parts) == 4
+        west, south, east, north = parts
+        where_parts.append(
+            f"ST_X(geometry) BETWEEN {west} AND {east} "
+            f"AND ST_Y(geometry) BETWEEN {south} AND {north}"
+        )
+    if point_filter:
+        sanitized = _sanitize_filter(point_filter, safe, conn)
+        where_parts.append(sanitized)
+
+    where_clause = " AND ".join(where_parts) if where_parts else "TRUE"
+
+    # Get all non-geometry columns
+    cols = conn.execute(f"DESCRIBE {safe}_points").fetchall()
+    select_cols = [
+        row[0]
+        if row[0] != "geometry"
+        else "ST_X(geometry) as longitude, ST_Y(geometry) as latitude"
+        for row in cols
+    ]
+
+    sql = f"""
+        SELECT {', '.join(select_cols)}
+        FROM {safe}_points
+        WHERE {where_clause}
+        LIMIT {max_points}
+    """
+
+    try:
+        result = conn.execute(sql).arrow().read_all()
+    except duckdb.Error as e:
+        raise HTTPException(status_code=400, detail=f"Query error: {e}")
+
+    if include_timeseries:
+        point_ids = result.column("point_id").to_pylist()
+        if point_ids:
+            ids_str = ",".join(str(int(p)) for p in point_ids)
+            ts_sql = f"""
+                SELECT point_id, date, displacement
+                FROM {safe}_timeseries
+                WHERE point_id IN ({ids_str})
+                ORDER BY point_id, date
+            """
+            ts_result = conn.execute(ts_sql).arrow().read_all()
+        else:
+            ts_result = None
+    else:
+        ts_result = None
+
+    if export_format == "csv":
+        import pyarrow.csv as csv_writer
+
+        buf = io.BytesIO()
+        csv_writer.write_csv(result, buf)
+        if ts_result is not None:
+            buf.write(b"\n\n# Timeseries\n")
+            csv_writer.write_csv(ts_result, buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="text/csv",
+            headers={
+                "Content-Disposition": f'attachment; filename="{layer_name}_points.csv"'
+            },
+        )
+
+    elif export_format == "geojson":
+        import json
+
+        df = result.to_pandas()
+        features = []
+        for _, row in df.iterrows():
+            props = {
+                k: (float(v) if isinstance(v, (np.floating, float)) else v)
+                for k, v in row.items()
+                if k not in ("longitude", "latitude")
+            }
+            features.append(
+                {
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [
+                            float(row["longitude"]),
+                            float(row["latitude"]),
+                        ],
+                    },
+                    "properties": props,
+                }
+            )
+
+        geojson = {"type": "FeatureCollection", "features": features}
+        content = json.dumps(geojson).encode()
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type="application/geo+json",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{layer_name}_points.geojson"'
+                )
+            },
+        )
+
+    elif export_format == "parquet":
+        import pyarrow.parquet as pq
+
+        buf = io.BytesIO()
+        pq.write_table(result, buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/octet-stream",
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{layer_name}_points.parquet"'
+                )
+            },
+        )
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown format: {export_format}")
 
 
 # --- Filter Sanitization ---
