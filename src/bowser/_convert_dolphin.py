@@ -7,6 +7,7 @@ bowser_manifest.json.
 
 from __future__ import annotations
 
+import concurrent.futures
 from datetime import datetime
 from glob import glob
 from pathlib import Path
@@ -18,7 +19,6 @@ import pyarrow.parquet as pq
 import rasterio as rio
 import rasterio.transform
 from pyproj import Transformer
-from shapely.geometry import Point
 
 if TYPE_CHECKING:
     from rasterio.crs import CRS
@@ -242,45 +242,49 @@ def convert_dolphin(
     # Assign point IDs
     point_ids = np.arange(n_points, dtype=np.uint64)
 
-    # Build points table
+    # Build points table — read static attributes in parallel
     print("Reading static attributes...")
     points_data: dict[str, np.ndarray] = {
         "point_id": point_ids,
     }
-
-    # Column metadata for units
     col_metadata: dict[str, dict[str, str]] = {
         "point_id": {},
     }
 
+    attr_reads: list[tuple[str, str, dict[str, str]]] = []
     if "velocity" in dolphin_files:
-        points_data["velocity"] = _read_static_attribute(
-            dolphin_files["velocity"][0], mask
+        attr_reads.append(
+            ("velocity", dolphin_files["velocity"][0], {"units": "mm/yr"})
         )
-        col_metadata["velocity"] = {"units": "mm/yr"}
-
     if "velocity_stderr" in dolphin_files:
-        points_data["velocity_std"] = _read_static_attribute(
-            dolphin_files["velocity_stderr"][0], mask
+        attr_reads.append(
+            ("velocity_std", dolphin_files["velocity_stderr"][0], {"units": "mm/yr"})
         )
-        col_metadata["velocity_std"] = {"units": "mm/yr"}
-
     if "temporal_coherence_average" in dolphin_files:
-        points_data["temporal_coherence"] = _read_static_attribute(
-            dolphin_files["temporal_coherence_average"][0], mask
+        attr_reads.append(
+            ("temporal_coherence", dolphin_files["temporal_coherence_average"][0], {})
         )
     elif "temporal_coherence" in dolphin_files:
-        points_data["temporal_coherence"] = _read_static_attribute(
-            dolphin_files["temporal_coherence"][-1], mask
+        attr_reads.append(
+            ("temporal_coherence", dolphin_files["temporal_coherence"][-1], {})
         )
-
     if "amplitude_dispersion" in dolphin_files:
-        points_data["amplitude_dispersion"] = _read_static_attribute(
-            dolphin_files["amplitude_dispersion"][0], mask
+        attr_reads.append(
+            ("amplitude_dispersion", dolphin_files["amplitude_dispersion"][0], {})
         )
 
-    # Create GeoDataFrame and write as GeoParquet
-    geometry = [Point(lon, lat) for lon, lat in zip(lons, lats)]
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        futures = {
+            pool.submit(_read_static_attribute, path, mask): (name, md)
+            for name, path, md in attr_reads
+        }
+        for future in concurrent.futures.as_completed(futures):
+            name, md = futures[future]
+            points_data[name] = future.result()
+            col_metadata[name] = md
+
+    # Create GeoDataFrame using vectorized geometry construction
+    geometry = gpd.points_from_xy(lons, lats, crs="EPSG:4326")
     gdf = gpd.GeoDataFrame(points_data, geometry=geometry, crs="EPSG:4326")
 
     # Sort by spatial locality for better bbox query performance
@@ -307,12 +311,18 @@ def convert_dolphin(
     ts_dates = date_list * n_points
     ts_displacement = np.empty(total_rows, dtype=np.float32)
 
-    # Read each date's raster and extract values at masked pixels
-    for i, ts_file in enumerate(ts_files):
+    # Read each date's raster and extract values at masked pixels (parallel I/O)
+    def _read_masked(ts_file: str) -> np.ndarray:
         data, _, _ = _read_single_band(ts_file)
-        values = data[mask].astype(np.float32)
-        # Place values: for each point p, the i-th date goes at index p * n_dates + i
-        ts_displacement[i::n_dates] = values
+        return data[mask].astype(np.float32)
+
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        future_to_idx: dict[concurrent.futures.Future[np.ndarray], int] = {
+            pool.submit(_read_masked, f): i for i, f in enumerate(ts_files)
+        }
+        for future in concurrent.futures.as_completed(future_to_idx):
+            idx = future_to_idx[future]
+            ts_displacement[idx::n_dates] = future.result()
 
     # Write timeseries as Parquet with row groups organized by point_id
     # Each row group holds `points_per_group * n_dates` rows
@@ -336,10 +346,10 @@ def convert_dolphin(
     new_fields = []
     for field in ts_schema:
         if field.name in ts_col_metadata:
-            md = {
+            field_md: dict = {
                 k.encode(): v.encode() for k, v in ts_col_metadata[field.name].items()
             }
-            new_fields.append(field.with_metadata(md))
+            new_fields.append(field.with_metadata(field_md))
         else:
             new_fields.append(field)
     ts_table = ts_table.cast(pa.schema(new_fields))
@@ -401,13 +411,17 @@ def _morton_key(lons: np.ndarray, lats: np.ndarray, bits: int = 16) -> np.ndarra
     lat_range = lat_max - lat_min if lat_max > lat_min else 1.0
     max_val = (1 << bits) - 1
 
-    qlon = ((lons - lon_min) / lon_range * max_val).astype(np.uint32)
-    qlat = ((lats - lat_min) / lat_range * max_val).astype(np.uint32)
+    qlon = ((lons - lon_min) / lon_range * max_val).astype(np.uint64)
+    qlat = ((lats - lat_min) / lat_range * max_val).astype(np.uint64)
 
-    # Simple bit interleave for 16 bits
-    result = np.zeros(len(lons), dtype=np.uint64)
-    for i in range(bits):
-        result |= ((qlon >> i) & 1).astype(np.uint64) << (2 * i)
-        result |= ((qlat >> i) & 1).astype(np.uint64) << (2 * i + 1)
+    # Vectorized bit interleave using part1by1 (spread bits of x)
+    def _part1by1(x: np.ndarray) -> np.ndarray:
+        """Spread the lower 16 bits of x: insert a 0 bit between each."""
+        x = x & np.uint64(0x0000FFFF)
+        x = (x | (x << np.uint64(8))) & np.uint64(0x00FF00FF)
+        x = (x | (x << np.uint64(4))) & np.uint64(0x0F0F0F0F)
+        x = (x | (x << np.uint64(2))) & np.uint64(0x33333333)
+        x = (x | (x << np.uint64(1))) & np.uint64(0x55555555)
+        return x
 
-    return result
+    return _part1by1(qlon) | (_part1by1(qlat) << np.uint64(1))
