@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { COLORMAP_NAMES, colormapGradientCSS } from '../colorscales';
+import { COLORMAP_NAMES, colormapGradientCSS, valueToColor } from '../colorscales';
 
 const FILTER_OPERATORS = ['>', '<', '>=', '<=', '='] as const;
 
@@ -29,6 +29,43 @@ const basemapLabels: Record<string, string> = {
   osm: 'OpenStreetMap',
   dark: 'Dark',
 };
+
+function MiniHistogram({ histogram, vmin, vmax, colormap }: {
+  histogram: { edges: number[]; counts: number[] };
+  vmin: number; vmax: number; colormap: string;
+}) {
+  const { edges, counts } = histogram;
+  const maxCount = Math.max(...counts, 1);
+  const nBins = counts.length;
+  const svgW = 220;
+  const svgH = 36;
+  const barW = svgW / nBins;
+
+  const bars = useMemo(() => counts.map((count, i) => {
+    const midVal = (edges[i] + edges[i + 1]) / 2;
+    const [r, g, b] = valueToColor(midVal, vmin, vmax, colormap);
+    const h = (count / maxCount) * svgH;
+    return { x: i * barW, h, fill: `rgb(${r},${g},${b})` };
+  }), [counts, edges, vmin, vmax, colormap, maxCount, barW]);
+
+  return (
+    <div style={{ marginBottom: 6 }}>
+      <svg width={svgW} height={svgH} style={{ display: 'block' }}>
+        {bars.map((bar, i) => (
+          <rect
+            key={i}
+            x={bar.x}
+            y={svgH - bar.h}
+            width={Math.max(barW - 0.5, 1)}
+            height={bar.h}
+            fill={bar.fill}
+            opacity={0.8}
+          />
+        ))}
+      </svg>
+    </div>
+  );
+}
 
 export default function PointControlsPanel() {
   const { state, dispatch } = useAppContext();
@@ -247,6 +284,16 @@ export default function PointControlsPanel() {
           <span>{state.pointVmax.toFixed(1)}</span>
         </div>
       </div>
+
+      {/* Histogram */}
+      {state.pointHistogram && (
+        <MiniHistogram
+          histogram={state.pointHistogram}
+          vmin={state.pointVmin}
+          vmax={state.pointVmax}
+          colormap={state.pointColormap}
+        />
+      )}
 
       {/* Vmin / Vmax */}
       <div style={{ display: 'flex', gap: 8, ...sectionGap }}>

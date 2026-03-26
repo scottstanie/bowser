@@ -131,6 +131,22 @@ export default function MapContainer() {
         });
         setPointData(data);
         setPointCount(data.count);
+
+        // Compute histogram for controls panel
+        if (data.count > 0) {
+          const vals = data.colorValues;
+          const min = vals.reduce((a, b) => Math.min(a, b), Infinity);
+          const max = vals.reduce((a, b) => Math.max(a, b), -Infinity);
+          const nBins = 40;
+          const binWidth = (max - min) / nBins || 1;
+          const counts = new Array(nBins).fill(0);
+          const edges = Array.from({ length: nBins + 1 }, (_, i) => min + i * binWidth);
+          for (const v of vals) {
+            const idx = Math.min(Math.floor((v - min) / binWidth), nBins - 1);
+            counts[idx]++;
+          }
+          dispatch({ type: 'SET_POINT_HISTOGRAM', payload: { edges, counts } });
+        }
       } catch (err) {
         console.error('Error loading points:', err);
       }
