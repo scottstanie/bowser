@@ -13,7 +13,7 @@ const BASEMAPS: Record<string, { url: string; maxZoom: number }> = {
     maxZoom: 21,
   },
   osm: {
-    url: 'https://tile.openstreetmap.org/{z}/{y}/{x}.png',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     maxZoom: 19,
   },
   dark: {

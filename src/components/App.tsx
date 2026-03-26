@@ -102,21 +102,22 @@ function AppContent() {
 
   const hasRasters = Object.keys(state.datasetInfo).length > 0;
   const hasPoints = state.activePointLayer != null;
-  const pointOnlyMode = hasPoints && !hasRasters;
+  // V1 sidebar only when rasters exist WITHOUT points
+  const showV1Sidebar = hasRasters && !hasPoints;
 
   return (
     <div className="app-container">
-      {/* V1 raster control panel in sidebar */}
-      {hasRasters && <ControlPanel />}
+      {/* V1 raster control panel — only when no point layer (pure raster mode) */}
+      {showV1Sidebar && <ControlPanel />}
 
-      <div className="map-container" style={pointOnlyMode ? { gridColumn: '1 / -1' } : undefined}>
+      <div className="map-container" style={!showV1Sidebar ? { gridColumn: '1 / -1' } : undefined}>
         <MapContainer />
 
-        {/* Point controls overlay on map */}
+        {/* V2 point controls overlay (also manages raster toggles when both exist) */}
         {hasPoints && <PointControlsPanel />}
 
-        {/* V1 multi-point manager (raster click mode) */}
-        {hasRasters && !hasPoints && <PointManagerPanel />}
+        {/* V1 multi-point manager (raster click mode, no points) */}
+        {showV1Sidebar && <PointManagerPanel />}
 
         {state.showChart && <TimeSeriesChart />}
       </div>

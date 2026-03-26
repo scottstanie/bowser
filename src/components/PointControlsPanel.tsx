@@ -71,6 +71,7 @@ export default function PointControlsPanel() {
   const { state, dispatch } = useAppContext();
   const [draftVmin, setDraftVmin] = useState(String(state.pointVmin));
   const [draftVmax, setDraftVmax] = useState(String(state.pointVmax));
+  const [exportWithTs, setExportWithTs] = useState(false);
 
   // Filter draft state
   const [filterAttr, setFilterAttr] = useState('');
@@ -182,17 +183,71 @@ export default function PointControlsPanel() {
           )}
         </label>
 
-        {/* Raster layer toggle — only show when rasters are loaded */}
+        {/* Raster layer toggle + controls — only show when rasters are loaded */}
         {Object.keys(state.datasetInfo).length > 0 && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
-            <input
-              type="checkbox"
-              checked={state.rasterLayerVisible}
-              onChange={e => dispatch({ type: 'SET_RASTER_LAYER_VISIBLE', payload: e.target.checked })}
-              style={{ accentColor: '#5566cc' }}
-            />
-            <span>Raster ({state.currentDataset || 'none'})</span>
-          </label>
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+              <input
+                type="checkbox"
+                checked={state.rasterLayerVisible}
+                onChange={e => dispatch({ type: 'SET_RASTER_LAYER_VISIBLE', payload: e.target.checked })}
+                style={{ accentColor: '#5566cc' }}
+              />
+              <span>Raster</span>
+            </label>
+
+            {/* Raster controls (collapsed when hidden) */}
+            {state.rasterLayerVisible && (
+              <div style={{ paddingLeft: 20, marginBottom: 4 }}>
+                {/* Dataset selector */}
+                <select
+                  value={state.currentDataset}
+                  onChange={e => dispatch({ type: 'SET_CURRENT_DATASET', payload: e.target.value })}
+                  style={{ ...selectStyle, marginBottom: 4 }}
+                >
+                  {Object.keys(state.datasetInfo).map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+
+                {/* Time slider */}
+                {state.datasetInfo[state.currentDataset] && (
+                  <div style={{ marginBottom: 4 }}>
+                    <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Time</span>
+                      <span style={{ fontSize: 10 }}>
+                        {state.datasetInfo[state.currentDataset].x_values[state.currentTimeIndex]}
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min="0"
+                      max={state.datasetInfo[state.currentDataset].x_values.length - 1}
+                      step="1"
+                      value={state.currentTimeIndex}
+                      onChange={e => dispatch({ type: 'SET_TIME_INDEX', payload: parseInt(e.target.value) })}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                )}
+
+                {/* Raster opacity */}
+                <div>
+                  <label style={{ ...labelStyle, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Opacity</span>
+                    <span>{state.opacity.toFixed(2)}</span>
+                  </label>
+                  <input
+                    type="range"
+                    min="0" max="1" step="0.05"
+                    value={state.opacity}
+                    onChange={e => dispatch({ type: 'SET_OPACITY', payload: parseFloat(e.target.value) })}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Point opacity slider */}
@@ -420,6 +475,15 @@ export default function PointControlsPanel() {
       {/* Export */}
       <div>
         <label style={labelStyle}>Export</label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, cursor: 'pointer', marginBottom: 4 }}>
+          <input
+            type="checkbox"
+            checked={exportWithTs}
+            onChange={e => setExportWithTs(e.target.checked)}
+            style={{ accentColor: '#5566cc' }}
+          />
+          <span style={{ color: '#aaa' }}>Include timeseries</span>
+        </label>
         <div style={{ display: 'flex', gap: 4 }}>
           {(['csv', 'geojson', 'parquet'] as const).map(fmt => (
             <button
@@ -428,6 +492,7 @@ export default function PointControlsPanel() {
                 const params = new URLSearchParams();
                 params.set('format', fmt);
                 if (state.pointFilter) params.set('filter', state.pointFilter);
+                if (exportWithTs) params.set('include_timeseries', 'true');
                 window.open(`/points/${state.activePointLayer}/export?${params}`, '_blank');
               }}
               style={{
