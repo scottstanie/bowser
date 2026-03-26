@@ -44,6 +44,8 @@ export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
   const hasMultipleClicked = state.clickedPoints.length > 1;
   const [showTrends, setShowTrends] = useState(false);
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
 
   // Build a lookup from date → displacement for the reference point
   const refLookup = useMemo(() => {
@@ -62,8 +64,14 @@ export default function TimeSeriesChart() {
     if (state.clickedPoints.length > 0) {
       for (let i = 0; i < state.clickedPoints.length; i++) {
         const cp = state.clickedPoints[i];
-        const x = cp.timeseries.map(t => t.date);
-        const y = cp.timeseries.map(t => {
+        // Apply client-side date range filter
+        const filtered = cp.timeseries.filter(t => {
+          if (dateStart && t.date < dateStart) return false;
+          if (dateEnd && t.date > dateEnd) return false;
+          return true;
+        });
+        const x = filtered.map(t => t.date);
+        const y = filtered.map(t => {
           if (refLookup) {
             const refVal = refLookup.get(t.date) ?? 0;
             return t.displacement - refVal;
@@ -125,7 +133,7 @@ export default function TimeSeriesChart() {
     }
 
     return result;
-  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup, showTrends]);
+  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup, showTrends, dateStart, dateEnd]);
 
   if (traces.length === 0) return null;
 
@@ -206,24 +214,58 @@ export default function TimeSeriesChart() {
         </div>
       )}
 
-      {/* Trend toggle + Close button */}
+      {/* Toolbar: date range + trend toggle + close */}
       <div style={{
         position: 'absolute', top: (hasMultipleClicked || state.referencePointId != null) ? 28 : 4, right: 8, zIndex: 1001,
         display: 'flex', gap: 6, alignItems: 'center',
       }}>
         {state.clickedPoints.length > 0 && (
-          <button
-            onClick={() => setShowTrends(!showTrends)}
-            style={{
-              background: showTrends ? '#3a4a6a' : 'transparent',
-              border: showTrends ? '1px solid #5566cc' : '1px solid transparent',
-              color: showTrends ? '#aaf' : '#888',
-              cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
-            }}
-            title="Toggle trend lines"
-          >
-            Trend
-          </button>
+          <>
+            <input
+              type="date"
+              value={dateStart}
+              onChange={e => setDateStart(e.target.value)}
+              style={{
+                background: '#2a2a4a', color: '#ccc', border: '1px solid #444',
+                borderRadius: 3, fontSize: 10, padding: '1px 4px', width: 110,
+              }}
+              title="Start date filter"
+            />
+            <input
+              type="date"
+              value={dateEnd}
+              onChange={e => setDateEnd(e.target.value)}
+              style={{
+                background: '#2a2a4a', color: '#ccc', border: '1px solid #444',
+                borderRadius: 3, fontSize: 10, padding: '1px 4px', width: 110,
+              }}
+              title="End date filter"
+            />
+            {(dateStart || dateEnd) && (
+              <button
+                onClick={() => { setDateStart(''); setDateEnd(''); }}
+                style={{
+                  background: 'none', border: 'none', color: '#888',
+                  cursor: 'pointer', fontSize: 10, padding: 0,
+                }}
+                title="Clear date filter"
+              >
+                reset
+              </button>
+            )}
+            <button
+              onClick={() => setShowTrends(!showTrends)}
+              style={{
+                background: showTrends ? '#3a4a6a' : 'transparent',
+                border: showTrends ? '1px solid #5566cc' : '1px solid transparent',
+                color: showTrends ? '#aaf' : '#888',
+                cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
+              }}
+              title="Toggle trend lines"
+            >
+              Trend
+            </button>
+          </>
         )}
         <button
           onClick={() => {
