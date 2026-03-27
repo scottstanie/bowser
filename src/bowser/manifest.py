@@ -41,6 +41,33 @@ class PointLayerConfig(BaseModel):
 LayerConfig = Union[RasterLayerConfig, PointLayerConfig]
 
 
+class LosVectorConstant(BaseModel):
+    """A constant LOS unit vector in ENU coordinates (ground-to-satellite)."""
+
+    east: float
+    north: float
+    up: float
+
+
+class LosConfig(BaseModel):
+    """Line-of-Sight vector for projecting GPS ENU displacements to radar LOS.
+
+    Parameters
+    ----------
+    type : str
+        "constant" for a single ENU vector, "geotiff" for a spatially-varying
+        3-band (E, N, U) GeoTIFF.
+    los_enu : LosVectorConstant or None
+        Inline ENU vector for type="constant".
+    source : str or None
+        Path to 3-band GeoTIFF for type="geotiff".
+    """
+
+    type: Literal["constant", "geotiff"]
+    los_enu: LosVectorConstant | None = None
+    source: str | None = None
+
+
 class DatasetManifest(BaseModel):
     """Top-level manifest describing a Bowser V2 dataset.
 
@@ -74,6 +101,10 @@ class DatasetManifest(BaseModel):
     track: int | None = None
     reference_date: str | None = None
     bounds: list[float] | None = None
+    los: LosConfig | None = Field(
+        None,
+        description="LOS vector for GPS ENU→LOS projection",
+    )
 
     def get_point_layers(self) -> dict[str, PointLayerConfig]:
         """Return only the point layers from the manifest."""
