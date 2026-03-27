@@ -55,6 +55,7 @@ widget = [
   "ipyleaflet",
   "bqplot>=0.12",
 ]
+gps = ["geepers"]
 test = ["pytest", "httpx", "ipython", "types-python-dateutil", "pytest-playwright"]
 
 # [project.urls]

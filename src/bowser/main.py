@@ -636,6 +636,15 @@ if MANIFEST and MANIFEST.get_point_layers():
     app.include_router(points_router)
     logger.info("Configured point layer endpoints at /points/*")
 
+# Add GPS overlay endpoints if LOS config is available
+if MANIFEST and MANIFEST.los:
+    from .gps import init_gps
+    from .gps import router as gps_router
+
+    init_gps(MANIFEST.los)
+    app.include_router(gps_router)
+    logger.info("Configured GPS overlay endpoints at /gps/*")
+
 # Add exception handlers
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
