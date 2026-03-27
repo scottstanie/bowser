@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { AppProvider, useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { usePointsApi } from '../hooks/usePointsApi';
+import { parseUrlState, applyUrlState, useUrlStateSync } from '../hooks/useUrlState';
 import MapContainer from './MapContainer';
 import TimeSeriesChart from './TimeSeriesChart';
 import PointControlsPanel from './PointControlsPanel';
@@ -11,6 +12,10 @@ function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode } = useApi();
   const { fetchPointLayers, fetchPointAttributes } = usePointsApi();
+  const urlStateRef = useRef(parseUrlState());
+
+  // Sync state → URL params
+  useUrlStateSync();
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -88,8 +93,9 @@ function AppContent() {
         if (hasPointLayers && !hasRasterLayers) {
           dispatch({ type: 'SET_DATA_MODE', payload: 'points' });
         }
-        // If both exist, dataMode is already set from fetchDataMode (cog/md).
-        // If only raster, dataMode is already set.
+
+        // Apply URL state overrides (shareable links)
+        applyUrlState(dispatch, urlStateRef.current);
       } catch (error) {
         console.error('Error initializing app:', error);
       }

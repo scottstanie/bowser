@@ -6,6 +6,7 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 import { useAppContext } from '../context/AppContext';
 import { usePointsApi, PointData } from '../hooks/usePointsApi';
 import { valueToColor } from '../colorscales';
+import { parseUrlState } from '../hooks/useUrlState';
 
 const BASEMAPS: Record<string, { url: string; maxZoom: number }> = {
   satellite: {
@@ -63,14 +64,32 @@ export default function MapContainer() {
           source: 'basemap',
         }],
       },
-      center: [-99.077, 19.315], // Default; will be overridden by data bounds
-      zoom: 12,
+      center: (() => {
+        const url = parseUrlState();
+        if (url.lon && url.lat) return [parseFloat(url.lon), parseFloat(url.lat)] as [number, number];
+        return [-99.077, 19.315] as [number, number];
+      })(),
+      zoom: (() => {
+        const url = parseUrlState();
+        return url.zoom ? parseFloat(url.zoom) : 12;
+      })(),
       maxZoom: 22,
       attributionControl: false,
     });
 
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+
+    // Sync viewport to URL
+    map.on('moveend', () => {
+      const center = map.getCenter();
+      const z = map.getZoom();
+      const params = new URLSearchParams(window.location.search);
+      params.set('lat', center.lat.toFixed(4));
+      params.set('lon', center.lng.toFixed(4));
+      params.set('zoom', z.toFixed(1));
+      window.history.replaceState(null, '', `?${params}`);
+    });
 
     // Add deck.gl overlay
     const deckOverlay = new MapboxOverlay({
@@ -100,9 +119,13 @@ export default function MapContainer() {
   }, [pointBasemap]);
 
   // Fit map to data bounds from point layer or raster dataset
+  // Skip if URL already specifies a viewport (shared link)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    const url = parseUrlState();
+    if (url.lat && url.lon && url.zoom) return; // URL has viewport, skip fitBounds
 
     // Try point layers first (from manifest loaded via state)
     if (state.pointLayerBounds) {
