@@ -67,7 +67,7 @@ export default function MapContainer() {
       center: (() => {
         const url = parseUrlState();
         if (url.lon && url.lat) return [parseFloat(url.lon), parseFloat(url.lat)] as [number, number];
-        return [-99.077, 19.315] as [number, number];
+        return [0, 0] as [number, number];
       })(),
       zoom: (() => {
         const url = parseUrlState();
@@ -330,7 +330,7 @@ export default function MapContainer() {
 
     const urlParams = new URLSearchParams(params).toString();
     const endpoint = state.dataMode === 'md' ? 'md' : 'cog';
-    const tileUrl = `/${endpoint}/WebMercatorQuad/tiles/{z}/{x}/{y}.png?${urlParams}`;
+    const tileUrl = `/${endpoint}/tiles/WebMercatorQuad/{z}/{x}/{y}.png?${urlParams}`;
 
     // Add or update raster source
     if (map.getSource('raster-tiles')) {
