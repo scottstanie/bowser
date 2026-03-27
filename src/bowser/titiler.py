@@ -146,11 +146,14 @@ class RasterGroup(BaseModel):
         """Vales to use for the x axis of a time series plot."""
         # if len(self.file_list) == 1:
         dates = self._reader.dates
-        if not dates or any(d is None for d in dates):
+        # Check if all dates are valid and non-empty
+        if not dates or any((d is None or not d) for d in dates):
             # otherwise, use indexes
             x_values = np.arange(len(self.file_list)).tolist()
         else:
-            x_values = [_format_dates(*k) for k in dates]  # type: ignore[misc]
+            # For time series plotting, use only the last date (secondary/end date)
+            # For interferograms: first date is reference, second is secondary
+            x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[misc]
 
         return x_values
 
@@ -190,7 +193,7 @@ def _find_files(glob_str: str) -> list[str]:
     return file_list
 
 
-def _format_dates(*dates, fmt="%Y%m%d") -> str:
+def _format_dates(*dates, fmt="%Y-%m-%d") -> str:
     return "_".join(f"{d.strftime(fmt)}" for d in dates)
 
 
