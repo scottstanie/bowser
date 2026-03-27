@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import Plot from 'react-plotly.js';
 import { useAppContext } from '../context/AppContext';
 
@@ -47,6 +47,55 @@ export default function TimeSeriesChart() {
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
   const isLight = state.chartTheme === 'light';
+
+  const exportScreenshot = useCallback(async () => {
+    // Capture map canvas
+    const mapCanvas = document.querySelector('.map-container canvas') as HTMLCanvasElement | null;
+    // Capture Plotly chart
+    const plotDiv = document.querySelector('.js-plotly-plot') as HTMLElement | null;
+
+    const combinedCanvas = document.createElement('canvas');
+    const ctx = combinedCanvas.getContext('2d');
+    if (!ctx) return;
+
+    const mapW = mapCanvas?.width || 1400;
+    const mapH = mapCanvas?.height || 600;
+    const chartH = 300;
+    const scale = 2; // High-res export
+
+    combinedCanvas.width = mapW;
+    combinedCanvas.height = mapH + chartH;
+    ctx.fillStyle = isLight ? '#ffffff' : '#1a1a2e';
+    ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+
+    // Draw map
+    if (mapCanvas) {
+      ctx.drawImage(mapCanvas, 0, 0, mapW, mapH);
+    }
+
+    // Draw chart
+    if (plotDiv) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const PlotlyLib = (window as any).Plotly || (await import('plotly.js-dist-min')).default;
+      const imgData = await PlotlyLib.toImage(plotDiv, {
+        format: 'png', width: mapW, height: chartH, scale,
+      });
+      const img = new Image();
+      await new Promise<void>((resolve) => {
+        img.onload = () => {
+          ctx.drawImage(img, 0, mapH, mapW, chartH);
+          resolve();
+        };
+        img.src = imgData;
+      });
+    }
+
+    // Download
+    const link = document.createElement('a');
+    link.download = `bowser_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.png`;
+    link.href = combinedCanvas.toDataURL('image/png');
+    link.click();
+  }, [isLight]);
 
   // Build a lookup from date → displacement for the reference point
   const refLookup = useMemo(() => {
@@ -268,6 +317,18 @@ export default function TimeSeriesChart() {
             </button>
           </>
         )}
+        <button
+          onClick={exportScreenshot}
+          style={{
+            background: isLight ? '#e8e8e8' : '#2a2a4a',
+            border: isLight ? '1px solid #ccc' : '1px solid #444',
+            color: isLight ? '#333' : '#ccc',
+            cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
+          }}
+          title="Export map + chart as PNG"
+        >
+          Save PNG
+        </button>
         <button
           onClick={() => dispatch({ type: 'SET_CHART_THEME', payload: isLight ? 'dark' : 'light' })}
           style={{
