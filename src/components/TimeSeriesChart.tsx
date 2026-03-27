@@ -165,9 +165,16 @@ export default function TimeSeriesChart() {
 
     // V1 raster mode: show time series points (existing behavior)
     if (state.timeSeriesPoints.length > 0 && state.currentDataset) {
+      const refVals = state.refValues[state.currentDataset];
+      const dsInfo = state.datasetInfo[state.currentDataset];
+      const usesRef = dsInfo?.uses_spatial_ref && refVals;
+
       for (const p of state.timeSeriesPoints) {
         if (!p.visible || !p.data?.[state.currentDataset]) continue;
-        const data = p.data![state.currentDataset];
+        const rawData = p.data![state.currentDataset];
+        const data = usesRef
+          ? rawData.map((v, i) => v - (refVals[i] ?? 0))
+          : rawData;
         const info = state.datasetInfo[state.currentDataset];
         const xValues = info?.x_values || data.map((_, i) => i);
         result.push({
@@ -183,7 +190,7 @@ export default function TimeSeriesChart() {
     }
 
     return result;
-  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, refLookup, showTrends, dateStart, dateEnd]);
+  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, state.refValues, refLookup, showTrends, dateStart, dateEnd]);
 
   if (traces.length === 0) return null;
 
