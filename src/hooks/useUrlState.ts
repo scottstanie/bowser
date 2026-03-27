@@ -37,18 +37,22 @@ export function useUrlStateSync() {
       return;
     }
 
-    const params = new URLSearchParams();
+    // Read existing params (preserves lat/lon/zoom written by moveend)
+    const params = new URLSearchParams(window.location.search);
+
+    // Helper: set if non-default, delete if default
+    const setOrDelete = (key: string, value: string, isDefault: boolean) => {
+      if (isDefault) { params.delete(key); } else { params.set(key, value); }
+    };
 
     // Point viz state
-    if (state.pointColorBy && state.pointColorBy !== 'velocity') {
-      params.set('colorBy', state.pointColorBy);
-    }
-    if (state.pointVmin !== -10) params.set('vmin', state.pointVmin.toFixed(2));
-    if (state.pointVmax !== 10) params.set('vmax', state.pointVmax.toFixed(2));
-    if (state.pointColormap !== 'rdbu_r') params.set('colormap', state.pointColormap);
-    if (state.pointBasemap !== 'satellite') params.set('basemap', state.pointBasemap);
-    if (state.pointFilter) params.set('filter', state.pointFilter);
-    if (state.chartTheme !== 'dark') params.set('theme', state.chartTheme);
+    setOrDelete('colorBy', state.pointColorBy, !state.pointColorBy || state.pointColorBy === 'velocity');
+    setOrDelete('vmin', state.pointVmin.toFixed(2), state.pointVmin === -10);
+    setOrDelete('vmax', state.pointVmax.toFixed(2), state.pointVmax === 10);
+    setOrDelete('colormap', state.pointColormap, state.pointColormap === 'rdbu_r');
+    setOrDelete('basemap', state.pointBasemap, state.pointBasemap === 'satellite');
+    setOrDelete('filter', state.pointFilter, !state.pointFilter);
+    setOrDelete('theme', state.chartTheme, state.chartTheme === 'dark');
 
     const search = params.toString();
     const url = search ? `?${search}` : window.location.pathname;
