@@ -78,6 +78,8 @@ export default function MapContainer() {
         return url.zoom ? parseFloat(url.zoom) : 12;
       })(),
       maxZoom: 22,
+      // @ts-expect-error preserveDrawingBuffer is a valid WebGL option, not in MapLibre types
+      preserveDrawingBuffer: true, // Needed for map canvas export to PNG
       attributionControl: false,
     });
 
@@ -187,25 +189,23 @@ export default function MapContainer() {
           payload: [lngLat.lat, lngLat.lng],
         });
 
-        // Fetch reference pixel values for datasets that use spatial referencing
-        for (const [dsName, dsInfo] of Object.entries(state.datasetInfo)) {
-          if (dsInfo.uses_spatial_ref) {
-            const values = await fetchRasterPixelTS(lngLat.lng, lngLat.lat, dsName);
-            if (values) {
-              dispatch({
-                type: 'SET_REF_VALUES',
-                payload: { dataset: dsName, values },
-              });
-            }
+        // Fetch reference pixel values for all raster datasets
+        for (const [dsName] of Object.entries(state.datasetInfo)) {
+          const values = await fetchRasterPixelTS(lngLat.lng, lngLat.lat, dsName);
+          if (values) {
+            dispatch({
+              type: 'SET_REF_VALUES',
+              payload: { dataset: dsName, values },
+            });
           }
         }
       });
 
       refMarkerRef.current = marker;
 
-      // Initial ref value fetch for datasets with spatial referencing
-      for (const [dsName, dsInfo] of Object.entries(state.datasetInfo)) {
-        if (dsInfo.uses_spatial_ref && !state.refValues[dsName]) {
+      // Initial ref value fetch for all datasets
+      for (const [dsName] of Object.entries(state.datasetInfo)) {
+        if (!state.refValues[dsName]) {
           fetchRasterPixelTS(
             state.refMarkerPosition[1], state.refMarkerPosition[0], dsName,
           ).then(values => {

@@ -48,51 +48,62 @@ export default function TimeSeriesChart() {
   const [dateEnd, setDateEnd] = useState('');
   const isLight = state.chartTheme === 'light';
 
-  const exportScreenshot = useCallback(async () => {
-    // Capture map canvas
-    const mapCanvas = document.querySelector('.map-container canvas') as HTMLCanvasElement | null;
-    // Capture Plotly chart
+  const exportImage = useCallback(async (format: 'png' | 'svg' = 'png') => {
     const plotDiv = document.querySelector('.js-plotly-plot') as HTMLElement | null;
+    if (!plotDiv) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const PlotlyLib = (window as any).Plotly || (await import('plotly.js-dist-min')).default;
+
+    if (format === 'svg') {
+      // SVG export — chart only, vector format for publication
+      const svgData = await PlotlyLib.toImage(plotDiv, {
+        format: 'svg', width: 900, height: 400,
+      });
+      const link = document.createElement('a');
+      link.download = `bowser_chart_${new Date().toISOString().slice(0, 10)}.svg`;
+      link.href = svgData;
+      link.click();
+      return;
+    }
+
+    // PNG export — map + chart combined
+    const mapCanvas = document.querySelector('.map-container canvas') as HTMLCanvasElement | null;
+    const scale = 2;
+    const exportW = 1600;
+    const mapH = mapCanvas ? Math.round(exportW * mapCanvas.height / mapCanvas.width) : 500;
+    const chartH = 400;
 
     const combinedCanvas = document.createElement('canvas');
+    combinedCanvas.width = exportW * scale;
+    combinedCanvas.height = (mapH + chartH) * scale;
     const ctx = combinedCanvas.getContext('2d');
     if (!ctx) return;
 
-    const mapW = mapCanvas?.width || 1400;
-    const mapH = mapCanvas?.height || 600;
-    const chartH = 300;
-    const scale = 2; // High-res export
-
-    combinedCanvas.width = mapW;
-    combinedCanvas.height = mapH + chartH;
+    ctx.scale(scale, scale);
     ctx.fillStyle = isLight ? '#ffffff' : '#1a1a2e';
-    ctx.fillRect(0, 0, combinedCanvas.width, combinedCanvas.height);
+    ctx.fillRect(0, 0, exportW, mapH + chartH);
 
-    // Draw map
+    // Draw map (preserveDrawingBuffer must be true on the MapLibre map)
     if (mapCanvas) {
-      ctx.drawImage(mapCanvas, 0, 0, mapW, mapH);
+      ctx.drawImage(mapCanvas, 0, 0, exportW, mapH);
     }
 
-    // Draw chart
-    if (plotDiv) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const PlotlyLib = (window as any).Plotly || (await import('plotly.js-dist-min')).default;
-      const imgData = await PlotlyLib.toImage(plotDiv, {
-        format: 'png', width: mapW, height: chartH, scale,
-      });
-      const img = new Image();
-      await new Promise<void>((resolve) => {
-        img.onload = () => {
-          ctx.drawImage(img, 0, mapH, mapW, chartH);
-          resolve();
-        };
-        img.src = imgData;
-      });
-    }
+    // Draw chart as PNG at high resolution
+    const chartImg = await PlotlyLib.toImage(plotDiv, {
+      format: 'png', width: exportW, height: chartH, scale,
+    });
+    const img = new Image();
+    await new Promise<void>((resolve) => {
+      img.onload = () => {
+        ctx.drawImage(img, 0, mapH, exportW, chartH);
+        resolve();
+      };
+      img.src = chartImg;
+    });
 
-    // Download
     const link = document.createElement('a');
-    link.download = `bowser_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '')}.png`;
+    link.download = `bowser_export_${new Date().toISOString().slice(0, 10)}.png`;
     link.href = combinedCanvas.toDataURL('image/png');
     link.click();
   }, [isLight]);
@@ -166,13 +177,11 @@ export default function TimeSeriesChart() {
     // V1 raster mode: show time series points (existing behavior)
     if (state.timeSeriesPoints.length > 0 && state.currentDataset) {
       const refVals = state.refValues[state.currentDataset];
-      const dsInfo = state.datasetInfo[state.currentDataset];
-      const usesRef = dsInfo?.uses_spatial_ref && refVals;
 
       for (const p of state.timeSeriesPoints) {
         if (!p.visible || !p.data?.[state.currentDataset]) continue;
         const rawData = p.data![state.currentDataset];
-        const data = usesRef
+        const data = refVals
           ? rawData.map((v, i) => v - (refVals[i] ?? 0))
           : rawData;
         const info = state.datasetInfo[state.currentDataset];
@@ -325,7 +334,7 @@ export default function TimeSeriesChart() {
           </>
         )}
         <button
-          onClick={exportScreenshot}
+          onClick={() => exportImage('png')}
           style={{
             background: isLight ? '#e8e8e8' : '#2a2a4a',
             border: isLight ? '1px solid #ccc' : '1px solid #444',
@@ -334,7 +343,19 @@ export default function TimeSeriesChart() {
           }}
           title="Export map + chart as PNG"
         >
-          Save PNG
+          PNG
+        </button>
+        <button
+          onClick={() => exportImage('svg')}
+          style={{
+            background: isLight ? '#e8e8e8' : '#2a2a4a',
+            border: isLight ? '1px solid #ccc' : '1px solid #444',
+            color: isLight ? '#333' : '#ccc',
+            cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
+          }}
+          title="Export chart as SVG (vector, for publication)"
+        >
+          SVG
         </button>
         <button
           onClick={() => dispatch({ type: 'SET_CHART_THEME', payload: isLight ? 'dark' : 'light' })}
@@ -373,8 +394,10 @@ export default function TimeSeriesChart() {
             plot_bgcolor: isLight ? '#f8f8f8' : '#16213e',
             font: {
               color: isLight ? '#333' : '#ccc',
-              size: 11,
-              family: isLight ? 'Georgia, "Times New Roman", serif' : 'system-ui, sans-serif',
+              size: isLight ? 13 : 11,
+              family: isLight
+                ? '"Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif'
+                : 'system-ui, sans-serif',
             },
             xaxis: {
               gridcolor: isLight ? '#ddd' : '#2a3a5e',
