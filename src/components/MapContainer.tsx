@@ -80,8 +80,11 @@ export default function MapContainer() {
     map.addControl(new maplibregl.NavigationControl(), 'top-right');
     map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
 
-    // Sync viewport to URL
+    // Sync viewport to URL (debounced to avoid writing during fitBounds)
+    let urlSyncEnabled = false;
+    setTimeout(() => { urlSyncEnabled = true; }, 2000);
     map.on('moveend', () => {
+      if (!urlSyncEnabled) return;
       const center = map.getCenter();
       const z = map.getZoom();
       const params = new URLSearchParams(window.location.search);
@@ -291,6 +294,9 @@ export default function MapContainer() {
     const map = mapRef.current;
     if (!map || !state.currentDataset || !state.datasetInfo[state.currentDataset]) return;
 
+    // Ensure map style is loaded before adding sources
+    const addRasterLayer = () => {
+
     const currentDatasetInfo = state.datasetInfo[state.currentDataset];
     const maxIdx = currentDatasetInfo.x_values.length - 1;
     const timeIdx = Math.max(0, Math.min(state.currentTimeIndex, maxIdx));
@@ -343,9 +349,16 @@ export default function MapContainer() {
       }, map.getLayer('basemap') ? undefined : undefined);
     }
 
-    // Update opacity
-    if (map.getLayer('raster-layer')) {
-      map.setPaintProperty('raster-layer', 'raster-opacity', state.opacity);
+      // Update opacity
+      if (map.getLayer('raster-layer')) {
+        map.setPaintProperty('raster-layer', 'raster-opacity', state.opacity);
+      }
+    };
+
+    if (map.isStyleLoaded()) {
+      addRasterLayer();
+    } else {
+      map.once('load', addRasterLayer);
     }
   }, [state.currentDataset, state.currentTimeIndex, state.datasetInfo, state.dataMode,
       state.refValues, state.colormap, state.vmin, state.vmax, state.opacity]);
