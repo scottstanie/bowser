@@ -4,6 +4,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { ScatterplotLayer } from '@deck.gl/layers';
 import { useAppContext } from '../context/AppContext';
+import { useApi } from '../hooks/useApi';
 import { usePointsApi, PointData } from '../hooks/usePointsApi';
 import { valueToColor } from '../colorscales';
 import { parseUrlState } from '../hooks/useUrlState';
@@ -26,9 +27,12 @@ const BASEMAPS: Record<string, { url: string; maxZoom: number }> = {
 export default function MapContainer() {
   const { state, dispatch } = useAppContext();
   const { fetchPoints, fetchPointTimeseries } = usePointsApi();
+  const { fetchPointTimeSeries: fetchRasterPixelTS } = useApi();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const deckOverlayRef = useRef<MapboxOverlay | null>(null);
+  const refMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const tsMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   const [pointData, setPointData] = useState<PointData | null>(null);
   const [selectedPointId, setSelectedPointId] = useState<number | null>(null);
@@ -109,6 +113,116 @@ export default function MapContainer() {
       deckOverlayRef.current = null;
     };
   }, []);
+
+  // Raster mode: click on map → add time series point → fetch pixel values
+  const hasRasters = Object.keys(state.datasetInfo).length > 0;
+  const hasPointLayer = state.activePointLayer != null;
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !hasRasters) return;
+
+    const handleClick = (e: maplibregl.MapMouseEvent) => {
+      // In point layer mode, deck.gl handles clicks — skip raster click
+      if (hasPointLayer) return;
+
+      const { lng, lat } = e.lngLat;
+      dispatch({
+        type: 'ADD_TIME_SERIES_POINT',
+        payload: { position: [lat, lng] },
+      });
+      if (!state.showChart) {
+        dispatch({ type: 'TOGGLE_CHART' });
+      }
+    };
+
+    map.on('click', handleClick);
+    return () => { map.off('click', handleClick); };
+  }, [hasRasters, hasPointLayer, state.showChart, dispatch]);
+
+  // Raster mode: fetch pixel timeseries for points that don't have data yet
+  useEffect(() => {
+    if (!hasRasters || !state.currentDataset) return;
+
+    for (const point of state.timeSeriesPoints) {
+      if (!point.data?.[state.currentDataset]) {
+        // Fetch pixel values for this point
+        fetchRasterPixelTS(point.position[1], point.position[0], state.currentDataset)
+          .then(values => {
+            if (values) {
+              dispatch({
+                type: 'SET_POINT_DATA',
+                payload: { pointId: point.id, dataset: state.currentDataset, data: values },
+              });
+            }
+          });
+      }
+    }
+  }, [state.timeSeriesPoints, state.currentDataset, hasRasters, fetchRasterPixelTS, dispatch]);
+
+  // Raster mode: draggable reference marker
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !hasRasters) return;
+
+    // Create or update reference marker
+    if (!refMarkerRef.current) {
+      const el = document.createElement('div');
+      el.style.width = '20px';
+      el.style.height = '20px';
+      el.style.borderRadius = '50%';
+      el.style.background = '#ff4444';
+      el.style.border = '3px solid white';
+      el.style.cursor = 'grab';
+      el.title = 'Reference point (drag to move)';
+
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat([state.refMarkerPosition[1], state.refMarkerPosition[0]])
+        .addTo(map);
+
+      marker.on('dragend', () => {
+        const lngLat = marker.getLngLat();
+        dispatch({
+          type: 'SET_REF_MARKER_POSITION',
+          payload: [lngLat.lat, lngLat.lng],
+        });
+      });
+
+      refMarkerRef.current = marker;
+    } else {
+      refMarkerRef.current.setLngLat([state.refMarkerPosition[1], state.refMarkerPosition[0]]);
+    }
+
+    return () => {
+      // Don't remove on re-render, only on unmount
+    };
+  }, [hasRasters, state.refMarkerPosition, dispatch]);
+
+  // Raster mode: show markers for time series points
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Remove old markers
+    tsMarkersRef.current.forEach(m => m.remove());
+    tsMarkersRef.current = [];
+
+    // Add markers for each time series point
+    for (const point of state.timeSeriesPoints) {
+      if (!point.visible) continue;
+      const el = document.createElement('div');
+      el.style.width = '12px';
+      el.style.height = '12px';
+      el.style.borderRadius = '50%';
+      el.style.background = point.color;
+      el.style.border = '2px solid white';
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([point.position[1], point.position[0]])
+        .addTo(map);
+      tsMarkersRef.current.push(marker);
+    }
+  }, [state.timeSeriesPoints]);
 
   // Switch basemap tiles
   useEffect(() => {
