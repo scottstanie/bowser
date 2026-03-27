@@ -79,6 +79,8 @@ export interface AppState {
   referenceTimeseries: Array<{ date: string; displacement: number }>;
   // Histogram bins for current color-by attribute
   pointHistogram: { edges: number[]; counts: number[] } | null;
+  // Chart theme
+  chartTheme: 'dark' | 'light';
   // Layer visibility
   rasterLayerVisible: boolean;
   pointLayerVisible: boolean;
@@ -120,6 +122,7 @@ export type AppAction =
   | { type: 'SET_POINT_COLORMAP'; payload: string }
   | { type: 'SET_REFERENCE_POINT'; payload: { pointId: number; timeseries: Array<{ date: string; displacement: number }> } }
   | { type: 'CLEAR_REFERENCE_POINT' }
+  | { type: 'SET_CHART_THEME'; payload: 'dark' | 'light' }
   | { type: 'SET_POINT_HISTOGRAM'; payload: { edges: number[]; counts: number[] } | null }
   | { type: 'SET_RASTER_LAYER_VISIBLE'; payload: boolean }
   | { type: 'SET_POINT_LAYER_VISIBLE'; payload: boolean }

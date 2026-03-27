@@ -46,6 +46,7 @@ export default function TimeSeriesChart() {
   const [showTrends, setShowTrends] = useState(false);
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
+  const isLight = state.chartTheme === 'light';
 
   // Build a lookup from date → displacement for the reference point
   const refLookup = useMemo(() => {
@@ -145,8 +146,8 @@ export default function TimeSeriesChart() {
       right: 0,
       height: '250px',
       zIndex: 1000,
-      background: '#1a1a2e',
-      borderTop: '1px solid #333',
+      background: isLight ? '#ffffff' : '#1a1a2e',
+      borderTop: isLight ? '1px solid #ccc' : '1px solid #333',
       display: 'flex',
       flexDirection: 'column',
     }}>
@@ -154,8 +155,8 @@ export default function TimeSeriesChart() {
       {(hasMultipleClicked || state.referencePointId != null) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '3px 10px', background: '#12122a',
-          borderBottom: '1px solid #2a2a4a', fontSize: 11,
+          padding: '3px 10px', background: isLight ? '#f0f0f0' : '#12122a',
+          borderBottom: isLight ? '1px solid #ddd' : '1px solid #2a2a4a', fontSize: 11,
           flexShrink: 0,
         }}>
           {state.referencePointId != null && (
@@ -217,8 +218,8 @@ export default function TimeSeriesChart() {
       {/* Toolbar row: date range + trend toggle + close */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 6,
-        padding: '3px 10px', background: '#12122a',
-        borderBottom: '1px solid #2a2a4a', fontSize: 11,
+        padding: '3px 10px', background: isLight ? '#f0f0f0' : '#12122a',
+        borderBottom: isLight ? '1px solid #ddd' : '1px solid #2a2a4a', fontSize: 11,
         flexShrink: 0,
       }}>
         {state.clickedPoints.length > 0 && (
@@ -268,6 +269,18 @@ export default function TimeSeriesChart() {
           </>
         )}
         <button
+          onClick={() => dispatch({ type: 'SET_CHART_THEME', payload: isLight ? 'dark' : 'light' })}
+          style={{
+            background: isLight ? '#e8e8e8' : '#2a2a4a',
+            border: isLight ? '1px solid #ccc' : '1px solid #444',
+            color: isLight ? '#333' : '#ccc',
+            cursor: 'pointer', fontSize: 11, padding: '2px 6px', borderRadius: 3,
+          }}
+          title="Toggle dark/light theme for publication"
+        >
+          {isLight ? 'Dark' : 'Light'}
+        </button>
+        <button
           onClick={() => {
             dispatch({ type: 'TOGGLE_CHART' });
             dispatch({ type: 'CLEAR_CLICKED_POINTS' });
@@ -288,19 +301,25 @@ export default function TimeSeriesChart() {
           layout={{
             autosize: true,
             margin: { l: 55, r: 15, t: 10, b: 40 },
-            paper_bgcolor: '#1a1a2e',
-            plot_bgcolor: '#16213e',
-            font: { color: '#ccc', size: 11 },
+            paper_bgcolor: isLight ? '#ffffff' : '#1a1a2e',
+            plot_bgcolor: isLight ? '#f8f8f8' : '#16213e',
+            font: {
+              color: isLight ? '#333' : '#ccc',
+              size: 11,
+              family: isLight ? 'Georgia, "Times New Roman", serif' : 'system-ui, sans-serif',
+            },
             xaxis: {
-              gridcolor: '#2a3a5e',
+              gridcolor: isLight ? '#ddd' : '#2a3a5e',
+              linecolor: isLight ? '#999' : undefined,
               title: { text: 'Date' },
             },
             yaxis: {
-              gridcolor: '#2a3a5e',
+              gridcolor: isLight ? '#ddd' : '#2a3a5e',
+              linecolor: isLight ? '#999' : undefined,
               title: { text: refLookup ? 'Relative Displacement (mm)' : 'Displacement (mm)' },
             },
             legend: {
-              bgcolor: 'rgba(0,0,0,0.3)',
+              bgcolor: isLight ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.3)',
               font: { size: 10 },
             },
             showlegend: traces.length > 1,

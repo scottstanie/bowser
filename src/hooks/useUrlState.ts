@@ -48,6 +48,7 @@ export function useUrlStateSync() {
     if (state.pointColormap !== 'rdbu_r') params.set('colormap', state.pointColormap);
     if (state.pointBasemap !== 'satellite') params.set('basemap', state.pointBasemap);
     if (state.pointFilter) params.set('filter', state.pointFilter);
+    if (state.chartTheme !== 'dark') params.set('theme', state.chartTheme);
 
     const search = params.toString();
     const url = search ? `?${search}` : window.location.pathname;
@@ -55,6 +56,7 @@ export function useUrlStateSync() {
   }, [
     state.pointColorBy, state.pointVmin, state.pointVmax,
     state.pointColormap, state.pointBasemap, state.pointFilter,
+    state.chartTheme,
   ]);
 }
 
@@ -83,5 +85,8 @@ export function applyUrlState(
   }
   if (urlState.filter) {
     dispatch({ type: 'SET_POINT_FILTER', payload: urlState.filter });
+  }
+  if (urlState.theme === 'light') {
+    dispatch({ type: 'SET_CHART_THEME', payload: 'light' });
   }
 }
