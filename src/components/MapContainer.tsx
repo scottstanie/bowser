@@ -180,15 +180,41 @@ export default function MapContainer() {
         .setLngLat([state.refMarkerPosition[1], state.refMarkerPosition[0]])
         .addTo(map);
 
-      marker.on('dragend', () => {
+      marker.on('dragend', async () => {
         const lngLat = marker.getLngLat();
         dispatch({
           type: 'SET_REF_MARKER_POSITION',
           payload: [lngLat.lat, lngLat.lng],
         });
+
+        // Fetch reference pixel values for datasets that use spatial referencing
+        for (const [dsName, dsInfo] of Object.entries(state.datasetInfo)) {
+          if (dsInfo.uses_spatial_ref) {
+            const values = await fetchRasterPixelTS(lngLat.lng, lngLat.lat, dsName);
+            if (values) {
+              dispatch({
+                type: 'SET_REF_VALUES',
+                payload: { dataset: dsName, values },
+              });
+            }
+          }
+        }
       });
 
       refMarkerRef.current = marker;
+
+      // Initial ref value fetch for datasets with spatial referencing
+      for (const [dsName, dsInfo] of Object.entries(state.datasetInfo)) {
+        if (dsInfo.uses_spatial_ref && !state.refValues[dsName]) {
+          fetchRasterPixelTS(
+            state.refMarkerPosition[1], state.refMarkerPosition[0], dsName,
+          ).then(values => {
+            if (values) {
+              dispatch({ type: 'SET_REF_VALUES', payload: { dataset: dsName, values } });
+            }
+          });
+        }
+      }
     } else {
       refMarkerRef.current.setLngLat([state.refMarkerPosition[1], state.refMarkerPosition[0]]);
     }
@@ -196,7 +222,7 @@ export default function MapContainer() {
     return () => {
       // Don't remove on re-render, only on unmount
     };
-  }, [hasRasters, state.refMarkerPosition, dispatch]);
+  }, [hasRasters, state.refMarkerPosition, state.datasetInfo, state.refValues, dispatch, fetchRasterPixelTS]);
 
   // Raster mode: show markers for time series points
   useEffect(() => {
@@ -207,7 +233,7 @@ export default function MapContainer() {
     tsMarkersRef.current.forEach(m => m.remove());
     tsMarkersRef.current = [];
 
-    // Add markers for each time series point
+    // Add draggable markers for each time series point
     for (const point of state.timeSeriesPoints) {
       if (!point.visible) continue;
       const el = document.createElement('div');
@@ -216,13 +242,27 @@ export default function MapContainer() {
       el.style.borderRadius = '50%';
       el.style.background = point.color;
       el.style.border = '2px solid white';
+      el.style.cursor = 'grab';
 
-      const marker = new maplibregl.Marker({ element: el })
+      const pointId = point.id;
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([point.position[1], point.position[0]])
         .addTo(map);
+
+      marker.on('dragend', () => {
+        const lngLat = marker.getLngLat();
+        dispatch({
+          type: 'UPDATE_TIME_SERIES_POINT',
+          payload: {
+            id: pointId,
+            updates: { position: [lngLat.lat, lngLat.lng], data: {} },
+          },
+        });
+      });
+
       tsMarkersRef.current.push(marker);
     }
-  }, [state.timeSeriesPoints]);
+  }, [state.timeSeriesPoints, dispatch]);
 
   // Switch basemap tiles
   useEffect(() => {
