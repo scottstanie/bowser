@@ -6,6 +6,7 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { usePointsApi, PointData } from '../hooks/usePointsApi';
+import { useGpsApi } from '../hooks/useGpsApi';
 import { valueToColor } from '../colorscales';
 import { parseUrlState } from '../hooks/useUrlState';
 
@@ -28,9 +29,17 @@ export default function MapContainer() {
   const { state, dispatch } = useAppContext();
   const { fetchPoints, fetchPointTimeseries } = usePointsApi();
   const { fetchPointTimeSeries: fetchRasterPixelTS } = useApi();
+  const { fetchGpsStations, fetchGpsTimeseries } = useGpsApi();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const deckOverlayRef = useRef<MapboxOverlay | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const deckLayersRef = useRef<any[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const setDeckLayers = useCallback((layers: any[]) => {
+    deckLayersRef.current = layers;
+    deckOverlayRef.current?.setProps({ layers });
+  }, []);
   const refMarkerRef = useRef<maplibregl.Marker | null>(null);
   const tsMarkersRef = useRef<maplibregl.Marker[]>([]);
 
@@ -372,9 +381,11 @@ export default function MapContainer() {
     const overlay = deckOverlayRef.current;
     if (!overlay) return;
 
-    // If no point data or points layer hidden, clear deck.gl layers
+    // If no point data or points layer hidden, remove point cloud but keep others
     if (!pointData || !state.pointLayerVisible) {
-      overlay.setProps({ layers: [] });
+      const existing = deckLayersRef.current;
+      const otherLayers = (existing as Array<{ id?: string }>).filter(l => l.id !== 'point-cloud');
+      setDeckLayers(otherLayers);
       return;
     }
 
@@ -428,9 +439,92 @@ export default function MapContainer() {
       },
     });
 
-    overlay.setProps({ layers: [layer] });
+    // Preserve GPS layer when updating point cloud layer
+    const existing = deckLayersRef.current;
+    const otherLayers = (existing as Array<{ id?: string }>).filter(l => l.id !== 'point-cloud');
+    setDeckLayers([layer, ...otherLayers]);
   }, [pointData, pointVmin, pointVmax, pointColormap, selectedPointId, onPointClick,
       state.pointLayerVisible, state.pointOpacity]);
+
+  // GPS: fetch stations on moveend when GPS is visible (debounced)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !state.gpsVisible) return;
+
+    let debounceTimer: ReturnType<typeof setTimeout>;
+    const fetchStations = () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(async () => {
+        const bounds = map.getBounds();
+        dispatch({ type: 'SET_GPS_LOADING', payload: true });
+        const stations = await fetchGpsStations([
+          bounds.getWest(), bounds.getSouth(),
+          bounds.getEast(), bounds.getNorth(),
+        ]);
+        dispatch({ type: 'SET_GPS_STATIONS', payload: stations });
+      }, 500);
+    };
+
+    // Fetch immediately + on subsequent moves
+    fetchStations();
+    map.on('moveend', fetchStations);
+    return () => {
+      clearTimeout(debounceTimer);
+      map.off('moveend', fetchStations);
+    };
+  }, [state.gpsVisible, fetchGpsStations, dispatch]);
+
+  // GPS: click handler for stations
+  const onGpsStationClick = useCallback(async (stationId: string) => {
+    dispatch({ type: 'SET_GPS_SELECTED_STATION', payload: stationId });
+    const data = await fetchGpsTimeseries(stationId);
+    if (data) {
+      dispatch({ type: 'SET_GPS_TIMESERIES', payload: data.timeseries });
+    }
+  }, [fetchGpsTimeseries, dispatch]);
+
+  // GPS: render station markers as a separate deck.gl layer
+  useEffect(() => {
+    const overlay = deckOverlayRef.current;
+    if (!overlay) return;
+
+    // Get existing layers (point cloud)
+    const existingLayers = deckLayersRef.current;
+    const nonGpsLayers = (existingLayers as Array<{ id?: string }>).filter(l => l.id !== 'gps-stations');
+
+    if (!state.gpsVisible || state.gpsStations.length === 0) {
+      setDeckLayers(nonGpsLayers);
+      return;
+    }
+
+    const gpsLayer = new ScatterplotLayer({
+      id: 'gps-stations',
+      data: state.gpsStations,
+      getPosition: (d) => [d.lon, d.lat],
+      getFillColor: (d) =>
+        d.id === state.gpsSelectedStationId
+          ? [255, 255, 0, 255]   // Selected: yellow
+          : [34, 170, 102, 230], // Default: green
+      getRadius: 8,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 16,
+      stroked: true,
+      getLineColor: [255, 255, 255, 200],
+      getLineWidth: 2,
+      lineWidthMinPixels: 2,
+      pickable: true,
+      onClick: (info) => {
+        if (info.object) {
+          onGpsStationClick(info.object.id);
+        }
+      },
+      updateTriggers: {
+        getFillColor: [state.gpsSelectedStationId],
+      },
+    });
+
+    setDeckLayers([...nonGpsLayers, gpsLayer]);
+  }, [state.gpsVisible, state.gpsStations, state.gpsSelectedStationId, onGpsStationClick]);
 
   // Raster tile layer visibility toggle
   useEffect(() => {
