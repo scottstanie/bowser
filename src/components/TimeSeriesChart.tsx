@@ -198,8 +198,55 @@ export default function TimeSeriesChart() {
       }
     }
 
+    // GPS station timeseries (dashed green, visually distinct)
+    if (state.gpsTimeseries.length > 0 && state.gpsSelectedStationId) {
+      const gpsFiltered = state.gpsTimeseries.filter(t => {
+        if (dateStart && t.date < dateStart) return false;
+        if (dateEnd && t.date > dateEnd) return false;
+        return true;
+      });
+
+      const componentKey = state.gpsComponent;
+      const x = gpsFiltered.map(t => t.date);
+      const y = gpsFiltered.map(t =>
+        componentKey === 'los' ? t.displacement : t[componentKey]
+      );
+      const componentLabel = componentKey === 'los' ? 'LOS' : componentKey.toUpperCase();
+
+      result.push({
+        x, y,
+        type: 'scattergl',
+        mode: 'lines+markers',
+        name: `GPS: ${state.gpsSelectedStationId} (${componentLabel})`,
+        marker: { color: '#22aa66', size: 7, symbol: 'diamond' },
+        line: { color: '#22aa66', width: 2, dash: 'dash' },
+      });
+
+      // GPS trend line
+      if (showTrends) {
+        const fit = linearFit(x, y);
+        if (fit) {
+          const t0 = new Date(x[0]).getTime();
+          const trendY = x.map(d => {
+            const days = (new Date(d).getTime() - t0) / 86_400_000;
+            return fit.slope * days + fit.intercept;
+          });
+          result.push({
+            x, y: trendY,
+            type: 'scattergl',
+            mode: 'lines',
+            name: `GPS trend: ${fit.mmPerYear >= 0 ? '+' : ''}${fit.mmPerYear.toFixed(1)} mm/yr (R²=${fit.r2.toFixed(2)})`,
+            line: { color: '#22aa66', width: 1, dash: 'dot' },
+            showlegend: true,
+          });
+        }
+      }
+    }
+
     return result;
-  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, state.refValues, refLookup, showTrends, dateStart, dateEnd]);
+  }, [state.clickedPoints, state.timeSeriesPoints, state.currentDataset, state.datasetInfo, state.refValues,
+      state.gpsTimeseries, state.gpsSelectedStationId, state.gpsComponent,
+      refLookup, showTrends, dateStart, dateEnd]);
 
   if (traces.length === 0) return null;
 
@@ -217,7 +264,7 @@ export default function TimeSeriesChart() {
       flexDirection: 'column',
     }}>
       {/* Reference indicator + Selection bar */}
-      {(hasMultipleClicked || state.referencePointId != null) && (
+      {(hasMultipleClicked || state.referencePointId != null || state.gpsSelectedStationId) && (
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
           padding: '3px 10px', background: isLight ? '#f0f0f0' : '#12122a',
@@ -268,6 +315,27 @@ export default function TimeSeriesChart() {
               </button>
             </span>
           ))}
+          {state.gpsSelectedStationId && (
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: 3,
+              background: isLight ? '#e0f5e0' : '#1a3a2a', padding: '1px 6px', borderRadius: 3,
+              color: '#22aa66', fontSize: 11,
+            }}>
+              GPS: {state.gpsSelectedStationId}
+              <button
+                onClick={() => {
+                  dispatch({ type: 'SET_GPS_SELECTED_STATION', payload: null });
+                  dispatch({ type: 'SET_GPS_TIMESERIES', payload: [] });
+                }}
+                style={{
+                  background: 'none', border: 'none', color: '#888',
+                  cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1,
+                }}
+              >
+                x
+              </button>
+            </span>
+          )}
           <button
             onClick={() => dispatch({ type: 'CLEAR_CLICKED_POINTS' })}
             style={{
