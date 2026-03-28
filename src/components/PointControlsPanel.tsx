@@ -344,6 +344,53 @@ export default function PointControlsPanel() {
             />
           </div>
         )}
+
+        {/* GPS station toggle — only show when LOS config is available */}
+        {state.gpsLosInfo && (
+          <>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer', marginBottom: 4 }}>
+              <input
+                type="checkbox"
+                checked={state.gpsVisible}
+                onChange={e => dispatch({ type: 'SET_GPS_VISIBLE', payload: e.target.checked })}
+                style={{ accentColor: '#22aa66' }}
+              />
+              <span>GPS stations</span>
+              {state.gpsLoading && (
+                <span style={{ color: '#888', fontSize: 10 }}>loading...</span>
+              )}
+              {!state.gpsLoading && state.gpsStations.length > 0 && (
+                <span style={{ color: '#999', fontSize: 11 }}>
+                  ({state.gpsStations.length})
+                </span>
+              )}
+            </label>
+
+            {/* GPS component selector */}
+            {state.gpsVisible && state.gpsTimeseries.length > 0 && (
+              <div style={{ paddingLeft: 20, marginBottom: 4 }}>
+                <label style={labelStyle}>Component</label>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {(['los', 'east', 'north', 'up'] as const).map(comp => (
+                    <button
+                      key={comp}
+                      onClick={() => dispatch({ type: 'SET_GPS_COMPONENT', payload: comp })}
+                      style={{
+                        flex: 1, padding: '2px 4px', fontSize: 10, cursor: 'pointer',
+                        background: state.gpsComponent === comp ? '#2a6a4a' : '#2a2a4a',
+                        color: state.gpsComponent === comp ? '#afa' : '#aaa',
+                        border: state.gpsComponent === comp ? '1px solid #4a8a6a' : '1px solid #444',
+                        borderRadius: 3, textTransform: 'uppercase',
+                      }}
+                    >
+                      {comp}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Separator */}

@@ -43,6 +43,23 @@ export interface BaseMapItem {
   attribution: string;
 }
 
+export interface GpsStation {
+  id: string;
+  name: string;
+  lon: number;
+  lat: number;
+}
+
+export interface GpsTimeseriesEntry {
+  date: string;
+  displacement: number;
+  east: number;
+  north: number;
+  up: number;
+}
+
+export type GpsComponent = 'los' | 'east' | 'north' | 'up';
+
 export interface ClickedPointTimeseries {
   pointId: number;
   timeseries: Array<{ date: string; displacement: number }>;
@@ -85,6 +102,14 @@ export interface AppState {
   rasterLayerVisible: boolean;
   pointLayerVisible: boolean;
   pointOpacity: number;
+  // GPS overlay state
+  gpsVisible: boolean;
+  gpsLoading: boolean;
+  gpsStations: GpsStation[];
+  gpsSelectedStationId: string | null;
+  gpsTimeseries: GpsTimeseriesEntry[];
+  gpsComponent: GpsComponent;
+  gpsLosInfo: { type: string; east?: number; north?: number; up?: number } | null;
 }
 
 export type AppAction =
@@ -126,7 +151,15 @@ export type AppAction =
   | { type: 'SET_POINT_HISTOGRAM'; payload: { edges: number[]; counts: number[] } | null }
   | { type: 'SET_RASTER_LAYER_VISIBLE'; payload: boolean }
   | { type: 'SET_POINT_LAYER_VISIBLE'; payload: boolean }
-  | { type: 'SET_POINT_OPACITY'; payload: number };
+  | { type: 'SET_POINT_OPACITY'; payload: number }
+  // GPS actions
+  | { type: 'SET_GPS_VISIBLE'; payload: boolean }
+  | { type: 'SET_GPS_LOADING'; payload: boolean }
+  | { type: 'SET_GPS_STATIONS'; payload: GpsStation[] }
+  | { type: 'SET_GPS_SELECTED_STATION'; payload: string | null }
+  | { type: 'SET_GPS_TIMESERIES'; payload: GpsTimeseriesEntry[] }
+  | { type: 'SET_GPS_COMPONENT'; payload: GpsComponent }
+  | { type: 'SET_GPS_LOS_INFO'; payload: { type: string; east?: number; north?: number; up?: number } | null };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

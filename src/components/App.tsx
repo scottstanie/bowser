@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { AppProvider, useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { usePointsApi } from '../hooks/usePointsApi';
+import { useGpsApi } from '../hooks/useGpsApi';
 import { parseUrlState, applyUrlState, useUrlStateSync } from '../hooks/useUrlState';
 import MapContainer from './MapContainer';
 import TimeSeriesChart from './TimeSeriesChart';
@@ -12,6 +13,7 @@ function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode } = useApi();
   const { fetchPointLayers, fetchPointAttributes } = usePointsApi();
+  const { fetchLosInfo } = useGpsApi();
   const urlStateRef = useRef(parseUrlState());
 
   // Sync state → URL params
@@ -94,6 +96,14 @@ function AppContent() {
           dispatch({ type: 'SET_DATA_MODE', payload: 'points' });
         }
 
+        // Check for GPS/LOS availability
+        try {
+          const losInfo = await fetchLosInfo();
+          if (losInfo) {
+            dispatch({ type: 'SET_GPS_LOS_INFO', payload: losInfo });
+          }
+        } catch { /* No GPS endpoint */ }
+
         // Apply URL state overrides (shareable links)
         applyUrlState(dispatch, urlStateRef.current);
       } catch (error) {
@@ -102,7 +112,7 @@ function AppContent() {
     };
 
     initializeApp();
-  }, [fetchDatasets, fetchDataMode, fetchPointLayers, fetchPointAttributes, dispatch]);
+  }, [fetchDatasets, fetchDataMode, fetchPointLayers, fetchPointAttributes, fetchLosInfo, dispatch]);
 
   return (
     <div className="app-container">

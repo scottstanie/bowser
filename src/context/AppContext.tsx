@@ -51,6 +51,13 @@ const initialState: AppState = {
   rasterLayerVisible: true,
   pointLayerVisible: true,
   pointOpacity: 1,
+  gpsVisible: false,
+  gpsLoading: false,
+  gpsStations: [],
+  gpsSelectedStationId: null,
+  gpsTimeseries: [],
+  gpsComponent: 'los',
+  gpsLosInfo: null,
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -246,6 +253,22 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, pointLayerVisible: action.payload };
     case 'SET_POINT_OPACITY':
       return { ...state, pointOpacity: action.payload };
+
+    // GPS actions
+    case 'SET_GPS_VISIBLE':
+      return { ...state, gpsVisible: action.payload };
+    case 'SET_GPS_LOADING':
+      return { ...state, gpsLoading: action.payload };
+    case 'SET_GPS_STATIONS':
+      return { ...state, gpsStations: action.payload, gpsLoading: false };
+    case 'SET_GPS_SELECTED_STATION':
+      return { ...state, gpsSelectedStationId: action.payload };
+    case 'SET_GPS_TIMESERIES':
+      return { ...state, gpsTimeseries: action.payload, showChart: true };
+    case 'SET_GPS_COMPONENT':
+      return { ...state, gpsComponent: action.payload };
+    case 'SET_GPS_LOS_INFO':
+      return { ...state, gpsLosInfo: action.payload };
 
     default:
       return state;
