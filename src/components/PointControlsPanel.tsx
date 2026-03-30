@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { COLORMAP_NAMES, colormapGradientCSS, valueToColor } from '../colorscales';
 
@@ -90,6 +90,33 @@ export default function PointControlsPanel() {
   // Raster vmin/vmax drafts
   const [draftRasterVmin, setDraftRasterVmin] = useState(String(state.vmin));
   const [draftRasterVmax, setDraftRasterVmax] = useState(String(state.vmax));
+
+  // Persist raster colormap/vmin/vmax to localStorage per dataset
+  useEffect(() => {
+    const ds = state.currentDataset;
+    if (!ds) return;
+    localStorage.setItem(`${ds}-colormap_name`, state.colormap);
+    localStorage.setItem(`${ds}-vmin`, String(state.vmin));
+    localStorage.setItem(`${ds}-vmax`, String(state.vmax));
+  }, [state.colormap, state.vmin, state.vmax, state.currentDataset]);
+
+  // Restore raster prefs from localStorage on dataset change
+  useEffect(() => {
+    const ds = state.currentDataset;
+    if (!ds) return;
+    const cmap = localStorage.getItem(`${ds}-colormap_name`);
+    const vminStr = localStorage.getItem(`${ds}-vmin`);
+    const vmaxStr = localStorage.getItem(`${ds}-vmax`);
+    if (cmap) dispatch({ type: 'SET_COLORMAP', payload: cmap });
+    if (vminStr) {
+      const v = Number(vminStr);
+      if (!isNaN(v)) { dispatch({ type: 'SET_VMIN', payload: v }); setDraftRasterVmin(vminStr); }
+    }
+    if (vmaxStr) {
+      const v = Number(vmaxStr);
+      if (!isNaN(v)) { dispatch({ type: 'SET_VMAX', payload: v }); setDraftRasterVmax(vmaxStr); }
+    }
+  }, [state.currentDataset, dispatch]);
 
   // Filter draft state
   const [filterAttr, setFilterAttr] = useState('');

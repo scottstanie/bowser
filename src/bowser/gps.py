@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
 if TYPE_CHECKING:
@@ -183,7 +184,8 @@ async def get_station_timeseries(
     los_mm = _project_enu_to_los(east_mm, north_mm, up_mm, los_e, los_n, los_u)
 
     # Build response with dates and all components
-    dates = df.index.strftime("%Y-%m-%d").tolist()
+    # geepers returns dates in a 'date' column, not the index
+    dates = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d").tolist()
     timeseries = []
     for i, date in enumerate(dates):
         if np.isnan(los_mm[i]):

@@ -35,17 +35,17 @@ def mock_gps_source():
     # station_lonlat() returns (lon, lat)
     source.station_lonlat.return_value = (-99.1, 19.4)
 
-    # timeseries() returns a DataFrame with date index and ENU columns in meters
+    # timeseries() returns a DataFrame with 'date' column and ENU in meters
     dates = pd.date_range("2020-01-01", periods=50, freq="7D")
     rng = np.random.default_rng(42)
     ts_df = pd.DataFrame(
         {
+            "date": dates,
             "east": rng.normal(0, 0.002, 50),  # meters
             "north": rng.normal(0, 0.003, 50),
             "up": np.linspace(0, -0.05, 50)
             + rng.normal(0, 0.001, 50),  # 50mm subsidence
         },
-        index=dates,
     )
     source.timeseries.return_value = ts_df
 
