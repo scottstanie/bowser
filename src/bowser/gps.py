@@ -129,10 +129,11 @@ async def get_stations(
     stations = []
     for _, row in gdf.iterrows():
         geom = row.geometry
+        station_id = str(row.get("id", row.name))
         stations.append(
             {
-                "id": row.name if isinstance(row.name, str) else str(row.name),
-                "name": row.name if isinstance(row.name, str) else str(row.name),
+                "id": station_id,
+                "name": station_id,
                 "lon": float(geom.x),
                 "lat": float(geom.y),
             }

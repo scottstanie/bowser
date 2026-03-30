@@ -265,13 +265,20 @@ async def _get_point_values(dataset_name: str, lon: float, lat: float) -> np.nda
             )
         x, y = transformer_from_lonlat.transform(lon, lat)
         point_data = XARRAY_DATASET[dataset_name].sel(x=x, y=y, method="nearest")
-        return np.atleast_1d(point_data.values)
+        values = np.atleast_1d(point_data.values)
     else:  # cog mode
         if dataset_name not in RASTER_GROUPS:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        return np.atleast_1d(RASTER_GROUPS[dataset_name]._reader.read_lonlat(lon, lat))
+        values = np.atleast_1d(
+            RASTER_GROUPS[dataset_name]._reader.read_lonlat(lon, lat)
+        )
+
+    # Complex-valued data (e.g. interferograms) can't be JSON serialized
+    if np.iscomplexobj(values):
+        values = values.real.astype(np.float64)
+    return values
 
 
 @app.get(

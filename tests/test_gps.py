@@ -19,11 +19,15 @@ def mock_gps_source():
     """Create a mock geepers UnrSource with synthetic station data."""
     source = MagicMock()
 
-    # stations() returns a GeoDataFrame
+    # stations() returns a GeoDataFrame (matches real geepers format)
     stations_gdf = gpd.GeoDataFrame(
-        {"station_name": ["TEST", "ABC1", "XYZ2"]},
+        {
+            "id": ["TEST", "ABC1", "XYZ2"],
+            "lat": [19.4, 19.5, 19.3],
+            "lon": [-99.1, -99.2, -99.0],
+            "alt": [2200.0, 2300.0, 2100.0],
+        },
         geometry=[Point(-99.1, 19.4), Point(-99.2, 19.5), Point(-99.0, 19.3)],
-        index=["TEST", "ABC1", "XYZ2"],
         crs="EPSG:4326",
     )
     source.stations.return_value = stations_gdf
