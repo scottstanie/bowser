@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from rasterio.crs import CRS
     from rasterio.transform import Affine
 
-from .manifest import DatasetManifest, PointLayerConfig
+from .manifest import DatasetManifest, LosConfig, LosVectorConstant, PointLayerConfig
 
 
 def _find_dolphin_files(work_dir: str) -> dict[str, list[str]]:
@@ -42,6 +42,10 @@ def _find_dolphin_files(work_dir: str) -> dict[str, list[str]]:
     """
     wd = work_dir.rstrip("/")
     candidates = {
+        # LOS vector files
+        "los_enu_json": glob(f"{wd}/**/los_enu.json", recursive=True),
+        "los_enu_tif": glob(f"{wd}/**/los_enu*.tif", recursive=True),
+        # Timeseries and quality
         "timeseries": sorted(glob(f"{wd}/timeseries/2*[0-9].tif")),
         "velocity": glob(f"{wd}/timeseries/velocity.tif"),
         "velocity_stderr": glob(f"{wd}/timeseries/velocity_stderr.tif"),
@@ -56,6 +60,44 @@ def _find_dolphin_files(work_dir: str) -> dict[str, list[str]]:
         "ps_mask": glob(f"{wd}/interferograms/ps_mask_looked*.tif"),
     }
     return {k: v for k, v in candidates.items() if v}
+
+
+def _detect_los_config(
+    dolphin_files: dict[str, list[str]],
+) -> tuple[str, dict] | None:
+    """Auto-detect LOS vector from dolphin output files.
+
+    Returns
+    -------
+    tuple or None
+        (type, config_dict) for the manifest LOS config, or None if not found.
+    """
+    import json as _json
+
+    # Prefer JSON constant (simpler, smaller)
+    if "los_enu_json" in dolphin_files and dolphin_files["los_enu_json"]:
+        json_path = dolphin_files["los_enu_json"][0]
+        data = _json.loads(Path(json_path).read_text())
+        # Standard format: {"los_enu_ground_to_satellite": {e, n, u}}
+        if "los_enu_ground_to_satellite" in data:
+            vec = data["los_enu_ground_to_satellite"]
+            return (
+                "constant",
+                {"east": vec["east"], "north": vec["north"], "up": vec["up"]},
+            )
+        # Also handle flat format: {"east": ..., "north": ..., "up": ...}
+        if "east" in data and "north" in data and "up" in data:
+            return (
+                "constant",
+                {"east": data["east"], "north": data["north"], "up": data["up"]},
+            )
+
+    # Fall back to GeoTIFF (spatially varying)
+    if "los_enu_tif" in dolphin_files and dolphin_files["los_enu_tif"]:
+        tif_path = dolphin_files["los_enu_tif"][0]
+        return ("geotiff", {"source": str(Path(tif_path).resolve())})
+
+    return None
 
 
 def _read_single_band(path: str) -> tuple[np.ndarray, Affine, CRS]:
@@ -364,6 +406,24 @@ def convert_dolphin(
         float(lats.max()),
     ]
 
+    # Detect LOS vector for GPS overlay
+    los_config = None
+    los_result = _detect_los_config(dolphin_files)
+    if los_result:
+        los_type, los_data = los_result
+        if los_type == "constant":
+            los_config = LosConfig(
+                type="constant",
+                los_enu=LosVectorConstant(**los_data),
+            )
+            e, n, u = los_data["east"], los_data["north"], los_data["up"]
+            print(f"  LOS vector: E={e:.3f}, N={n:.3f}, U={u:.3f}")
+        else:
+            los_config = LosConfig(type="geotiff", source=los_data["source"])
+            print(f"  LOS GeoTIFF: {los_data['source']}")
+    else:
+        print("  No LOS vector found (GPS overlay will not be available)")
+
     # Generate manifest
     manifest = DatasetManifest(
         name=Path(work_dir).name,
@@ -377,6 +437,7 @@ def convert_dolphin(
             ),
         },
         bounds=bounds,
+        los=los_config,
     )
 
     manifest_path = output_path / "bowser_manifest.json"

@@ -79,6 +79,14 @@ def cli_app():
     is_flag=True,
     help="Don't use recommended mask for `displacement` ",
 )
+@click.option(
+    "--los",
+    default=None,
+    help=(
+        "LOS vector for GPS overlay. Either a path to los_enu.json or inline JSON"
+        ' like \'{"east": 0.477, "north": -0.449, "up": 0.755}\''
+    ),
+)
 def run(
     stack_file,
     rasters_file,
@@ -90,6 +98,7 @@ def run(
     ignore_sidecar_files,
     no_spatial_reference,
     no_recommended_mask,
+    los,
 ):
     """Run the web server."""
     import uvicorn
@@ -99,6 +108,8 @@ def run(
     _setup_gdal_env(ignore_sidecar_files)
     if manifest_file:
         os.environ["BOWSER_MANIFEST_FILE"] = manifest_file
+    if los:
+        os.environ["BOWSER_LOS_CONFIG"] = los
     elif stack_file:
         os.environ["BOWSER_STACK_DATA_FILE"] = stack_file
     else:

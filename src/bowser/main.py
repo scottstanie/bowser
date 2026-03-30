@@ -637,11 +637,30 @@ if MANIFEST and MANIFEST.get_point_layers():
     logger.info("Configured point layer endpoints at /points/*")
 
 # Add GPS overlay endpoints if LOS config is available
+_los_config = None
 if MANIFEST and MANIFEST.los:
+    _los_config = MANIFEST.los
+elif os.environ.get("BOWSER_LOS_CONFIG"):
+    # Parse LOS from env var: either a JSON file path or inline JSON
+    import json as _json
+
+    from .manifest import LosConfig, LosVectorConstant
+
+    los_str = os.environ["BOWSER_LOS_CONFIG"]
+    if Path(los_str).exists():
+        los_data = _json.loads(Path(los_str).read_text())
+        if "los_enu_ground_to_satellite" in los_data:
+            los_data = los_data["los_enu_ground_to_satellite"]
+        _los_config = LosConfig(type="constant", los_enu=LosVectorConstant(**los_data))
+    else:
+        los_data = _json.loads(los_str)
+        _los_config = LosConfig(type="constant", los_enu=LosVectorConstant(**los_data))
+
+if _los_config:
     from .gps import init_gps
     from .gps import router as gps_router
 
-    init_gps(MANIFEST.los)
+    init_gps(_los_config)
     app.include_router(gps_router)
     logger.info("Configured GPS overlay endpoints at /gps/*")
 
