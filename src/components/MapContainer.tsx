@@ -41,6 +41,7 @@ export default function MapContainer() {
     deckOverlayRef.current?.setProps({ layers });
   }, []);
   const refMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const deckClickedRef = useRef(false); // Suppress raster click when deck.gl handled it
   const tsMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   const [pointData, setPointData] = useState<PointData | null>(null);
@@ -136,6 +137,8 @@ export default function MapContainer() {
     const handleClick = (e: maplibregl.MapMouseEvent) => {
       // In point layer mode, deck.gl handles clicks — skip raster click
       if (hasPointLayer) return;
+      // Skip if deck.gl already handled this click (e.g. GPS station)
+      if (deckClickedRef.current) { deckClickedRef.current = false; return; }
 
       const { lng, lat } = e.lngLat;
       dispatch({
@@ -476,6 +479,7 @@ export default function MapContainer() {
 
   // GPS: click handler for stations
   const onGpsStationClick = useCallback(async (stationId: string) => {
+    deckClickedRef.current = true; // Suppress raster click handler
     dispatch({ type: 'SET_GPS_SELECTED_STATION', payload: stationId });
     const data = await fetchGpsTimeseries(stationId);
     if (data) {
