@@ -98,7 +98,8 @@ python-dateutil = ">=2.9.0.post0,<3"
 default = { solve-group = "default" }
 widget = { features = ["widget"], solve-group = "default" }
 test = { features = ["test"], solve-group = "test" }
-all = { features = ["widget", "test"], solve-group = "all" }
+gps = { features = ["gps"], solve-group = "gps" }
+all = { features = ["widget", "gps", "test"], solve-group = "all" }
 
 [tool.pixi.tasks]
 

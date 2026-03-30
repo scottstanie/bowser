@@ -5,8 +5,7 @@ from functools import cache
 from typing import Sequence, TypeVar
 
 import numpy as np
-from dateutil import parser
-from scipy import stats
+from dateutil import parser  # type: ignore[import-untyped]
 
 
 class CredentialsError(Exception):
@@ -16,7 +15,7 @@ class CredentialsError(Exception):
 DateOrDatetimeT = TypeVar("DateOrDatetimeT", datetime, np.datetime64)
 
 
-def _parse_x_values(x_values: list[str | int]) -> np.ndarray:
+def _parse_x_values(x_values: list[str | int | DateOrDatetimeT]) -> np.ndarray:
     """Parse x_values to get numeric time values in days.
 
     Parameters
@@ -50,7 +49,7 @@ def _parse_x_values(x_values: list[str | int]) -> np.ndarray:
         elif isinstance(x, int):
             date_str = str(x)
         else:
-            date_str = x
+            date_str = str(x)
 
         try:
             date = parser.parse(date_str)
@@ -95,19 +94,35 @@ def calculate_trend(
     time_days = _parse_x_values(x_values)
     valid_time = time_days[valid_mask]
 
-    # Calculate linear regression using actual time values
-    slope, intercept, r_value, p_value, std_err = stats.linregress(
-        valid_time, valid_values
-    )
+    # Linear regression with numpy (no scipy dependency needed)
+    x = valid_time
+    y = valid_values
+    n = len(x)
+    sum_x = x.sum()
+    sum_y = y.sum()
+    sum_xy = (x * y).sum()
+    sum_xx = (x * x).sum()
 
-    # Convert slope to mm/year
-    # slope is in meters/day, so convert to mm/year
+    denom = n * sum_xx - sum_x * sum_x
+    if abs(denom) < 1e-12:
+        return {"slope": 0.0, "intercept": 0.0, "r_squared": 0.0, "mm_per_year": 0.0}
+
+    slope = (n * sum_xy - sum_x * sum_y) / denom
+    intercept = (sum_y - slope * sum_x) / n
+
+    # R²
+    mean_y = sum_y / n
+    ss_res = ((y - (slope * x + intercept)) ** 2).sum()
+    ss_tot = ((y - mean_y) ** 2).sum()
+    r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+
+    # slope is in meters/day → mm/year
     mm_per_year = slope * 1000 * 365.25
 
     return {
         "slope": float(slope),
         "intercept": float(intercept),
-        "r_squared": float(r_value**2),
+        "r_squared": float(r_squared),
         "mm_per_year": float(mm_per_year),
     }
 
