@@ -7044,13 +7044,11 @@ const initialState = {
   selectedPointId: null,
   showTrends: false,
   showResiduals: false,
-  coherenceThreshold: 0,
-  phaseSimilarityThreshold: 0,
+  layerMasks: [],
   customMaskPath: null,
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  invResidThreshold: 0,
   pickingEnabled: true,
   refEnabled: true,
   showProfile: false,
@@ -7180,10 +7178,17 @@ function appReducer(state, action) {
       return { ...state, opacity: action.payload };
     case "TOGGLE_RESIDUALS":
       return { ...state, showResiduals: !state.showResiduals };
-    case "SET_COHERENCE_THRESHOLD":
-      return { ...state, coherenceThreshold: action.payload };
-    case "SET_PHASE_SIMILARITY_THRESHOLD":
-      return { ...state, phaseSimilarityThreshold: action.payload };
+    case "ADD_LAYER_MASK":
+      return { ...state, layerMasks: [...state.layerMasks, action.payload] };
+    case "REMOVE_LAYER_MASK":
+      return { ...state, layerMasks: state.layerMasks.filter((m2) => m2.id !== action.payload) };
+    case "UPDATE_LAYER_MASK":
+      return {
+        ...state,
+        layerMasks: state.layerMasks.map(
+          (m2) => m2.id === action.payload.id ? { ...m2, ...action.payload.updates } : m2
+        )
+      };
     case "SET_CUSTOM_MASK_PATH":
       return { ...state, customMaskPath: action.payload };
     case "TOGGLE_BUFFER":
@@ -7192,8 +7197,6 @@ function appReducer(state, action) {
       return { ...state, bufferRadius: action.payload };
     case "SET_BUFFER_SAMPLES":
       return { ...state, bufferSamples: action.payload };
-    case "SET_INV_RESID_THRESHOLD":
-      return { ...state, invResidThreshold: action.payload };
     case "TOGGLE_PICKING":
       return { ...state, pickingEnabled: !state.pickingEnabled };
     case "TOGGLE_REF_ENABLED":
@@ -7267,16 +7270,14 @@ function useApi() {
       return void 0;
     }
   }, []);
-  const fetchMultiPointTimeSeries = reactExports.useCallback(async (points, datasetName, refLon, refLat, calculateTrends = false, coherenceMin = 0, phaseSimilarityMin = 0, invResidMax = 0, refBufferM = 0) => {
+  const fetchMultiPointTimeSeries = reactExports.useCallback(async (points, datasetName, refLon, refLat, calculateTrends = false, layerMasks = [], refBufferM = 0) => {
     const payload = {
       points,
       dataset_name: datasetName,
       ref_lon: refLon,
       ref_lat: refLat,
       calculate_trends: calculateTrends,
-      coherence_min: coherenceMin,
-      phase_similarity_min: phaseSimilarityMin,
-      inv_resid_max: invResidMax,
+      layer_masks: layerMasks.map((m2) => ({ dataset: m2.dataset, threshold: m2.threshold, mode: m2.mode })),
       ref_buffer_m: refBufferM
     };
     try {
@@ -7320,7 +7321,7 @@ function useApi() {
       return void 0;
     }
   }, []);
-  const fetchBufferTimeSeries = reactExports.useCallback(async (lon, lat, datasetName, bufferM, nSamples, refLon, refLat, coherenceMin = 0, phaseSimilarityMin = 0, invResidMax = 0, refBufferM = 0) => {
+  const fetchBufferTimeSeries = reactExports.useCallback(async (lon, lat, datasetName, bufferM, nSamples, refLon, refLat, layerMasks = [], refBufferM = 0) => {
     try {
       const response = await fetch("/buffer_timeseries", {
         method: "POST",
@@ -7333,9 +7334,7 @@ function useApi() {
           n_samples: nSamples,
           ref_lon: refLon ?? null,
           ref_lat: refLat ?? null,
-          coherence_min: coherenceMin,
-          phase_similarity_min: phaseSimilarityMin,
-          inv_resid_max: invResidMax,
+          layer_masks: layerMasks.map((m2) => ({ dataset: m2.dataset, threshold: m2.threshold, mode: m2.mode })),
           ref_buffer_m: refBufferM
         })
       });
@@ -17256,439 +17255,46 @@ function MeasureTool({ active, onDeactivate }) {
       clearAll();
       return;
     }
-    const controller = new AbortController();
-    const signal = controller.signal;
-    const updateTileLayer2 = async () => {
-      const currentDatasetInfo = state.datasetInfo[state.currentDataset];
-      const colormap = state.colormap;
-      const vmin = state.vmin;
-      const vmax = state.vmax;
-      const maxIdx = currentDatasetInfo.x_values.length - 1;
-      const timeIdx = Math.max(0, Math.min(state.currentTimeIndex, maxIdx));
-      const params = {
-        variable: state.currentDataset,
-        time_idx: timeIdx.toString(),
-        rescale: `${vmin},${vmax}`,
-        colormap_name: colormap
-      };
-      if (currentDatasetInfo.algorithm) {
-        params.algorithm = currentDatasetInfo.algorithm;
-      }
-      if (state.refValues[state.currentDataset] && currentDatasetInfo.algorithm === "shift") {
-        const shift = state.refValues[state.currentDataset][timeIdx];
-        if (shift !== void 0) {
-          params.algorithm_params = JSON.stringify({ shift });
-        }
-      }
-      if (state.dataMode === "cog") {
-        const url = currentDatasetInfo.file_list[timeIdx];
-        const maskUrl = currentDatasetInfo.mask_file_list[timeIdx];
-        const maskMinValue = currentDatasetInfo.mask_min_value;
-        params.url = url;
-        if (maskUrl) params.mask = encodeURIComponent(maskUrl);
-        if (maskMinValue !== void 0) params.mask_min_value = maskMinValue.toString();
-      }
-      const urlParams = new URLSearchParams(params).toString();
-      const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${urlParams}` : `/cog/WebMercatorQuad/tilejson.json?${urlParams}`;
-      try {
-        const response = await fetch(endpoint, { signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const tileInfo = await response.json();
-        if (!signal.aborted) setTileUrl(tileInfo.tiles[0]);
-      } catch (err) {
-        if (err.name !== "AbortError") {
-          console.error("Error fetching tile info:", err);
-        }
+    map2.getContainer().style.cursor = "crosshair";
+    const onClick = (e) => {
+      const pts = pointsRef.current;
+      pts.push(e.latlng);
+      const dot = L$1.circleMarker(e.latlng, {
+        radius: 4,
+        color: "#4d9de0",
+        fillColor: "#4d9de0",
+        fillOpacity: 1,
+        weight: 2
+      }).addTo(map2);
+      markersRef.current.push(dot);
+      if (pts.length > 1) {
+        const seg = L$1.polyline([pts[pts.length - 2], pts[pts.length - 1]], {
+          color: "#4d9de0",
+          weight: 2,
+          dashArray: "6 4"
+        }).addTo(map2);
+        linesRef.current.push(seg);
+        const total = pts.reduce((acc, p2, i) => i === 0 ? 0 : acc + pts[i - 1].distanceTo(p2), 0);
+        if (labelRef.current) labelRef.current.remove();
+        labelRef.current = L$1.popup({ closeButton: false, autoClose: false, closeOnClick: false }).setLatLng(e.latlng).setContent(`<b>${fmtDist(total)}</b>`).openOn(map2);
       }
     };
-    updateTileLayer2();
-    return () => controller.abort();
-  }, [
-    state.currentDataset,
-    state.currentTimeIndex,
-    state.datasetInfo,
-    state.dataMode,
-    state.refValues,
-    state.refMarkerPosition,
-    state.colormap,
-    state.vmin,
-    state.vmax
-  ]);
-  if (!tileUrl) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    TileLayer,
-    {
-      url: tileUrl,
-      opacity: state.opacity,
-      maxZoom: 19
-    },
-    tileUrl
-  );
-}
-function MarkerEventHandlers() {
-  const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
-  const map2 = useMap();
-  const handleMarkerClick = (position, pointName) => {
-    const [lat, lng] = position;
-    const content = pointName ? `${pointName} (lon, lat):
-(${lng.toFixed(6)}, ${lat.toFixed(6)})` : `Reference (lon, lat):
-(${lng.toFixed(6)}, ${lat.toFixed(6)})`;
-    L$1.popup().setLatLng([lat, lng]).setContent(content).openOn(map2);
-  };
-  const handleTsMarkerDragEnd = (pointId) => (e) => {
-    const marker = e.target;
-    const position = marker.getLatLng();
-    dispatch({
-      type: "UPDATE_TIME_SERIES_POINT",
-      payload: {
-        id: pointId,
-        updates: { position: [position.lat, position.lng] }
-      }
-    });
-  };
-  const handleRefMarkerDragEnd = async (e) => {
-    const marker = e.target;
-    const position = marker.getLatLng();
-    const lat = position.lat;
-    const lng = position.lng;
-    dispatch({ type: "SET_REF_MARKER_POSITION", payload: [lat, lng] });
-    const ds = state.currentDataset;
-    const info = ds ? state.datasetInfo[ds] : null;
-    if (ds && (info == null ? void 0 : info.algorithm) === "shift") {
-      try {
-        const values = await fetchPointTimeSeries(lng, lat, ds);
-        if (values) {
-          dispatch({
-            type: "SET_REF_VALUES",
-            payload: { dataset: ds, values }
-          });
-        }
-      } catch (err) {
-        console.error("Error updating reference values after drag:", err);
-      }
-    }
-  };
-  const handleTsMarkerDoubleClick = (pointId) => () => {
-    dispatch({ type: "REMOVE_TIME_SERIES_POINT", payload: pointId });
-  };
-  const createColoredIcon = (color2, isSelected = false) => {
-    const iconSize = isSelected ? 25 : 20;
-    return L$1.divIcon({
-      html: `<div style="
-        width: ${iconSize}px;
-        height: ${iconSize}px;
-        background-color: ${color2};
-        border: ${isSelected ? "3px solid white" : "2px solid white"};
-        border-radius: 50%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      "></div>`,
-      iconSize: [iconSize, iconSize],
-      className: "custom-colored-marker"
-    });
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-    state.timeSeriesPoints.filter((p2) => p2.visible).map((point) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Marker,
-      {
-        position: point.position,
-        icon: createColoredIcon(point.color, state.selectedPointId === point.id),
-        draggable: true,
-        title: `${point.name} - Double-click to remove`,
-        eventHandlers: {
-          click: () => {
-            handleMarkerClick(point.position, point.name);
-            dispatch({ type: "SET_SELECTED_POINT", payload: point.id });
-          },
-          dragend: handleTsMarkerDragEnd(point.id),
-          dblclick: handleTsMarkerDoubleClick(point.id)
-        }
-      },
-      point.id
-    )),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      Marker,
-      {
-        position: state.refMarkerPosition,
-        icon: fontAwesomeIcon,
-        draggable: true,
-        title: "Reference Location",
-        eventHandlers: {
-          click: () => handleMarkerClick(state.refMarkerPosition),
-          dragend: handleRefMarkerDragEnd
-        }
-      }
-    )
-  ] });
-}
-function MapContainer() {
-  const { state } = useAppContext();
-  const getInitialCenter = () => {
-    if (state.currentDataset && state.datasetInfo[state.currentDataset]) {
-      const bounds = state.datasetInfo[state.currentDataset].latlon_bounds;
-      const centerLat = (bounds[1] + bounds[3]) / 2;
-      const centerLng = (bounds[0] + bounds[2]) / 2;
-      return [centerLat, centerLng];
-    }
-    const datasets = Object.values(state.datasetInfo);
-    if (datasets.length > 0) {
-      const bounds = datasets[0].latlon_bounds;
-      const centerLat = (bounds[1] + bounds[3]) / 2;
-      const centerLng = (bounds[0] + bounds[2]) / 2;
-      return [centerLat, centerLng];
-    }
-    return [0, 0];
-  };
-  const selectedBasemap = baseMaps[state.selectedBasemap] || baseMaps.esriSatellite;
-  const center = getInitialCenter();
-  const hasDatasets = Object.keys(state.datasetInfo).length > 0;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    MapContainer$1,
-    {
-      center,
-      zoom: 9,
-      style: { height: "100%", width: "100%" },
-      doubleClickZoom: false,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          TileLayer,
-          {
-            url: selectedBasemap.url,
-            attribution: selectedBasemap.attribution,
-            maxZoom: 19
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(RasterTileLayer, {}),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(MarkerEventHandlers, {}),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(MapEvents, {}),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(MousePosition, {})
-      ]
-    },
-    hasDatasets ? "with-data" : "no-data"
-  );
-}
-const colormapOptions = [
-  { value: "rdbu_r", label: "Blue-Red" },
-  { value: "twilight", label: "Twilight (cyclic)" },
-  { value: "cfastie", label: "CFastie" },
-  { value: "rplumbo", label: "RPlumbo" },
-  { value: "schwarzwald", label: "Schwarzwald (elevation)" },
-  { value: "viridis", label: "Viridis" },
-  { value: "bugn", label: "Blue-Green" },
-  { value: "ylgn", label: "Yellow-Green" },
-  { value: "magma", label: "Magma" },
-  { value: "gist_earth", label: "Earth" },
-  { value: "ocean", label: "Ocean" },
-  { value: "terrain", label: "Terrain" }
-];
-function ControlPanel() {
-  const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
-  const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
-  const [draftVmax, setDraftVmax] = reactExports.useState(String(state.vmax));
-  reactExports.useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
-  reactExports.useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
-  reactExports.useEffect(() => {
-    const datasetName = state.currentDataset;
-    if (!datasetName) return;
-    const safeNumToString = (x2) => Object.is(x2, -0) ? "-0" : String(x2);
-    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
-    localStorage.setItem(`${datasetName}-vmin`, safeNumToString(state.vmin));
-    localStorage.setItem(`${datasetName}-vmax`, safeNumToString(state.vmax));
-  }, [state.colormap, state.vmin, state.vmax]);
-  reactExports.useEffect(() => {
-    const datasetName = state.currentDataset;
-    if (!datasetName) return;
-    const colormap = localStorage.getItem(`${datasetName}-colormap_name`);
-    const vminStr = localStorage.getItem(`${datasetName}-vmin`);
-    const vmaxStr = localStorage.getItem(`${datasetName}-vmax`);
-    if (colormap) dispatch({ type: "SET_COLORMAP", payload: colormap });
-    if (vminStr !== null) {
-      const v2 = Number(vminStr);
-      if (!Number.isNaN(v2)) dispatch({ type: "SET_VMIN", payload: v2 });
-    }
-    if (vmaxStr !== null) {
-      const v2 = Number(vmaxStr);
-      if (!Number.isNaN(v2)) dispatch({ type: "SET_VMAX", payload: v2 });
-    }
-  }, [state.currentDataset, dispatch]);
-  const handleDatasetChange = (datasetName) => {
-    dispatch({ type: "SET_CURRENT_DATASET", payload: datasetName });
-    const currentDatasetInfo2 = state.datasetInfo[datasetName];
-    if ((currentDatasetInfo2 == null ? void 0 : currentDatasetInfo2.uses_spatial_ref) && !state.refValues[datasetName]) {
-      setRefValues(datasetName);
-    }
-  };
-  const handleTimeIndexChange = (newIndex) => {
-    dispatch({ type: "SET_TIME_INDEX", payload: newIndex });
-  };
-  const handleColormapChange = (colormap) => {
-    dispatch({ type: "SET_COLORMAP", payload: colormap });
-  };
-  const commitVmin = reactExports.useCallback(() => {
-    const v2 = Number(draftVmin);
-    if (!Number.isNaN(v2)) {
-      dispatch({ type: "SET_VMIN", payload: v2 });
-    }
-  }, [draftVmin, dispatch]);
-  const commitVmax = reactExports.useCallback(() => {
-    const v2 = Number(draftVmax);
-    if (!Number.isNaN(v2)) {
-      dispatch({ type: "SET_VMAX", payload: v2 });
-    }
-  }, [draftVmax, dispatch]);
-  const handleOpacityChange = (opacity) => {
-    dispatch({ type: "SET_OPACITY", payload: opacity });
-  };
-  const handleBasemapChange = (basemapKey) => {
-    dispatch({ type: "SET_BASEMAP", payload: basemapKey });
-  };
-  const toggleChart = () => {
-    dispatch({ type: "TOGGLE_CHART" });
-  };
-  const setRefValues = async (datasetName) => {
-    const [lat, lng] = state.refMarkerPosition;
-    try {
-      const values = await fetchPointTimeSeries(lng, lat, datasetName);
-      if (values) {
-        dispatch({
-          type: "SET_REF_VALUES",
-          payload: { dataset: datasetName, values }
-        });
-      }
-    } catch (error) {
-      console.error("Error setting reference values:", error);
-    }
-  };
-  const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
-  const currentTimeValue = currentDatasetInfo ? currentDatasetInfo.x_values[state.currentTimeIndex] : "";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "menu", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "menu-content", className: "pure-form", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "menu-group", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-layer-group" }),
-          " Layers"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "select-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "select",
-          {
-            value: state.currentDataset,
-            onChange: (e) => handleDatasetChange(e.target.value),
-            children: Object.keys(state.datasetInfo).map((datasetName) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: datasetName, children: datasetName }, datasetName))
-          }
-        ) })
-      ] }),
-      currentDatasetInfo && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "menu-group", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { htmlFor: "layer-slider", children: [
-          "Viewing Image: ",
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { id: "layer-slider-value", children: currentTimeValue })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            id: "layer-slider",
-            className: "input",
-            type: "range",
-            min: "0",
-            max: currentDatasetInfo.x_values.length - 1,
-            step: "1",
-            value: state.currentTimeIndex,
-            onChange: (e) => handleTimeIndexChange(parseInt(e.target.value))
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "menu-group", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "colormap-section", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-palette" }),
-            " Color Map"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "select-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "select",
-            {
-              value: state.colormap,
-              onChange: (e) => handleColormapChange(e.target.value),
-              children: colormapOptions.map((option) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: option.value, children: option.label }, option.value))
-            }
-          ) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "img",
-            {
-              id: "colormap-img",
-              src: `/colorbar/${state.colormap}`,
-              style: { maxWidth: "100%", height: "auto" },
-              alt: "Colormap"
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "minmax-data", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "Rescale color limits" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftVmin,
-              onChange: (e) => setDraftVmin(e.target.value),
-              onBlur: commitVmin,
-              onKeyDown: (e) => e.key === "Enter" && commitVmin()
-            }
-          ) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftVmax,
-              onChange: (e) => setDraftVmax(e.target.value),
-              onBlur: commitVmax,
-              onKeyDown: (e) => e.key === "Enter" && commitVmax()
-            }
-          ) })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "menu-group pure-form", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "opacity-slider-container", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { htmlFor: "opacity-slider", children: [
-          "Opacity: ",
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { id: "opacity-slider-value", children: state.opacity })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            id: "opacity-slider",
-            className: "input",
-            type: "range",
-            min: "0",
-            max: "1",
-            step: "0.01",
-            value: state.opacity,
-            onChange: (e) => handleOpacityChange(parseFloat(e.target.value))
-          }
-        )
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "select-container", children: [
-        "Basemap:",
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "select",
-          {
-            value: state.selectedBasemap,
-            onChange: (e) => handleBasemapChange(e.target.value),
-            children: Object.entries(baseMaps).map(([key]) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: key, children: key }, key))
-          }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "menu-group", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "menu-chart", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        className: "pure-button pure-button-primary",
-        onClick: toggleChart,
-        children: state.showChart ? "Hide time series" : "Show time series"
-      }
-    ) }) })
-  ] });
+    const onDblClick = (e) => {
+      L$1.DomEvent.stop(e);
+      onDeactivate();
+    };
+    map2.on("click", onClick);
+    map2.on("dblclick", onDblClick);
+    map2.doubleClickZoom.disable();
+    return () => {
+      map2.off("click", onClick);
+      map2.off("dblclick", onDblClick);
+      map2.doubleClickZoom.enable();
+      map2.getContainer().style.cursor = "";
+      clearAll();
+    };
+  }, [active, map2]);
+  return null;
 }
 /*!
  * @kurkle/color v0.3.4
@@ -29840,13 +29446,14 @@ function RasterTileLayer() {
         if (maskUrl) params.mask = encodeURIComponent(maskUrl);
         if (maskMinValue !== void 0) params.mask_min_value = maskMinValue.toString();
         if (state.customMaskPath) params.custom_mask = state.customMaskPath;
-        if (state.coherenceThreshold > 0) params.coherence_min = state.coherenceThreshold.toString();
-        if (state.phaseSimilarityThreshold > 0) params.phase_similarity_min = state.phaseSimilarityThreshold.toString();
+        params.time_idx = timeIdx.toString();
+      }
+      if (state.layerMasks.length > 0) {
+        params.layer_masks = JSON.stringify(
+          state.layerMasks.map((m2) => ({ dataset: m2.dataset, threshold: m2.threshold, mode: m2.mode }))
+        );
       }
       if (state.dataMode === "md") {
-        if (state.coherenceThreshold > 0) params.coherence_min = state.coherenceThreshold.toString();
-        if (state.phaseSimilarityThreshold > 0) params.phase_similarity_min = state.phaseSimilarityThreshold.toString();
-        if (state.invResidThreshold > 0) params.inv_resid_max = state.invResidThreshold.toString();
         if (state.customMaskPath) params.custom_mask_path = state.customMaskPath;
       }
       const urlParams = new URLSearchParams(params).toString();
@@ -29875,9 +29482,7 @@ function RasterTileLayer() {
     state.colormap,
     state.vmin,
     state.vmax,
-    state.coherenceThreshold,
-    state.phaseSimilarityThreshold,
-    state.invResidThreshold,
+    state.layerMasks,
     state.customMaskPath
   ]);
   if (!tileUrl) return null;
@@ -29893,7 +29498,7 @@ function RasterTileLayer() {
 }
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
+  const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const map2 = useMap();
   const handleMarkerClick = (position, pointName) => {
     const [lat, lng] = position;
@@ -29914,6 +29519,7 @@ function MarkerEventHandlers() {
     });
   };
   const handleRefMarkerDragEnd = async (e) => {
+    var _a2, _b2, _c;
     const marker = e.target;
     const position = marker.getLatLng();
     const lat = position.lat;
@@ -29923,12 +29529,20 @@ function MarkerEventHandlers() {
     const info = ds ? state.datasetInfo[ds] : null;
     if (ds && (info == null ? void 0 : info.algorithm) === "shift") {
       try {
-        const values = await fetchPointTimeSeries(lng, lat, ds);
+        let values;
+        if (state.refBufferEnabled && state.refBufferRadius > 0) {
+          const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
+          if (result == null ? void 0 : result.median) {
+            const xValues = ((_b2 = (_a2 = state.datasetInfo[ds]) == null ? void 0 : _a2.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
+            const byX = Object.fromEntries(result.median.map((pt) => [String(pt.x), pt.y]));
+            values = xValues.map((x2) => byX[x2] ?? NaN);
+          }
+        }
+        if (!values) {
+          values = await fetchPointTimeSeries(lng, lat, ds);
+        }
         if (values) {
-          dispatch({
-            type: "SET_REF_VALUES",
-            payload: { dataset: ds, values }
-          });
+          dispatch({ type: "SET_REF_VALUES", payload: { dataset: ds, values } });
         }
       } catch (err) {
         console.error("Error updating reference values after drag:", err);
@@ -30173,19 +29787,19 @@ const colormapOptions = [
 ];
 function ControlPanel() {
   const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
+  const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = reactExports.useState(String(state.vmax));
   reactExports.useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
   reactExports.useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
   reactExports.useEffect(() => {
-    const ds = state.currentDataset;
-    if (!ds) return;
-    const safeStr = (x2) => Object.is(x2, -0) ? "-0" : String(x2);
-    localStorage.setItem(`${ds}-colormap_name`, state.colormap);
-    localStorage.setItem(`${ds}-vmin`, safeStr(state.vmin));
-    localStorage.setItem(`${ds}-vmax`, safeStr(state.vmax));
-  }, [state.currentDataset, state.colormap, state.vmin, state.vmax]);
+    const datasetName = state.currentDataset;
+    if (!datasetName) return;
+    const safeNumToString = (x2) => Object.is(x2, -0) ? "-0" : String(x2);
+    localStorage.setItem(`${datasetName}-colormap_name`, state.colormap);
+    localStorage.setItem(`${datasetName}-vmin`, safeNumToString(state.vmin));
+    localStorage.setItem(`${datasetName}-vmax`, safeNumToString(state.vmax));
+  }, [state.colormap, state.vmin, state.vmax]);
   reactExports.useEffect(() => {
     const ds = state.currentDataset;
     if (!ds) return;
@@ -30211,8 +29825,15 @@ function ControlPanel() {
   const handleDatasetChange = (ds) => {
     dispatch({ type: "SET_CURRENT_DATASET", payload: ds });
     const info = state.datasetInfo[ds];
-    if ((info == null ? void 0 : info.uses_spatial_ref) && !state.refValues[ds]) setRefValues(ds);
+    if (info == null ? void 0 : info.uses_spatial_ref) setRefValues(ds);
   };
+  reactExports.useEffect(() => {
+    const ds = state.currentDataset;
+    if (!ds) return;
+    const info = state.datasetInfo[ds];
+    if (!(info == null ? void 0 : info.uses_spatial_ref)) return;
+    setRefValues(ds);
+  }, [state.refBufferEnabled, state.refBufferRadius]);
   const commitVmin = reactExports.useCallback(() => {
     const v2 = Number(draftVmin);
     if (!Number.isNaN(v2)) dispatch({ type: "SET_VMIN", payload: v2 });
@@ -30222,9 +29843,21 @@ function ControlPanel() {
     if (!Number.isNaN(v2)) dispatch({ type: "SET_VMAX", payload: v2 });
   }, [draftVmax, dispatch]);
   const setRefValues = async (ds) => {
+    var _a2, _b2, _c;
     const [lat, lng] = state.refMarkerPosition;
     try {
-      const values = await fetchPointTimeSeries(lng, lat, ds);
+      let values;
+      if (state.refBufferEnabled && state.refBufferRadius > 0) {
+        const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
+        if (result == null ? void 0 : result.median) {
+          const xValues = ((_b2 = (_a2 = state.datasetInfo[ds]) == null ? void 0 : _a2.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
+          const byX = Object.fromEntries(result.median.map((pt) => [String(pt.x), pt.y]));
+          values = xValues.map((x2) => byX[x2] ?? NaN);
+        }
+      }
+      if (!values) {
+        values = await fetchPointTimeSeries(lng, lat, ds);
+      }
       if (values) dispatch({ type: "SET_REF_VALUES", payload: { dataset: ds, values } });
     } catch (error) {
       console.error("Error setting reference values:", error);
@@ -30387,10 +30020,45 @@ function ControlPanel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-mask" }),
         " Masking"
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
+      state.layerMasks.map((mask) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "layer-mask-row", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "select",
+            {
+              className: "sidebar-select",
+              style: { flex: 1, fontSize: "0.78em" },
+              value: mask.dataset,
+              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: e.target.value } } }),
+              children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "select",
+            {
+              className: "sidebar-select",
+              style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
+              value: mask.mode,
+              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: e.target.value } } }),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "hist-btn",
+              style: { color: "var(--sb-red)", padding: "2px 6px", flexShrink: 0 },
+              onClick: () => dispatch({ type: "REMOVE_LAYER_MASK", payload: mask.id }),
+              title: "Remove mask",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
+            }
+          )
+        ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Temporal coherence ≥" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: state.coherenceThreshold === 0 ? "off" : state.coherenceThreshold.toFixed(2) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: "Threshold (normalised)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: mask.threshold.toFixed(2) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "input",
@@ -30400,48 +30068,35 @@ function ControlPanel() {
             min: "0",
             max: "1",
             step: "0.01",
-            value: state.coherenceThreshold,
-            onChange: (e) => dispatch({ type: "SET_COHERENCE_THRESHOLD", payload: parseFloat(e.target.value) })
+            value: mask.threshold,
+            onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })
           }
         )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Phase similarity ≥" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: state.phaseSimilarityThreshold === 0 ? "off" : state.phaseSimilarityThreshold.toFixed(2) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            type: "range",
-            className: "sidebar-range",
-            min: "0",
-            max: "1",
-            step: "0.01",
-            value: state.phaseSimilarityThreshold,
-            onChange: (e) => dispatch({ type: "SET_PHASE_SIMILARITY_THRESHOLD", payload: parseFloat(e.target.value) })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Inversion residuals ≤" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: state.invResidThreshold === 0 ? "off" : state.invResidThreshold.toFixed(2) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            type: "range",
-            className: "sidebar-range",
-            min: "0",
-            max: "1",
-            step: "0.01",
-            value: state.invResidThreshold,
-            onChange: (e) => dispatch({ type: "SET_INV_RESID_THRESHOLD", payload: parseFloat(e.target.value) })
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-row", children: [
+      ] }, mask.id)),
+      Object.keys(state.datasetInfo).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "hist-btn",
+          style: { width: "100%", marginTop: 4 },
+          onClick: () => {
+            const firstDataset = Object.keys(state.datasetInfo)[0];
+            dispatch({
+              type: "ADD_LAYER_MASK",
+              payload: {
+                id: `mask_${Date.now()}`,
+                dataset: firstDataset,
+                threshold: 0.5,
+                mode: "min"
+              }
+            });
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-plus", style: { marginRight: 5 } }),
+            "Add layer mask"
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-row", style: { marginTop: 8 }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", style: { marginBottom: 4 }, children: "Custom mask (GeoTIFF)" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-controls", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "hist-btn", style: { cursor: "pointer", textAlign: "center" }, children: [
@@ -34386,9 +34041,7 @@ function TimeSeriesChart() {
         refLon,
         refLat,
         state.showTrends,
-        state.coherenceThreshold,
-        state.phaseSimilarityThreshold,
-        state.invResidThreshold,
+        state.layerMasks,
         state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
       );
       if (tsData) {
@@ -34428,9 +34081,7 @@ function TimeSeriesChart() {
     state.refEnabled,
     state.datasetInfo,
     state.showTrends,
-    state.coherenceThreshold,
-    state.phaseSimilarityThreshold,
-    state.invResidThreshold,
+    state.layerMasks,
     fetchMultiPointTimeSeries
   ]);
   reactExports.useEffect(() => {
@@ -34461,9 +34112,7 @@ function TimeSeriesChart() {
           state.bufferSamples,
           refLon,
           refLat,
-          state.coherenceThreshold,
-          state.phaseSimilarityThreshold,
-          state.invResidThreshold,
+          state.layerMasks,
           state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
         );
         return { id: p2.id, result };
@@ -34484,9 +34133,7 @@ function TimeSeriesChart() {
     state.refEnabled,
     state.refBufferEnabled,
     state.refBufferRadius,
-    state.coherenceThreshold,
-    state.phaseSimilarityThreshold,
-    state.invResidThreshold,
+    state.layerMasks,
     JSON.stringify(state.timeSeriesPoints.map((p2) => ({ id: p2.id, position: p2.position, visible: p2.visible }))),
     state.refMarkerPosition,
     fetchBufferTimeSeries

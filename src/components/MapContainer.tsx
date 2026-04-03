@@ -189,7 +189,7 @@ function RasterTileLayer() {
 
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
+  const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const map = useMap();
 
   const handleMarkerClick = (position: [number, number], pointName?: string) => {
@@ -228,12 +228,20 @@ function MarkerEventHandlers() {
     const info = ds ? state.datasetInfo[ds] : null;
     if (ds && info?.algorithm === 'shift') {
       try {
-        const values = await fetchPointTimeSeries(lng, lat, ds);
+        let values: number[] | undefined;
+        if (state.refBufferEnabled && state.refBufferRadius > 0) {
+          const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
+          if (result?.median) {
+            const xValues = state.datasetInfo[ds]?.x_values?.map(String) ?? result.labels?.map(String) ?? [];
+            const byX = Object.fromEntries(result.median.map((pt: { x: string; y: number }) => [String(pt.x), pt.y]));
+            values = xValues.map((x: string) => byX[x] ?? NaN);
+          }
+        }
+        if (!values) {
+          values = await fetchPointTimeSeries(lng, lat, ds);
+        }
         if (values) {
-          dispatch({
-            type: 'SET_REF_VALUES',
-            payload: { dataset: ds, values },
-          });
+          dispatch({ type: 'SET_REF_VALUES', payload: { dataset: ds, values } });
         }
       } catch (err) {
         console.error('Error updating reference values after drag:', err);

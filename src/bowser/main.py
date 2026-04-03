@@ -211,6 +211,25 @@ async def get_variables():
     return {"variables": variables}
 
 
+def _scale_threshold(threshold: float, vmin: float, vmax: float) -> float:
+    """Map a 0–1 normalised threshold to the actual [vmin, vmax] data range."""
+    if np.isfinite(vmin) and np.isfinite(vmax) and vmax > vmin:
+        return vmin + threshold * (vmax - vmin)
+    return threshold
+
+
+# Cache dataset-level min/max so nanmin/nanmax aren't recomputed on every tile request.
+_MD_VAR_RANGE_CACHE: dict[str, tuple[float, float]] = {}
+
+
+def _md_var_range(var: str) -> tuple[float, float]:
+    """Return (nanmin, nanmax) for an MD dataset variable, cached after first call."""
+    if var not in _MD_VAR_RANGE_CACHE:
+        arr = XARRAY_DATASET[var].values
+        _MD_VAR_RANGE_CACHE[var] = (float(np.nanmin(arr)), float(np.nanmax(arr)))
+    return _MD_VAR_RANGE_CACHE[var]
+
+
 def _apply_layer_masks_md(
     da: "xr.DataArray",
     layer_masks: list[dict],
@@ -219,7 +238,9 @@ def _apply_layer_masks_md(
     """Apply a list of layer mask dicts to a DataArray (MD mode).
 
     Each dict has keys: dataset (str), threshold (float), mode ('min'|'max').
-    'min' keeps pixels >= threshold; 'max' keeps pixels <= threshold.
+    threshold is always 0–1 normalised; it is scaled to the mask layer's
+    actual data range before comparison.
+    'min' keeps pixels >= scaled_threshold; 'max' keeps pixels <= scaled_threshold.
     """
     for m in layer_masks:
         var = m.get("dataset")
@@ -230,10 +251,12 @@ def _apply_layer_masks_md(
         mask_da = XARRAY_DATASET[var]
         if time_idx is not None and "time" in mask_da.dims:
             mask_da = mask_da.isel(time=time_idx)
+        vmin, vmax = _md_var_range(var)
+        scaled = _scale_threshold(threshold, vmin, vmax)
         if mode == "max":
-            da = da.where(mask_da <= threshold)
+            da = da.where(mask_da <= scaled)
         else:
-            da = da.where(mask_da >= threshold)
+            da = da.where(mask_da >= scaled)
     return da
 
 
@@ -887,12 +910,24 @@ def InputDependency(
                 if not fl:
                     continue
                 f = fl[min(time_idx, len(fl) - 1)]
-                # For 'max' mode (keep <= threshold), we invert: mask out pixels > threshold
-                # CustomReader extra_masks keeps pixels where value > min_value, so for 'max'
-                # we can't natively invert — pass None to skip (tile-level COG 'max' not supported)
+                # Scale 0–1 threshold to the file's actual data range
+                try:
+                    with rasterio.open(f) as src:
+                        arr = src.read(1).astype(float)
+                        nodata = src.nodata
+                    if nodata is not None:
+                        arr = arr[arr != nodata]
+                    valid = arr[np.isfinite(arr)]
+                    if valid.size > 0:
+                        scaled = _scale_threshold(threshold, float(valid.min()), float(valid.max()))
+                    else:
+                        scaled = threshold
+                except Exception:
+                    scaled = threshold
+                # CustomReader extra_masks keeps pixels where value > min_value ('min' mode only)
                 if mode == "min":
-                    extra_masks.append((f, threshold))
-                # 'max' mode skipped for COG tiles (no inversion support in CustomReader)
+                    extra_masks.append((f, scaled))
+                # 'max' mode not supported for COG tiles (CustomReader has no inversion)
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse layer_masks: {e}")
 

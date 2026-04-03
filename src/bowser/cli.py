@@ -400,8 +400,8 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
                 "algorithm": Algorithm.PHASE.value,
             }
         )
+    # NOTE would be interesting to load amplitude timeseries
     amplitude_files = _glob(f"{wd}/amplitude_db/2*_amp_db.tif")
-    print(amplitude_files)
     if amplitude_files:
         dolphin_outputs.append(
             {

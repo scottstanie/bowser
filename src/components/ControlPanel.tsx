@@ -23,7 +23,7 @@ const colormapOptions = [
 
 export default function ControlPanel() {
   const { state, dispatch } = useAppContext();
-  const { fetchPointTimeSeries } = useApi();
+  const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = useState(String(state.vmax));
 
@@ -67,8 +67,18 @@ export default function ControlPanel() {
   const handleDatasetChange = (ds: string) => {
     dispatch({ type: 'SET_CURRENT_DATASET', payload: ds });
     const info = state.datasetInfo[ds];
-    if (info?.uses_spatial_ref && !state.refValues[ds]) setRefValues(ds);
+    if (info?.uses_spatial_ref) setRefValues(ds);
   };
+
+  // Re-fetch ref values when buffer toggle or radius changes (for tile shift correction)
+  useEffect(() => {
+    const ds = state.currentDataset;
+    if (!ds) return;
+    const info = state.datasetInfo[ds];
+    if (!info?.uses_spatial_ref) return;
+    setRefValues(ds);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.refBufferEnabled, state.refBufferRadius]);
 
   const commitVmin = useCallback(() => {
     const v = Number(draftVmin);
@@ -83,7 +93,19 @@ export default function ControlPanel() {
   const setRefValues = async (ds: string) => {
     const [lat, lng] = state.refMarkerPosition;
     try {
-      const values = await fetchPointTimeSeries(lng, lat, ds);
+      let values: number[] | undefined;
+      if (state.refBufferEnabled && state.refBufferRadius > 0) {
+        const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
+        if (result?.median) {
+          // Re-align sparse {x,y} array back to full-length index array
+          const xValues = state.datasetInfo[ds]?.x_values?.map(String) ?? result.labels?.map(String) ?? [];
+          const byX = Object.fromEntries(result.median.map((pt: { x: string; y: number }) => [String(pt.x), pt.y]));
+          values = xValues.map((x: string) => byX[x] ?? NaN);
+        }
+      }
+      if (!values) {
+        values = await fetchPointTimeSeries(lng, lat, ds);
+      }
       if (values) dispatch({ type: 'SET_REF_VALUES', payload: { dataset: ds, values } });
     } catch (error) {
       console.error('Error setting reference values:', error);
@@ -267,7 +289,7 @@ export default function ControlPanel() {
               ><i className="fa-solid fa-xmark"></i></button>
             </div>
             <div className="slider-label">
-              <span style={{ fontSize: '0.75em', color: 'var(--sb-muted)' }}>Threshold</span>
+              <span style={{ fontSize: '0.75em', color: 'var(--sb-muted)' }}>Threshold (normalised)</span>
               <span className="slider-value">{mask.threshold.toFixed(2)}</span>
             </div>
             <input

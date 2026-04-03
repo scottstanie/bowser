@@ -173,8 +173,15 @@ class RasterReader(DatasetReader):
         """Bounds of dataset in `crs` coordinates."""
         if self.keep_open:
             return self._src.bounds
-        with rio.open(self.filename, "r") as src:
-            return src.bounds
+        try:
+            with rio.open(self.filename, "r") as src:
+                return src.bounds
+        except KeyError:
+            # GDAL dtype not known to rasterio (e.g. Float16); compute from transform+shape.
+            h, w = self.shape
+            tf = self.transform
+            from rasterio.transform import array_bounds  # noqa: PLC0415
+            return array_bounds(h, w, tf)
 
     @property
     def latlon_bounds(self) -> tuple[float, float, float, float]:
@@ -198,7 +205,39 @@ class RasterReader(DatasetReader):
             dates = get_dates(filename, fmt=file_date_fmt)
         else:
             dates = None
-        with rio.open(filename, "r", **options) as src:
+        try:
+            src_ctx = rio.open(filename, "r", **options)
+        except KeyError:
+            # rasterio doesn't know this GDAL dtype (e.g. Float16 = GDAL type 15).
+            # Fall back to GDAL directly to get shape/transform, treat as float32.
+            from osgeo import gdal  # noqa: PLC0415
+            gdal.UseExceptions()
+            ds = gdal.Open(str(filename))
+            if ds is None:
+                raise OSError(f"Cannot open {filename}")
+            gt = ds.GetGeoTransform()
+            from affine import Affine  # noqa: PLC0415
+            from rasterio.crs import CRS as RioCRS  # noqa: PLC0415
+            _transform = Affine.from_gdal(*gt)
+            _crs = RioCRS.from_wkt(ds.GetProjection()) if ds.GetProjection() else None
+            _nodata = ds.GetRasterBand(band).GetNoDataValue()
+            _shape = (ds.RasterYSize, ds.RasterXSize)
+            _chunks = (256, 256)
+            ds = None
+            return cls(
+                filename=filename,
+                band=band,
+                driver="GTiff",
+                crs=_crs,
+                transform=_transform,
+                shape=_shape,
+                dtype=np.dtype("float32"),
+                nodata=_nodata,
+                keep_open=keep_open,
+                dates=dates,
+                chunks=_chunks,
+            )
+        with src_ctx as src:
             shape = (src.height, src.width)
             dtype = np.dtype(src.dtypes[band - 1])
             driver = src.driver
