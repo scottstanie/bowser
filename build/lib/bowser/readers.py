@@ -487,16 +487,10 @@ class CustomReader(BaseReader):
     def __attrs_post_init__(self):
         """Define _kwargs, open dataset and get info."""
         self.dataset = self._ctx_stack.enter_context(Reader(self.input["data"]))
-        if self.input.get("mask"):
+        if self.input["mask"]:
             self.mask = self._ctx_stack.enter_context(Reader(self.input["mask"]))
         else:
             self.mask = None
-
-        # Open extra masks (e.g. custom uploaded masks)
-        self._extra_masks: list[tuple[Any, float]] = []
-        for mask_path, mask_min in self.input.get("extra_masks", []):
-            reader = self._ctx_stack.enter_context(Reader(mask_path))
-            self._extra_masks.append((reader, mask_min))
 
         self.bounds = self.dataset.bounds
         self.crs = self.dataset.crs
@@ -548,32 +542,33 @@ class CustomReader(BaseReader):
             **kwargs,
         )
 
-        combined_mask = img.mask == 0  # True = invalid
-
-        # Apply primary mask
+        # https://rasterio.readthedocs.io/en/stable/topics/masks.html#nodata-representations-in-raster-files
         if self.mask is not None:
             mask_layer_img = self.mask.tile(
-                tile_x, tile_y, tile_z, tilesize, indexes=1, **kwargs,
+                tile_x,
+                tile_y,
+                tile_z,
+                tilesize,
+                indexes=1,
+                **kwargs,
             )
-            filled = np.squeeze(mask_layer_img.array.filled(0))
-            combined_mask = np.logical_or.reduce([
-                combined_mask,
-                filled == 0,
-                filled < self.input["mask_min_value"],
-            ])
 
-        # Apply extra masks (custom uploaded masks — binary: > 0 = valid)
-        for extra_reader, extra_min in self._extra_masks:
-            try:
-                extra_img = extra_reader.tile(
-                    tile_x, tile_y, tile_z, tilesize, indexes=1, **kwargs,
-                )
-                extra_filled = np.squeeze(extra_img.array.filled(0))
-                combined_mask = np.logical_or(combined_mask, extra_filled <= extra_min)
-            except Exception:
-                pass  # tile outside bounds — skip
+            # Combine the invalid pixels of `.mask` and `.img`
+            bad_image_pixels = img.mask == 0
+            # img.mask has "valid" = 255, "invalid" = 0
+            # need to convert it to numpy style
+            filled_mask_layer = np.squeeze(mask_layer_img.array.filled(0))
+            bad_mask_pixels = filled_mask_layer == 0
 
-        if np.any(combined_mask != (img.mask == 0)):
+            # Also mask out the pixels which don't pass the threshold
+            pixels_below_threshold = filled_mask_layer < self.input["mask_min_value"]
+            combined_mask = np.logical_or.reduce(
+                [
+                    bad_image_pixels,
+                    bad_mask_pixels,
+                    pixels_below_threshold,
+                ]
+            )
             img = ImageData(
                 np.ma.MaskedArray(img.data, mask=combined_mask),
                 assets=img.assets,
