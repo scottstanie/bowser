@@ -32,6 +32,29 @@ from rio_tiler.models import BandStatistics, ImageData, Info, PointData
 from rio_tiler.types import BBox, Indexes
 from tqdm.contrib.concurrent import thread_map
 
+
+def _patch_rasterio_float16() -> None:
+    """Register GDAL Float16 (type code 15) with rasterio if missing.
+
+    GDAL 3.11+ interprets NBITS=16 on float32 GeoTIFFs as native Float16
+    (datatype code 15). Rasterio builds that lack a mapping for code 15 raise
+    ``KeyError: 15`` on open. Patch the forward/reverse dtype dicts so rasterio
+    can open these files transparently.
+    """
+    try:
+        from osgeo import gdal
+        if not hasattr(gdal, "GDT_Float16"):
+            return
+        from rasterio.dtypes import dtype_fwd, dtype_rev
+        if 15 not in dtype_fwd:
+            dtype_fwd[15] = "float16"
+            dtype_rev["float16"] = 15
+    except Exception:
+        pass
+
+
+_patch_rasterio_float16()
+
 PathOrStr = Path | str
 
 __all__ = [

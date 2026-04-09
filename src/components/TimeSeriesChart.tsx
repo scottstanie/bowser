@@ -1,10 +1,26 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Chart as ChartJS, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { MultiPointTimeSeriesData } from '../types';
+
+/** Read a CSS variable from the document root at call time. */
+function cssVar(name: string, fallback: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+/** Returns a counter that increments whenever data-theme attribute changes on <html>. */
+function useThemeVersion(): number {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const obs = new MutationObserver(() => setV(n => n + 1));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => obs.disconnect();
+  }, []);
+  return v;
+}
 
 ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -27,6 +43,7 @@ interface BufferResult {
 export default function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
   const { fetchMultiPointTimeSeries, fetchBufferTimeSeries } = useApi();
+  const themeVersion = useThemeVersion();
   const [chartData, setChartData] = useState<MultiPointTimeSeriesData | null>(null);
   const [bufferData, setBufferData] = useState<{ [pointId: string]: BufferResult }>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -201,75 +218,82 @@ export default function TimeSeriesChart() {
     document.body.removeChild(link);
   }, [chartData, state.showTrends, state.currentDataset]);
 
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 300 },
-    interaction: { mode: 'index' as const, intersect: false },
-    plugins: {
-      legend: {
-        display: true,
-        position: 'top' as const,
-        labels: {
-          usePointStyle: true,
-          padding: 16,
-          color: '#ffffff',
-          generateLabels: (chart: any) => {
-            if (!chartData?.datasets) return [];
-            return chart.data.datasets
-              .map((ds: any, index: number) => ({ ds, index }))
-              .filter(({ ds }: any) =>
-                !ds.label.endsWith(' trend') &&
-                !ds.label.endsWith(' residual') &&
-                !ds.label.includes(' sample ') &&
-                !ds.label.endsWith(' median')
-              )
-              .map(({ ds, index }: any) => ({
-                text: ds.label + (ds.label && chartData.datasets.find(d => d.label === ds.label)?.trend?.mmPerYear !== undefined
-                  ? ` (${chartData.datasets.find(d => d.label === ds.label)!.trend!.mmPerYear.toFixed(1)} mm/yr)`
-                  : ''),
-                pointStyle: 'circle' as const,
-                fillStyle: ds.borderColor,
-                strokeStyle: ds.borderColor,
-                lineWidth: 2,
-                datasetIndex: index,
-              }));
+  const chartOptions = useMemo(() => {
+    const textColor  = cssVar('--sb-text',   '#dde0f0');
+    const mutedColor = cssVar('--sb-muted',  '#7880a8');
+    const gridColor  = cssVar('--sb-border', '#2c2f4a');
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: { mode: 'index' as const, intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top' as const,
+          labels: {
+            usePointStyle: true,
+            padding: 16,
+            color: textColor,
+            generateLabels: (chart: any) => {
+              if (!chartData?.datasets) return [];
+              return chart.data.datasets
+                .map((ds: any, index: number) => ({ ds, index }))
+                .filter(({ ds }: any) =>
+                  !ds.label.endsWith(' trend') &&
+                  !ds.label.endsWith(' residual') &&
+                  !ds.label.includes(' sample ') &&
+                  !ds.label.endsWith(' median')
+                )
+                .map(({ ds, index }: any) => ({
+                  text: ds.label + (ds.label && chartData.datasets.find(d => d.label === ds.label)?.trend?.mmPerYear !== undefined
+                    ? ` (${chartData.datasets.find(d => d.label === ds.label)!.trend!.mmPerYear.toFixed(1)} mm/yr)`
+                    : ''),
+                  pointStyle: 'circle' as const,
+                  fillStyle: ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  fontColor: textColor,
+                  lineWidth: 2,
+                  datasetIndex: index,
+                }));
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            title: (context: any) => `${context[0]?.label || ''}`,
+            label: (context: any) => {
+              const dataset = chartData?.datasets?.[context.datasetIndex];
+              if (!dataset) return '';
+              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
+              if (dataset.trend?.mmPerYear !== undefined && state.showTrends) {
+                label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
+              }
+              return label;
+            },
           },
         },
       },
-      tooltip: {
-        callbacks: {
-          title: (context: any) => `${context[0]?.label || ''}`,
-          label: (context: any) => {
-            const dataset = chartData?.datasets?.[context.datasetIndex];
-            if (!dataset) return '';
-            let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
-            if (dataset.trend?.mmPerYear !== undefined && state.showTrends) {
-              label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
-            }
-            return label;
-          },
+      scales: {
+        x: {
+          type: 'time' as const,
+          time: { displayFormats: { month: 'MMM yyyy', day: 'MMM d', year: 'yyyy' } },
+          title: { display: true, text: 'Date', color: mutedColor },
+          grid: { color: gridColor },
+          ticks: { color: mutedColor },
+        },
+        y: {
+          title: { display: true, text: 'Displacement (m)', color: mutedColor },
+          suggestedMin: state.vmin,
+          suggestedMax: state.vmax,
+          grid: { color: gridColor },
+          ticks: { color: mutedColor },
         },
       },
-    },
-    scales: {
-      x: {
-        type: 'time' as const,
-        time: { displayFormats: { month: 'MMM yyyy', day: 'MMM d', year: 'yyyy' } },
-        title: { display: true, text: 'Date' },
-        grid: { color: 'rgba(255,255,255,0.1)' },
-        ticks: { color: '#aaa' },
-      },
-      y: {
-        title: { display: true, text: 'Displacement (m)' },
-        suggestedMin: state.vmin,
-        suggestedMax: state.vmax,
-        grid: { color: 'rgba(255,255,255,0.1)' },
-        ticks: { color: '#aaa' },
-      },
-    },
-    onClick: handleChartClick,
-  };
+      onClick: handleChartClick,
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, handleChartClick]);
 
   if (!state.showChart) return null;
 

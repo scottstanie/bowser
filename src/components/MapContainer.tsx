@@ -75,7 +75,11 @@ function RasterTileLayer() {
   const [tileUrl, setTileUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!state.currentDataset || !state.datasetInfo[state.currentDataset]) {
+    if (!state.currentDataset || !state.datasetInfo[state.currentDataset] || !state.dataMode) {
+      return;
+    }
+    // dataMode starts as 'md' default; wait until datasets are loaded (which confirms mode is set)
+    if (state.dataMode !== 'md' && state.dataMode !== 'cog') {
       return;
     }
 
@@ -122,7 +126,7 @@ function RasterTileLayer() {
         const maskMinValue = currentDatasetInfo.mask_min_value;
 
         params.url = url;
-        if (maskUrl) params.mask = encodeURIComponent(maskUrl);
+        if (maskUrl) params.mask = maskUrl;
         if (maskMinValue !== undefined) params.mask_min_value = maskMinValue.toString();
         if (state.customMaskPath) params.custom_mask = state.customMaskPath;
         params.time_idx = timeIdx.toString();
@@ -158,8 +162,10 @@ function RasterTileLayer() {
       }
     };
 
-    updateTileLayer();
-    return () => controller.abort();
+    // Debounce: collapse rapid state changes (histogram → rescale → ref point)
+    // into a single request to avoid transient 500s from concurrent opens.
+    const debounceTimer = setTimeout(() => updateTileLayer(), 80);
+    return () => { clearTimeout(debounceTimer); controller.abort(); };
   }, [
     state.currentDataset,
     state.currentTimeIndex,
@@ -185,6 +191,56 @@ function RasterTileLayer() {
       maxZoom={19}
     />
   );
+}
+
+/** Draw radius circles on the map for buffer-enabled points and reference marker. */
+function RadiusCircles() {
+  const { state } = useAppContext();
+  const map = useMap();
+
+  useEffect(() => {
+    const circles: L.Circle[] = [];
+
+    // Time-series point buffer circles
+    if (state.bufferEnabled && state.bufferRadius > 0) {
+      state.timeSeriesPoints.filter(p => p.visible).forEach(point => {
+        circles.push(L.circle([point.position[0], point.position[1]], {
+          radius: state.bufferRadius,
+          color: point.color,
+          fillColor: point.color,
+          fillOpacity: 0.08,
+          weight: 1.5,
+          dashArray: '4 3',
+        }).addTo(map));
+      });
+    }
+
+    // Reference marker buffer circle
+    if (state.refEnabled && state.refBufferEnabled && state.refBufferRadius > 0) {
+      const [lat, lng] = state.refMarkerPosition;
+      circles.push(L.circle([lat, lng], {
+        radius: state.refBufferRadius,
+        color: '#e05d6a',
+        fillColor: '#e05d6a',
+        fillOpacity: 0.08,
+        weight: 1.5,
+        dashArray: '4 3',
+      }).addTo(map));
+    }
+
+    return () => { circles.forEach(c => c.remove()); };
+  }, [
+    map,
+    state.bufferEnabled,
+    state.bufferRadius,
+    state.refEnabled,
+    state.refBufferEnabled,
+    state.refBufferRadius,
+    state.refMarkerPosition,
+    JSON.stringify(state.timeSeriesPoints.map(p => ({ id: p.id, pos: p.position, vis: p.visible }))),
+  ]);
+
+  return null;
 }
 
 function MarkerEventHandlers() {
@@ -369,6 +425,7 @@ export default function MapContainer() {
         maxZoom={19}
       />
       <RasterTileLayer />
+      <RadiusCircles />
       <MarkerEventHandlers />
       <MapEvents />
       <MousePosition />

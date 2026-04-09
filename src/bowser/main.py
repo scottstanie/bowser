@@ -6,6 +6,13 @@ import warnings
 from pathlib import Path
 from typing import Annotated, Any, Callable, Optional
 
+# Register custom colormaps in rio_tiler BEFORE titiler.core.dependencies is
+# imported.  titiler captures cmap.list() into a Literal type annotation at
+# import time, so reversed variants (cfastie_r, etc.) must be in the registry
+# before that happens.
+from .utils import calculate_trend, desensitize_mpl_case, generate_colorbar, register_custom_colormaps
+register_custom_colormaps()
+
 import matplotlib
 import numpy as np
 import rasterio
@@ -25,7 +32,6 @@ from titiler.core.factory import TilerFactory
 from .config import settings
 from .readers import CustomReader
 from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
-from .utils import calculate_trend, desensitize_mpl_case, generate_colorbar
 
 logger = logging.getLogger("bowser")
 warnings.filterwarnings(
@@ -238,9 +244,8 @@ def _apply_layer_masks_md(
     """Apply a list of layer mask dicts to a DataArray (MD mode).
 
     Each dict has keys: dataset (str), threshold (float), mode ('min'|'max').
-    threshold is always 0–1 normalised; it is scaled to the mask layer's
-    actual data range before comparison.
-    'min' keeps pixels >= scaled_threshold; 'max' keeps pixels <= scaled_threshold.
+    threshold is an absolute value in the mask layer's data units.
+    'min' keeps pixels >= threshold; 'max' keeps pixels <= threshold.
     """
     for m in layer_masks:
         var = m.get("dataset")
@@ -251,12 +256,10 @@ def _apply_layer_masks_md(
         mask_da = XARRAY_DATASET[var]
         if time_idx is not None and "time" in mask_da.dims:
             mask_da = mask_da.isel(time=time_idx)
-        vmin, vmax = _md_var_range(var)
-        scaled = _scale_threshold(threshold, vmin, vmax)
         if mode == "max":
-            da = da.where(mask_da <= scaled)
+            da = da.where(mask_da <= threshold)
         else:
-            da = da.where(mask_da >= scaled)
+            da = da.where(mask_da >= threshold)
     return da
 
 
@@ -590,6 +593,40 @@ async def get_colorbar(cmap_name: str):
 
 
 @app.get(
+    "/dataset_range/{dataset_name}",
+    response_class=JSONResponse,
+    responses={200: {"description": "Return min/max/p2/p98 for a dataset (first time slice)"}},
+)
+async def get_dataset_range(dataset_name: str):
+    """Return the value range of a dataset for use in mask threshold sliders."""
+    if DATA_MODE == "md":
+        if dataset_name not in XARRAY_DATASET.data_vars:
+            raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
+        da = XARRAY_DATASET[dataset_name]
+        arr = da.isel(time=0).values.ravel().astype(float) if "time" in da.dims else da.values.ravel().astype(float)
+    else:
+        if dataset_name not in RASTER_GROUPS:
+            raise HTTPException(status_code=404, detail=f"Dataset {dataset_name} not found")
+        rg = RASTER_GROUPS[dataset_name]
+        with rasterio.open(rg.file_list[0]) as src:
+            arr = src.read(1).ravel().astype(float)
+            nodata = src.nodata
+        if nodata is not None:
+            arr = arr[arr != nodata]
+
+    valid = arr[np.isfinite(arr)]
+    if valid.size == 0:
+        raise HTTPException(status_code=204, detail="No valid data")
+
+    return JSONResponse({
+        "min": float(valid.min()),
+        "max": float(valid.max()),
+        "p2": float(np.percentile(valid, 2)),
+        "p98": float(np.percentile(valid, 98)),
+    })
+
+
+@app.get(
     "/histogram/{dataset_name}",
     response_class=JSONResponse,
     responses={200: {"description": "Return histogram data for one time slice"}},
@@ -771,8 +808,14 @@ async def extract_profile(
     dataset_name: str = Body(..., description="Dataset name"),
     time_index: int = Body(0, description="Time index"),
     n_samples: int = Body(200, description="Number of samples along line"),
+    radius: float = Body(0.0, description="Buffer radius in metres (0 = single line)"),
+    n_random: int = Body(5, description="Number of random sample lines within buffer"),
 ):
-    """Sample raster values along a polyline and return distance + value pairs."""
+    """Sample raster values along a polyline.
+
+    When ``radius`` > 0, returns median and random sample profiles within the
+    buffer; otherwise returns the single centre-line profile.
+    """
     from pyproj import Geod  # noqa: PLC0415
 
     if len(coords) < 2:
@@ -792,16 +835,13 @@ async def extract_profile(
         raise HTTPException(status_code=422, detail="Zero-length line")
 
     sample_dists = np.linspace(0, total_dist, n_samples)
-    results: list[dict] = []
-    for sd in sample_dists:
-        seg_idx = int(np.clip(np.searchsorted(seg_dists, sd, side="right") - 1, 0, len(lons) - 2))
-        frac = (sd - seg_dists[seg_idx]) / max(seg_dists[seg_idx + 1] - seg_dists[seg_idx], 1e-9)
-        slon = lons[seg_idx] + frac * (lons[seg_idx + 1] - lons[seg_idx])
-        slat = lats[seg_idx] + frac * (lats[seg_idx + 1] - lats[seg_idx])
+
+    def _read_lonlat(slon: float, slat: float) -> float | None:
+        """Read a single value at (slon, slat); return None on failure."""
         try:
             if DATA_MODE == "md":
                 if dataset_name not in XARRAY_DATASET.data_vars:
-                    continue
+                    return None
                 da = XARRAY_DATASET[dataset_name]
                 if "time" in da.dims and time_index < da.shape[0]:
                     da = da.isel(time=time_index)
@@ -809,15 +849,84 @@ async def extract_profile(
                 val = float(da.sel(x=x_c, y=y_c, method="nearest").values)
             else:
                 if dataset_name not in RASTER_GROUPS:
-                    continue
+                    return None
                 rg = RASTER_GROUPS[dataset_name]
                 t = min(time_index, len(rg.file_list) - 1)
                 val = float(np.atleast_1d(rg._reader.readers[t].read_lonlat(slon, slat))[0])
-            if np.isfinite(val):
-                results.append({"dist": float(sd), "value": val})
+            return val if np.isfinite(val) else None
         except Exception:
-            continue
-    return JSONResponse(results)
+            return None
+
+    # ── Compute sample point positions along the line ──────────────────────────
+    # For each distance d along line, compute (slon, slat) and the perpendicular
+    # unit vector in lon/lat degrees (approximated from the local bearing).
+    sample_positions: list[tuple[float, float, float, float]] = []  # (dist, slon, slat, bearing_deg)
+    for sd in sample_dists:
+        seg_idx = int(np.clip(np.searchsorted(seg_dists, sd, side="right") - 1, 0, len(lons) - 2))
+        frac = (sd - seg_dists[seg_idx]) / max(seg_dists[seg_idx + 1] - seg_dists[seg_idx], 1e-9)
+        slon = lons[seg_idx] + frac * (lons[seg_idx + 1] - lons[seg_idx])
+        slat = lats[seg_idx] + frac * (lats[seg_idx + 1] - lats[seg_idx])
+        # Forward bearing of this segment (degrees)
+        az, _, _ = geod.inv(lons[seg_idx], lats[seg_idx], lons[seg_idx + 1], lats[seg_idx + 1])
+        sample_positions.append((float(sd), slon, slat, float(az)))
+
+    if radius <= 0:
+        # ── Simple centre-line profile ─────────────────────────────────────────
+        results: list[dict] = []
+        for sd, slon, slat, _ in sample_positions:
+            v = _read_lonlat(slon, slat)
+            if v is not None:
+                results.append({"dist": sd, "value": v})
+        return JSONResponse(results)
+
+    # ── Buffer profile: median + random samples ────────────────────────────────
+    rng = np.random.default_rng(42)
+    # Random perpendicular offsets for sample lines: shape (n_random,)
+    offsets = rng.uniform(-radius, radius, size=n_random)
+
+    # centre + random lines → shape (1+n_random, n_samples)
+    all_lines: list[list[float | None]] = [[] for _ in range(1 + n_random)]
+
+    for i, (sd, slon, slat, bearing) in enumerate(sample_positions):
+        # Centre line
+        all_lines[0].append(_read_lonlat(slon, slat))
+        # Perpendicular direction = bearing + 90°
+        perp_az = bearing + 90.0
+        for j, off in enumerate(offsets):
+            if off == 0:
+                o_lon, o_lat = slon, slat
+            else:
+                o_lon, o_lat, _ = geod.fwd(slon, slat, perp_az, off)
+            all_lines[j + 1].append(_read_lonlat(o_lon, o_lat))
+
+    # Build finite-only arrays for median computation
+    arr = np.array([[v if v is not None else np.nan for v in line] for line in all_lines])
+    median_vals = np.nanmedian(arr, axis=0)
+
+    centre_profile = [
+        {"dist": float(sample_positions[i][0]), "value": float(v)}
+        for i, v in enumerate(arr[0])
+        if np.isfinite(v)
+    ]
+    median_profile = [
+        {"dist": float(sample_positions[i][0]), "value": float(v)}
+        for i, v in enumerate(median_vals)
+        if np.isfinite(v)
+    ]
+    sample_profiles = [
+        [
+            {"dist": float(sample_positions[i][0]), "value": float(arr[j + 1, i])}
+            for i in range(len(sample_positions))
+            if np.isfinite(arr[j + 1, i])
+        ]
+        for j in range(n_random)
+    ]
+
+    return JSONResponse({
+        "centre": centre_profile,
+        "median": median_profile,
+        "samples": sample_profiles,
+    })
 
 
 # Upload directory for custom masks
@@ -910,23 +1019,10 @@ def InputDependency(
                 if not fl:
                     continue
                 f = fl[min(time_idx, len(fl) - 1)]
-                # Scale 0–1 threshold to the file's actual data range
-                try:
-                    with rasterio.open(f) as src:
-                        arr = src.read(1).astype(float)
-                        nodata = src.nodata
-                    if nodata is not None:
-                        arr = arr[arr != nodata]
-                    valid = arr[np.isfinite(arr)]
-                    if valid.size > 0:
-                        scaled = _scale_threshold(threshold, float(valid.min()), float(valid.max()))
-                    else:
-                        scaled = threshold
-                except Exception:
-                    scaled = threshold
+                # Threshold is now an absolute value — pass it directly
                 # CustomReader extra_masks keeps pixels where value > min_value ('min' mode only)
                 if mode == "min":
-                    extra_masks.append((f, scaled))
+                    extra_masks.append((f, threshold))
                 # 'max' mode not supported for COG tiles (CustomReader has no inversion)
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Failed to parse layer_masks: {e}")

@@ -685,6 +685,45 @@ svg.leaflet-image-layer.leaflet-interactive path {
   background-color: var(--sb-bg);
 }
 
+/* ── Theme toggle button ───────────────────────────────────── */
+.sidebar-theme-toggle {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px 0;
+}
+
+.theme-toggle-btn {
+  background: none;
+  border: 1px solid var(--sb-border);
+  border-radius: 6px;
+  color: var(--sb-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 0.85em;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.theme-toggle-btn:hover {
+  color: var(--sb-text);
+  border-color: var(--sb-accent);
+}
+
+/* ── Light theme ───────────────────────────────────────────── */
+[data-theme="light"] {
+  --sb-bg:        #f0f2f8;
+  --sb-surface:   #ffffff;
+  --sb-surface2:  #e4e7f0;
+  --sb-border:    #c8cce0;
+  --sb-text:      #1a1d2e;
+  --sb-muted:     #6068a0;
+  --sb-accent:    #2478c8;
+  --sb-accent2:   #1a5fa0;
+  --sb-green:     #1e8f50;
+  --sb-red:       #c0303e;
+  color: var(--sb-text);
+  background-color: var(--sb-bg);
+}
+
 a { font-weight: 500; color: var(--sb-accent); text-decoration: none; }
 a:hover { color: var(--sb-accent2); }
 
@@ -1035,11 +1074,11 @@ img.huechange { filter: hue-rotate(120deg); }
   bottom: 20px;
   right: 20px;
   padding: 14px;
-  background: rgba(19, 21, 31, 0.95);
+  background: var(--sb-surface);
   backdrop-filter: blur(8px);
   z-index: 3000;
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--sb-border);
   display: flex;
   flex-direction: column;
@@ -1116,12 +1155,13 @@ img.huechange { filter: hue-rotate(120deg); }
 
 /* ── Mouse position control ─────────────────────────────────── */
 .leaflet-control-mouseposition {
-  background-color: rgba(19, 21, 31, 0.8);
-  box-shadow: 0 0 5px rgba(0,0,0,0.4);
+  background-color: var(--sb-surface);
+  box-shadow: 0 0 5px rgba(0,0,0,0.3);
   padding: 2px 6px;
   color: var(--sb-text);
   font: 11px/1.5 "Inter", "Helvetica Neue", Arial, sans-serif;
   border-radius: 4px;
+  border: 1px solid var(--sb-border);
 }
 
 /* ── Point Manager Panel ────────────────────────────────────── */
@@ -1350,14 +1390,37 @@ img.huechange { filter: hue-rotate(120deg); }
   bottom: 20px;
   left: 50%;
   transform: translateX(-50%);
-  width: 500px;
-  max-width: 90vw;
-  background: rgba(19, 21, 31, 0.95);
+  width: 540px;
+  max-width: 92vw;
+  background: var(--sb-surface);
   border: 1px solid var(--sb-border);
   border-radius: 12px;
   padding: 12px 14px;
   z-index: 3500;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   backdrop-filter: blur(8px);
   color: var(--sb-text);
+}
+
+.profile-radius-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+}
+
+.profile-radius-input {
+  width: 70px;
+  background: var(--sb-surface2);
+  border: 1px solid var(--sb-border);
+  border-radius: 5px;
+  color: var(--sb-text);
+  font-size: 0.8em;
+  padding: 2px 5px;
+  text-align: right;
+}
+
+.profile-radius-input:focus {
+  outline: none;
+  border-color: var(--sb-accent);
 }

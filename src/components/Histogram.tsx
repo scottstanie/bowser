@@ -66,6 +66,12 @@ export default function Histogram() {
     dispatch({ type: 'SET_VMAX', payload: parseFloat(histData.p977.toFixed(4)) });
   };
 
+  const handleCenterZero = () => {
+    const absMax = parseFloat(Math.max(Math.abs(state.vmin), Math.abs(state.vmax)).toFixed(4));
+    dispatch({ type: 'SET_VMIN', payload: -absMax });
+    dispatch({ type: 'SET_VMAX', payload: absMax });
+  };
+
   if (!state.currentDataset || loading) {
     return <div className="histogram-loading">{loading ? 'Computing…' : ''}</div>;
   }
@@ -124,6 +130,9 @@ export default function Histogram() {
         </button>
         <button className="hist-btn" onClick={handleFullScale} title="Full range">
           Full
+        </button>
+        <button className="hist-btn" onClick={handleCenterZero} title="Symmetric around zero: ±max(|vmin|,|vmax|)">
+          ±0
         </button>
       </div>
     </div>

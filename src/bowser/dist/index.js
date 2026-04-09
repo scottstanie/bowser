@@ -7051,7 +7051,6 @@ const initialState = {
   bufferSamples: 10,
   pickingEnabled: true,
   refEnabled: true,
-  showProfile: false,
   refBufferEnabled: false,
   refBufferRadius: 500,
   showRefChart: false
@@ -7201,8 +7200,6 @@ function appReducer(state, action) {
       return { ...state, pickingEnabled: !state.pickingEnabled };
     case "TOGGLE_REF_ENABLED":
       return { ...state, refEnabled: !state.refEnabled };
-    case "TOGGLE_PROFILE":
-      return { ...state, showProfile: !state.showProfile };
     case "TOGGLE_REF_BUFFER":
       return { ...state, refBufferEnabled: !state.refBufferEnabled };
     case "SET_REF_BUFFER_RADIUS":
@@ -19617,9 +19614,9 @@ function parseMaxStyle(styleValue, node, parentProperty) {
   }
   return valueInPixels;
 }
-const getComputedStyle = (element) => element.ownerDocument.defaultView.getComputedStyle(element, null);
+const getComputedStyle$1 = (element) => element.ownerDocument.defaultView.getComputedStyle(element, null);
 function getStyle(el2, property) {
-  return getComputedStyle(el2).getPropertyValue(property);
+  return getComputedStyle$1(el2).getPropertyValue(property);
 }
 const positions = [
   "top",
@@ -19665,7 +19662,7 @@ function getRelativePosition(event, chart) {
     return event;
   }
   const { canvas, currentDevicePixelRatio } = chart;
-  const style = getComputedStyle(canvas);
+  const style = getComputedStyle$1(canvas);
   const borderBox = style.boxSizing === "border-box";
   const paddings = getPositionedStyle(style, "padding");
   const borders = getPositionedStyle(style, "border", "width");
@@ -19691,7 +19688,7 @@ function getContainerSize(canvas, width, height) {
       height = canvas.clientHeight;
     } else {
       const rect = container.getBoundingClientRect();
-      const containerStyle = getComputedStyle(container);
+      const containerStyle = getComputedStyle$1(container);
       const containerBorder = getPositionedStyle(containerStyle, "border", "width");
       const containerPadding = getPositionedStyle(containerStyle, "padding");
       width = rect.width - containerPadding.width - containerBorder.width;
@@ -19709,7 +19706,7 @@ function getContainerSize(canvas, width, height) {
 }
 const round1 = (v2) => Math.round(v2 * 10) / 10;
 function getMaximumSize(canvas, bbWidth, bbHeight, aspectRatio) {
-  const style = getComputedStyle(canvas);
+  const style = getComputedStyle$1(canvas);
   const margins = getPositionedStyle(style, "margin");
   const maxWidth = parseMaxStyle(style.maxWidth, canvas, "clientWidth") || INFINITY;
   const maxHeight = parseMaxStyle(style.maxHeight, canvas, "clientHeight") || INFINITY;
@@ -29020,6 +29017,9 @@ const VERTEX_ICON = L$1.divIcon({
   html: '<div style="width:12px;height:12px;border-radius:50%;background:#f0a500;border:2px solid white;box-sizing:border-box;margin-left:-6px;margin-top:-6px;cursor:grab"></div>',
   iconSize: [0, 0]
 });
+function cssVar$1(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
 function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   const map2 = useMap();
   const { state } = useAppContext();
@@ -29030,7 +29030,8 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   const modeRef = reactExports.useRef("idle");
   const [profileData, setProfileData] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(false);
-  const fetchFn = reactExports.useCallback(async (pts) => {
+  const [radius, setRadius] = reactExports.useState(0);
+  const fetchFn = reactExports.useCallback(async (pts, r2) => {
     if (pts.length < 2 || !state.currentDataset) return;
     setLoading(true);
     try {
@@ -29041,10 +29042,22 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
           coords: pts.map((p2) => [p2.lng, p2.lat]),
           dataset_name: state.currentDataset,
           time_index: state.currentTimeIndex,
-          n_samples: 200
+          n_samples: 200,
+          radius: r2,
+          n_random: 5
         })
       });
-      if (res.ok) setProfileData(await res.json());
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json)) {
+        setProfileData({ centre: json, median: null, samples: [] });
+      } else {
+        setProfileData({
+          centre: json.centre ?? [],
+          median: json.median ?? null,
+          samples: json.samples ?? []
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -29053,6 +29066,10 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   reactExports.useEffect(() => {
     fetchRef.current = fetchFn;
   }, [fetchFn]);
+  const radiusRef = reactExports.useRef(radius);
+  reactExports.useEffect(() => {
+    radiusRef.current = radius;
+  }, [radius]);
   const updatePoly = (pts) => {
     if (polyRef.current) {
       polyRef.current.setLatLngs(pts);
@@ -29070,7 +29087,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       });
       m2.on("dragend", () => {
         ptsRef.current[idx] = m2.getLatLng();
-        fetchRef.current(ptsRef.current);
+        fetchRef.current(ptsRef.current, radiusRef.current);
       });
       return m2;
     });
@@ -29089,9 +29106,56 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   }, []);
   reactExports.useEffect(() => {
     if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current);
     }
   }, [state.currentTimeIndex, active]);
+  reactExports.useEffect(() => {
+    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
+      fetchRef.current(ptsRef.current, radius);
+    }
+  }, [radius, active]);
+  reactExports.useEffect(() => {
+    if (!active || radius <= 0 || ptsRef.current.length < 2) return;
+    const pts = ptsRef.current;
+    const offsetPoints = [[], []];
+    for (let i = 0; i < pts.length; i++) {
+      let bearingRad;
+      if (i < pts.length - 1) {
+        const dx = pts[i + 1].lng - pts[i].lng;
+        const dy = pts[i + 1].lat - pts[i].lat;
+        bearingRad = Math.atan2(dx, dy);
+      } else {
+        const dx = pts[i].lng - pts[i - 1].lng;
+        const dy = pts[i].lat - pts[i - 1].lat;
+        bearingRad = Math.atan2(dx, dy);
+      }
+      const lat = pts[i].lat;
+      const metersPerDegLat = 111320;
+      const metersPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+      const perpBearing = bearingRad + Math.PI / 2;
+      const dLat = radius / metersPerDegLat * Math.cos(perpBearing);
+      const dLng = radius / metersPerDegLng * Math.sin(perpBearing);
+      offsetPoints[0].push(L$1.latLng(pts[i].lat + dLat, pts[i].lng + dLng));
+      offsetPoints[1].push(L$1.latLng(pts[i].lat - dLat, pts[i].lng - dLng));
+    }
+    const poly = L$1.polygon([...offsetPoints[0], ...offsetPoints[1].reverse()], {
+      color: "#f0a500",
+      fillColor: "#f0a500",
+      fillOpacity: 0.12,
+      weight: 1,
+      dashArray: "4 3"
+    }).addTo(map2);
+    return () => {
+      poly.remove();
+    };
+  }, [
+    active,
+    radius,
+    map2,
+    // re-run when pts change (after drawing / dragging)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    profileData
+  ]);
   reactExports.useEffect(() => {
     if (!active) {
       clearAll();
@@ -29132,7 +29196,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       modeRef.current = "ready";
       map2.getContainer().style.cursor = "default";
       rebuildMarkers(ptsRef.current);
-      fetchRef.current(ptsRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current);
     };
     map2.on("click", onClick);
     map2.on("mousemove", onMouseMove);
@@ -29146,38 +29210,81 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       map2.getContainer().style.cursor = "";
     };
   }, [active, map2, clearAll]);
+  if (!active) return null;
   if (loading) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "profile-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Extracting profile…" }) }) });
   }
-  if (!profileData || profileData.length === 0 || !state.showProfile) return null;
-  const chartData = {
-    labels: profileData.map((p2) => p2.dist.toFixed(0)),
-    datasets: [{
-      label: state.currentDataset,
-      data: profileData.map((p2) => p2.value),
-      borderColor: "#4d9de0",
-      backgroundColor: "rgba(77,157,224,0.15)",
-      borderWidth: 1.5,
+  const textColor = cssVar$1("--sb-text", "#dde0f0");
+  const mutedColor = cssVar$1("--sb-muted", "#7880a8");
+  const gridColor = cssVar$1("--sb-border", "#2c2f4a");
+  const hasData = profileData && (profileData.centre.length > 0 || profileData.median && profileData.median.length > 0);
+  const datasets = [];
+  if (hasData) {
+    const useBuffer = radius > 0 && profileData.median && profileData.median.length > 0;
+    if (useBuffer) {
+      profileData.samples.forEach((s, i) => {
+        datasets.push({
+          label: `sample ${i}`,
+          data: s.map((p2) => p2.value),
+          labels: s.map((p2) => p2.dist.toFixed(0)),
+          borderColor: "#4d9de028",
+          backgroundColor: "transparent",
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2
+        });
+      });
+    }
+    const centre = profileData.centre;
+    datasets.push({
+      label: useBuffer ? "centre" : state.currentDataset,
+      data: centre.map((p2) => p2.value),
+      borderColor: useBuffer ? "#4d9de088" : "#4d9de0",
+      backgroundColor: useBuffer ? "transparent" : "rgba(77,157,224,0.15)",
+      borderWidth: useBuffer ? 1 : 1.5,
       pointRadius: 0,
-      fill: true,
+      fill: !useBuffer,
       tension: 0.2
-    }]
-  };
+    });
+    if (useBuffer && profileData.median) {
+      datasets.push({
+        label: "median",
+        data: profileData.median.map((p2) => p2.value),
+        borderColor: "#4d9de0",
+        backgroundColor: "transparent",
+        borderWidth: 2.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2
+      });
+    }
+  }
+  const xLabels = profileData ? (profileData.centre.length > 0 ? profileData.centre : profileData.median ?? []).map((p2) => p2.dist.toFixed(0)) : [];
+  const chartData = { labels: xLabels, datasets };
   const options = {
     responsive: true,
     maintainAspectRatio: false,
     animation: { duration: 0 },
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: {
+        display: radius > 0,
+        labels: {
+          color: textColor,
+          filter: (item) => !item.text.startsWith("sample")
+        }
+      }
+    },
     scales: {
       x: {
-        title: { display: true, text: "Distance (m)", color: "#aaa" },
-        ticks: { color: "#aaa", maxTicksLimit: 8 },
-        grid: { color: "rgba(255,255,255,0.1)" }
+        title: { display: true, text: "Distance (m)", color: mutedColor },
+        ticks: { color: mutedColor, maxTicksLimit: 8 },
+        grid: { color: gridColor }
       },
       y: {
-        title: { display: true, text: state.currentDataset, color: "#aaa" },
-        ticks: { color: "#aaa" },
-        grid: { color: "rgba(255,255,255,0.1)" }
+        title: { display: true, text: state.currentDataset, color: mutedColor },
+        ticks: { color: mutedColor },
+        grid: { color: gridColor }
       }
     }
   };
@@ -29187,9 +29294,24 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
         "Profile — ",
         state.currentDataset
       ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-radius-control", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-radius", style: { color: mutedColor, fontSize: "0.8em", marginRight: 4 }, children: "Radius (m):" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            id: "profile-radius",
+            type: "number",
+            min: 0,
+            step: 100,
+            value: radius,
+            onChange: (e) => setRadius(Math.max(0, Number(e.target.value))),
+            className: "profile-radius-input"
+          }
+        )
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: clearAll, title: "Clear profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" }) })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 180, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) })
+    hasData && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 180, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) })
   ] });
 }
 function RefPointChart() {
@@ -29411,7 +29533,10 @@ function RasterTileLayer() {
   const { state } = useAppContext();
   const [tileUrl, setTileUrl] = reactExports.useState(null);
   reactExports.useEffect(() => {
-    if (!state.currentDataset || !state.datasetInfo[state.currentDataset]) {
+    if (!state.currentDataset || !state.datasetInfo[state.currentDataset] || !state.dataMode) {
+      return;
+    }
+    if (state.dataMode !== "md" && state.dataMode !== "cog") {
       return;
     }
     const controller = new AbortController();
@@ -29443,7 +29568,7 @@ function RasterTileLayer() {
         const maskUrl = currentDatasetInfo.mask_file_list[timeIdx];
         const maskMinValue = currentDatasetInfo.mask_min_value;
         params.url = url;
-        if (maskUrl) params.mask = encodeURIComponent(maskUrl);
+        if (maskUrl) params.mask = maskUrl;
         if (maskMinValue !== void 0) params.mask_min_value = maskMinValue.toString();
         if (state.customMaskPath) params.custom_mask = state.customMaskPath;
         params.time_idx = timeIdx.toString();
@@ -29469,8 +29594,11 @@ function RasterTileLayer() {
         }
       }
     };
-    updateTileLayer2();
-    return () => controller.abort();
+    const debounceTimer = setTimeout(() => updateTileLayer2(), 80);
+    return () => {
+      clearTimeout(debounceTimer);
+      controller.abort();
+    };
   }, [
     state.currentDataset,
     state.currentTimeIndex,
@@ -29495,6 +29623,49 @@ function RasterTileLayer() {
     },
     tileUrl
   );
+}
+function RadiusCircles() {
+  const { state } = useAppContext();
+  const map2 = useMap();
+  reactExports.useEffect(() => {
+    const circles = [];
+    if (state.bufferEnabled && state.bufferRadius > 0) {
+      state.timeSeriesPoints.filter((p2) => p2.visible).forEach((point) => {
+        circles.push(L$1.circle([point.position[0], point.position[1]], {
+          radius: state.bufferRadius,
+          color: point.color,
+          fillColor: point.color,
+          fillOpacity: 0.08,
+          weight: 1.5,
+          dashArray: "4 3"
+        }).addTo(map2));
+      });
+    }
+    if (state.refEnabled && state.refBufferEnabled && state.refBufferRadius > 0) {
+      const [lat, lng] = state.refMarkerPosition;
+      circles.push(L$1.circle([lat, lng], {
+        radius: state.refBufferRadius,
+        color: "#e05d6a",
+        fillColor: "#e05d6a",
+        fillOpacity: 0.08,
+        weight: 1.5,
+        dashArray: "4 3"
+      }).addTo(map2));
+    }
+    return () => {
+      circles.forEach((c) => c.remove());
+    };
+  }, [
+    map2,
+    state.bufferEnabled,
+    state.bufferRadius,
+    state.refEnabled,
+    state.refBufferEnabled,
+    state.refBufferRadius,
+    state.refMarkerPosition,
+    JSON.stringify(state.timeSeriesPoints.map((p2) => ({ id: p2.id, pos: p2.position, vis: p2.visible })))
+  ]);
+  return null;
 }
 function MarkerEventHandlers() {
   const { state, dispatch } = useAppContext();
@@ -29668,6 +29839,7 @@ function MapContainer() {
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(RasterTileLayer, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(RadiusCircles, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MarkerEventHandlers, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MapEvents, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MousePosition, {}),
@@ -29725,6 +29897,11 @@ function Histogram() {
     dispatch({ type: "SET_VMIN", payload: parseFloat(histData.p23.toFixed(4)) });
     dispatch({ type: "SET_VMAX", payload: parseFloat(histData.p977.toFixed(4)) });
   };
+  const handleCenterZero = () => {
+    const absMax = parseFloat(Math.max(Math.abs(state.vmin), Math.abs(state.vmax)).toFixed(4));
+    dispatch({ type: "SET_VMIN", payload: -absMax });
+    dispatch({ type: "SET_VMAX", payload: absMax });
+  };
   if (!state.currentDataset || loading) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "histogram-loading", children: loading ? "Computing…" : "" });
   }
@@ -29765,7 +29942,8 @@ function Histogram() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleAutoScale, title: "2nd–98th percentile", children: "2–98%" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleSigmaScale, title: "±1σ (16–84%)", children: "±1σ" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleTwoSigmaScale, title: "±2σ (2.3–97.7%)", children: "±2σ" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleFullScale, title: "Full range", children: "Full" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleFullScale, title: "Full range", children: "Full" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "hist-btn", onClick: handleCenterZero, title: "Symmetric around zero: ±max(|vmin|,|vmax|)", children: "±0" })
     ] })
   ] });
 }
@@ -29790,6 +29968,27 @@ function ControlPanel() {
   const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = reactExports.useState(String(state.vmax));
+  const [lightTheme, setLightTheme] = reactExports.useState(false);
+  const [datasetRanges, setDatasetRanges] = reactExports.useState({});
+  reactExports.useEffect(() => {
+    const missing = state.layerMasks.map((m2) => m2.dataset).filter((ds) => ds && !(ds in datasetRanges));
+    const unique = [...new Set(missing)];
+    unique.forEach(async (ds) => {
+      try {
+        const res = await fetch(`/dataset_range/${encodeURIComponent(ds)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setDatasetRanges((prev) => ({ ...prev, [ds]: data }));
+        }
+      } catch {
+      }
+    });
+  }, [state.layerMasks, datasetRanges]);
+  const toggleTheme = () => {
+    const next = !lightTheme;
+    setLightTheme(next);
+    document.documentElement.setAttribute("data-theme", next ? "light" : "dark");
+  };
   reactExports.useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
   reactExports.useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
   reactExports.useEffect(() => {
@@ -29866,6 +30065,7 @@ function ControlPanel() {
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const currentTimeValue = currentDatasetInfo ? currentDatasetInfo.x_values[state.currentTimeIndex] : "";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "menu", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-theme-toggle", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "theme-toggle-btn", onClick: toggleTheme, title: lightTheme ? "Switch to dark theme" : "Switch to light theme", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${lightTheme ? "fa-moon" : "fa-sun"}` }) }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-layer-group" }),
@@ -30020,59 +30220,85 @@ function ControlPanel() {
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-mask" }),
         " Masking"
       ] }),
-      state.layerMasks.map((mask) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "layer-mask-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }, children: [
+      state.layerMasks.map((mask) => {
+        const range = datasetRanges[mask.dataset];
+        const rMin = (range == null ? void 0 : range.p2) ?? (range == null ? void 0 : range.min) ?? 0;
+        const rMax = (range == null ? void 0 : range.p98) ?? (range == null ? void 0 : range.max) ?? 1;
+        const step = rMax - rMin > 0 ? parseFloat(((rMax - rMin) / 200).toPrecision(2)) : 0.01;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "layer-mask-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "select",
+              {
+                className: "sidebar-select",
+                style: { flex: 1, fontSize: "0.78em" },
+                value: mask.dataset,
+                onChange: (e) => {
+                  const ds = e.target.value;
+                  const newRange = datasetRanges[ds];
+                  const defaultThreshold = newRange ? newRange.p2 ?? newRange.min : 0.5;
+                  dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
+                },
+                children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "select",
+              {
+                className: "sidebar-select",
+                style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
+                value: mask.mode,
+                onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: e.target.value } } }),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                className: "hist-btn",
+                style: { color: "var(--sb-red)", padding: "2px 6px", flexShrink: 0 },
+                onClick: () => dispatch({ type: "REMOVE_LAYER_MASK", payload: mask.id }),
+                title: "Remove mask",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: [
+              "Threshold",
+              range ? ` [${rMin.toPrecision(3)}, ${rMax.toPrecision(3)}]` : ""
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "number",
+                style: { width: 72, fontSize: "0.75em", background: "var(--sb-surface2)", border: "1px solid var(--sb-border)", borderRadius: 4, color: "var(--sb-text)", padding: "1px 4px", textAlign: "right" },
+                step,
+                value: parseFloat(mask.threshold.toPrecision(4)),
+                onChange: (e) => {
+                  const v2 = parseFloat(e.target.value);
+                  if (!isNaN(v2)) dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: v2 } } });
+                }
+              }
+            )
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "select",
+            "input",
             {
-              className: "sidebar-select",
-              style: { flex: 1, fontSize: "0.78em" },
-              value: mask.dataset,
-              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: e.target.value } } }),
-              children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "select",
-            {
-              className: "sidebar-select",
-              style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
-              value: mask.mode,
-              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: e.target.value } } }),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              className: "hist-btn",
-              style: { color: "var(--sb-red)", padding: "2px 6px", flexShrink: 0 },
-              onClick: () => dispatch({ type: "REMOVE_LAYER_MASK", payload: mask.id }),
-              title: "Remove mask",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
+              type: "range",
+              className: "sidebar-range",
+              min: rMin,
+              max: rMax,
+              step,
+              value: mask.threshold,
+              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })
             }
           )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: "Threshold (normalised)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: mask.threshold.toFixed(2) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            type: "range",
-            className: "sidebar-range",
-            min: "0",
-            max: "1",
-            step: "0.01",
-            value: mask.threshold,
-            onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })
-          }
-        )
-      ] }, mask.id)),
+        ] }, mask.id);
+      }),
       Object.keys(state.datasetInfo).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
@@ -30080,12 +30306,14 @@ function ControlPanel() {
           style: { width: "100%", marginTop: 4 },
           onClick: () => {
             const firstDataset = Object.keys(state.datasetInfo)[0];
+            const range = datasetRanges[firstDataset];
+            const defaultThreshold = range ? range.p2 ?? range.min : 0.5;
             dispatch({
               type: "ADD_LAYER_MASK",
               payload: {
                 id: `mask_${Date.now()}`,
                 dataset: firstDataset,
-                threshold: 0.5,
+                threshold: defaultThreshold,
                 mode: "min"
               }
             });
@@ -30269,19 +30497,6 @@ function ControlPanel() {
             /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showChart ? "fa-chart-line" : "fa-wave-square"}` }),
             state.showChart ? "Hide" : "Show",
             " Time Series"
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: "chart-toggle-btn",
-          style: { marginTop: 4 },
-          onClick: () => dispatch({ type: "TOGGLE_PROFILE" }),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-chart-area" }),
-            state.showProfile ? "Hide" : "Show",
-            " Profile"
           ]
         }
       ),
@@ -33996,6 +34211,18 @@ adapters._date.override({
     }
   }
 });
+function cssVar(name, fallback) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+function useThemeVersion() {
+  const [v2, setV] = reactExports.useState(0);
+  reactExports.useEffect(() => {
+    const obs = new MutationObserver(() => setV((n2) => n2 + 1));
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => obs.disconnect();
+  }, []);
+  return v2;
+}
 Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend);
 function toIsoDate(xVal) {
   const dateStr = xVal.includes("_") ? xVal.split("_").pop() : xVal;
@@ -34007,6 +34234,7 @@ function toIsoDate(xVal) {
 function TimeSeriesChart() {
   const { state, dispatch } = useAppContext();
   const { fetchMultiPointTimeSeries, fetchBufferTimeSeries } = useApi();
+  const themeVersion = useThemeVersion();
   const [chartData, setChartData] = reactExports.useState(null);
   const [bufferData, setBufferData] = reactExports.useState({});
   const [isLoading, setIsLoading] = reactExports.useState(false);
@@ -34185,74 +34413,80 @@ function TimeSeriesChart() {
     link.click();
     document.body.removeChild(link);
   }, [chartData, state.showTrends, state.currentDataset]);
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 300 },
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: {
-        display: true,
-        position: "top",
-        labels: {
-          usePointStyle: true,
-          padding: 16,
-          color: "#ffffff",
-          generateLabels: (chart) => {
-            if (!(chartData == null ? void 0 : chartData.datasets)) return [];
-            return chart.data.datasets.map((ds, index) => ({ ds, index })).filter(
-              ({ ds }) => !ds.label.endsWith(" trend") && !ds.label.endsWith(" residual") && !ds.label.includes(" sample ") && !ds.label.endsWith(" median")
-            ).map(({ ds, index }) => {
-              var _a2, _b2;
-              return {
-                text: ds.label + (ds.label && ((_b2 = (_a2 = chartData.datasets.find((d) => d.label === ds.label)) == null ? void 0 : _a2.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 ? ` (${chartData.datasets.find((d) => d.label === ds.label).trend.mmPerYear.toFixed(1)} mm/yr)` : ""),
-                pointStyle: "circle",
-                fillStyle: ds.borderColor,
-                strokeStyle: ds.borderColor,
-                lineWidth: 2,
-                datasetIndex: index
-              };
-            });
-          }
-        }
-      },
-      tooltip: {
-        callbacks: {
-          title: (context) => {
-            var _a2;
-            return `${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
-          },
-          label: (context) => {
-            var _a2, _b2;
-            const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
-            if (!dataset) return "";
-            let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
-            if (((_b2 = dataset.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 && state.showTrends) {
-              label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
+  const chartOptions = reactExports.useMemo(() => {
+    const textColor = cssVar("--sb-text", "#dde0f0");
+    const mutedColor = cssVar("--sb-muted", "#7880a8");
+    const gridColor = cssVar("--sb-border", "#2c2f4a");
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 300 },
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: "top",
+          labels: {
+            usePointStyle: true,
+            padding: 16,
+            color: textColor,
+            generateLabels: (chart) => {
+              if (!(chartData == null ? void 0 : chartData.datasets)) return [];
+              return chart.data.datasets.map((ds, index) => ({ ds, index })).filter(
+                ({ ds }) => !ds.label.endsWith(" trend") && !ds.label.endsWith(" residual") && !ds.label.includes(" sample ") && !ds.label.endsWith(" median")
+              ).map(({ ds, index }) => {
+                var _a2, _b2;
+                return {
+                  text: ds.label + (ds.label && ((_b2 = (_a2 = chartData.datasets.find((d) => d.label === ds.label)) == null ? void 0 : _a2.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 ? ` (${chartData.datasets.find((d) => d.label === ds.label).trend.mmPerYear.toFixed(1)} mm/yr)` : ""),
+                  pointStyle: "circle",
+                  fillStyle: ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  fontColor: textColor,
+                  lineWidth: 2,
+                  datasetIndex: index
+                };
+              });
             }
-            return label;
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: (context) => {
+              var _a2;
+              return `${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
+            },
+            label: (context) => {
+              var _a2, _b2;
+              const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
+              if (!dataset) return "";
+              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
+              if (((_b2 = dataset.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 && state.showTrends) {
+                label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
+              }
+              return label;
+            }
           }
         }
-      }
-    },
-    scales: {
-      x: {
-        type: "time",
-        time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
-        title: { display: true, text: "Date" },
-        grid: { color: "rgba(255,255,255,0.1)" },
-        ticks: { color: "#aaa" }
       },
-      y: {
-        title: { display: true, text: "Displacement (m)" },
-        suggestedMin: state.vmin,
-        suggestedMax: state.vmax,
-        grid: { color: "rgba(255,255,255,0.1)" },
-        ticks: { color: "#aaa" }
-      }
-    },
-    onClick: handleChartClick
-  };
+      scales: {
+        x: {
+          type: "time",
+          time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
+          title: { display: true, text: "Date", color: mutedColor },
+          grid: { color: gridColor },
+          ticks: { color: mutedColor }
+        },
+        y: {
+          title: { display: true, text: "Displacement (m)", color: mutedColor },
+          suggestedMin: state.vmin,
+          suggestedMax: state.vmax,
+          grid: { color: gridColor },
+          ticks: { color: mutedColor }
+        }
+      },
+      onClick: handleChartClick
+    };
+  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, handleChartClick]);
   if (!state.showChart) return null;
   if (state.timeSeriesPoints.length === 0) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-placeholder", children: [

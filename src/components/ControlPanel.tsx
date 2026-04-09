@@ -26,6 +26,32 @@ export default function ControlPanel() {
   const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = useState(String(state.vmax));
+  const [lightTheme, setLightTheme] = useState(false);
+  // dataset range cache: { [datasetName]: { min, max, p2, p98 } }
+  const [datasetRanges, setDatasetRanges] = useState<Record<string, { min: number; max: number; p2: number; p98: number }>>({});
+
+  // Fetch range for any mask dataset not yet in cache
+  useEffect(() => {
+    const missing = state.layerMasks
+      .map(m => m.dataset)
+      .filter(ds => ds && !(ds in datasetRanges));
+    const unique = [...new Set(missing)];
+    unique.forEach(async ds => {
+      try {
+        const res = await fetch(`/dataset_range/${encodeURIComponent(ds)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setDatasetRanges(prev => ({ ...prev, [ds]: data }));
+        }
+      } catch { /* ignore */ }
+    });
+  }, [state.layerMasks, datasetRanges]);
+
+  const toggleTheme = () => {
+    const next = !lightTheme;
+    setLightTheme(next);
+    document.documentElement.setAttribute('data-theme', next ? 'light' : 'dark');
+  };
 
   useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
   useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
@@ -119,6 +145,11 @@ export default function ControlPanel() {
 
   return (
     <div id="menu">
+      <div className="sidebar-theme-toggle">
+        <button className="theme-toggle-btn" onClick={toggleTheme} title={lightTheme ? 'Switch to dark theme' : 'Switch to light theme'}>
+          <i className={`fa-solid ${lightTheme ? 'fa-moon' : 'fa-sun'}`}></i>
+        </button>
+      </div>
       {/* ── LAYERS ── */}
       <div className="sidebar-section">
         <div className="sidebar-section-label">
@@ -259,47 +290,69 @@ export default function ControlPanel() {
         </div>
 
         {/* Layer masks list */}
-        {state.layerMasks.map(mask => (
-          <div key={mask.id} className="layer-mask-row">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-              <select
-                className="sidebar-select"
-                style={{ flex: 1, fontSize: '0.78em' }}
-                value={mask.dataset}
-                onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { dataset: e.target.value } } })}
-              >
-                {Object.keys(state.datasetInfo).map(name => (
-                  <option key={name} value={name}>{name}</option>
-                ))}
-              </select>
-              <select
-                className="sidebar-select"
-                style={{ width: 56, fontSize: '0.78em', padding: '2px 4px' }}
-                value={mask.mode}
-                onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { mode: e.target.value as 'min' | 'max' } } })}
-              >
-                <option value="min">≥</option>
-                <option value="max">≤</option>
-              </select>
-              <button
-                className="hist-btn"
-                style={{ color: 'var(--sb-red)', padding: '2px 6px', flexShrink: 0 }}
-                onClick={() => dispatch({ type: 'REMOVE_LAYER_MASK', payload: mask.id })}
-                title="Remove mask"
-              ><i className="fa-solid fa-xmark"></i></button>
+        {state.layerMasks.map(mask => {
+          const range = datasetRanges[mask.dataset];
+          const rMin = range?.p2  ?? range?.min ?? 0;
+          const rMax = range?.p98 ?? range?.max ?? 1;
+          const step = rMax - rMin > 0 ? parseFloat(((rMax - rMin) / 200).toPrecision(2)) : 0.01;
+          return (
+            <div key={mask.id} className="layer-mask-row">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                <select
+                  className="sidebar-select"
+                  style={{ flex: 1, fontSize: '0.78em' }}
+                  value={mask.dataset}
+                  onChange={e => {
+                    const ds = e.target.value;
+                    const newRange = datasetRanges[ds];
+                    const defaultThreshold = newRange ? newRange.p2 ?? newRange.min : 0.5;
+                    dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
+                  }}
+                >
+                  {Object.keys(state.datasetInfo).map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                <select
+                  className="sidebar-select"
+                  style={{ width: 56, fontSize: '0.78em', padding: '2px 4px' }}
+                  value={mask.mode}
+                  onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { mode: e.target.value as 'min' | 'max' } } })}
+                >
+                  <option value="min">≥</option>
+                  <option value="max">≤</option>
+                </select>
+                <button
+                  className="hist-btn"
+                  style={{ color: 'var(--sb-red)', padding: '2px 6px', flexShrink: 0 }}
+                  onClick={() => dispatch({ type: 'REMOVE_LAYER_MASK', payload: mask.id })}
+                  title="Remove mask"
+                ><i className="fa-solid fa-xmark"></i></button>
+              </div>
+              <div className="slider-label">
+                <span style={{ fontSize: '0.75em', color: 'var(--sb-muted)' }}>
+                  Threshold{range ? ` [${rMin.toPrecision(3)}, ${rMax.toPrecision(3)}]` : ''}
+                </span>
+                <input
+                  type="number"
+                  style={{ width: 72, fontSize: '0.75em', background: 'var(--sb-surface2)', border: '1px solid var(--sb-border)', borderRadius: 4, color: 'var(--sb-text)', padding: '1px 4px', textAlign: 'right' }}
+                  step={step}
+                  value={parseFloat(mask.threshold.toPrecision(4))}
+                  onChange={e => {
+                    const v = parseFloat(e.target.value);
+                    if (!isNaN(v)) dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { threshold: v } } });
+                  }}
+                />
+              </div>
+              <input
+                type="range" className="sidebar-range"
+                min={rMin} max={rMax} step={step}
+                value={mask.threshold}
+                onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })}
+              />
             </div>
-            <div className="slider-label">
-              <span style={{ fontSize: '0.75em', color: 'var(--sb-muted)' }}>Threshold (normalised)</span>
-              <span className="slider-value">{mask.threshold.toFixed(2)}</span>
-            </div>
-            <input
-              type="range" className="sidebar-range"
-              min="0" max="1" step="0.01"
-              value={mask.threshold}
-              onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })}
-            />
-          </div>
-        ))}
+          );
+        })}
 
         {/* Add mask button */}
         {Object.keys(state.datasetInfo).length > 0 && (
@@ -308,12 +361,14 @@ export default function ControlPanel() {
             style={{ width: '100%', marginTop: 4 }}
             onClick={() => {
               const firstDataset = Object.keys(state.datasetInfo)[0];
+              const range = datasetRanges[firstDataset];
+              const defaultThreshold = range ? (range.p2 ?? range.min) : 0.5;
               dispatch({
                 type: 'ADD_LAYER_MASK',
                 payload: {
                   id: `mask_${Date.now()}`,
                   dataset: firstDataset,
-                  threshold: 0.5,
+                  threshold: defaultThreshold,
                   mode: 'min',
                 },
               });
@@ -464,14 +519,6 @@ export default function ControlPanel() {
         >
           <i className={`fa-solid ${state.showChart ? 'fa-chart-line' : 'fa-wave-square'}`}></i>
           {state.showChart ? 'Hide' : 'Show'} Time Series
-        </button>
-        <button
-          className="chart-toggle-btn"
-          style={{ marginTop: 4 }}
-          onClick={() => dispatch({ type: 'TOGGLE_PROFILE' })}
-        >
-          <i className="fa-solid fa-chart-area"></i>
-          {state.showProfile ? 'Hide' : 'Show'} Profile
         </button>
         {state.refBufferEnabled && (
           <button
