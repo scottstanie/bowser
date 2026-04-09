@@ -463,12 +463,18 @@ def _find_available_port(port_request: int = 8000):
 def prepare_disp_s1(input_files, output_dir, corrections: bool):
     """Process NetCDF files to create VRT files with overviews.
 
-    INPUT_FILES: Paths to input NetCDF files.
+    INPUT_FILES: Paths to input NetCDF files or directories containing .nc files.
     """
     from bowser._prepare_disp_s1 import CORE_DATASETS, CORRECTION_DATASETS
     from bowser._prepare_utils import process_netcdf_files
 
-    input_paths = list(input_files)
+    input_paths = []
+    for f in input_files:
+        p = Path(f)
+        if p.is_dir():
+            input_paths.extend(sorted(p.glob("*.nc")))
+        else:
+            input_paths.append(p)
 
     datasets_to_process = (
         CORE_DATASETS + CORRECTION_DATASETS if corrections else CORE_DATASETS
