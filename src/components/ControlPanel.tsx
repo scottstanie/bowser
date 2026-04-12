@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { baseMaps } from '../basemap';
 import { useApi } from '../hooks/useApi';
@@ -21,12 +21,14 @@ const colormapOptions = [
   { value: 'jet', label: 'Jet' },
 ];
 
-export default function ControlPanel() {
+export default function ControlPanel({ title }: { title: string }) {
   const { state, dispatch } = useAppContext();
   const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = useState(String(state.vmax));
   const [lightTheme, setLightTheme] = useState(false);
+  const [draftRefLat, setDraftRefLat] = useState(String(state.refMarkerPosition[0]));
+  const [draftRefLon, setDraftRefLon] = useState(String(state.refMarkerPosition[1]));
   // dataset range cache: { [datasetName]: { min, max, p2, p98 } }
   const [datasetRanges, setDatasetRanges] = useState<Record<string, { min: number; max: number; p2: number; p98: number }>>({});
 
@@ -55,6 +57,10 @@ export default function ControlPanel() {
 
   useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
   useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
+  useEffect(() => {
+    setDraftRefLat(state.refMarkerPosition[0].toFixed(6));
+    setDraftRefLon(state.refMarkerPosition[1].toFixed(6));
+  }, [state.refMarkerPosition]);
 
   useEffect(() => {
     const datasetName = state.currentDataset;
@@ -138,10 +144,34 @@ export default function ControlPanel() {
     }
   };
 
+  const commitRefPosition = useCallback(() => {
+    const lat = parseFloat(draftRefLat);
+    const lon = parseFloat(draftRefLon);
+    if (isNaN(lat) || isNaN(lon)) return;
+    dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [lat, lon] });
+    const ds = state.currentDataset;
+    if (ds && state.datasetInfo[ds]?.uses_spatial_ref) setRefValues(ds);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftRefLat, draftRefLon, state.currentDataset, state.datasetInfo, dispatch]);
+
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const currentTimeValue = currentDatasetInfo
     ? currentDatasetInfo.x_values[state.currentTimeIndex]
     : '';
+
+  // Animation: auto-advance time index (lives here so it works regardless of chart visibility)
+  const nTimes = currentDatasetInfo?.x_values?.length ?? 0;
+  const timeIndexRef = useRef(state.currentTimeIndex);
+  timeIndexRef.current = state.currentTimeIndex;
+  const nTimesRef = useRef(nTimes);
+  nTimesRef.current = nTimes;
+  useEffect(() => {
+    if (!state.isPlaying || nTimes === 0) return;
+    const id = setInterval(() => {
+      dispatch({ type: 'SET_TIME_INDEX', payload: (timeIndexRef.current + 1) % nTimesRef.current });
+    }, state.animationSpeed);
+    return () => clearInterval(id);
+  }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
 
   return (
     <div id="menu">
@@ -150,6 +180,7 @@ export default function ControlPanel() {
           <i className={`fa-solid ${lightTheme ? 'fa-moon' : 'fa-sun'}`}></i>
         </button>
       </div>
+      {title && <div className="sidebar-title">{title}</div>}
       {/* ── LAYERS ── */}
       <div className="sidebar-section">
         <div className="sidebar-section-label">
@@ -180,6 +211,32 @@ export default function ControlPanel() {
               value={state.currentTimeIndex}
               onChange={e => dispatch({ type: 'SET_TIME_INDEX', payload: parseInt(e.target.value) })}
             />
+            {currentDatasetInfo.x_values.length > 1 && (
+              <div className="anim-controls">
+                <button
+                  className={`toggle-pill anim-play-btn${state.isPlaying ? ' active' : ''}`}
+                  onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
+                  title={state.isPlaying ? 'Pause animation' : 'Play animation'}
+                >
+                  <i className={`fa-solid ${state.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
+                  {state.isPlaying ? 'Pause' : 'Play'}
+                </button>
+                <div className="slider-label" style={{ marginTop: 4 }}>
+                  <span>Speed</span>
+                  <span className="slider-value">{(1000 / state.animationSpeed).toFixed(1)}×</span>
+                </div>
+                <input
+                  type="range"
+                  className="sidebar-range"
+                  min="100"
+                  max="2000"
+                  step="100"
+                  value={2100 - state.animationSpeed}
+                  onChange={e => dispatch({ type: 'SET_ANIMATION_SPEED', payload: 2100 - parseInt(e.target.value) })}
+                  title="Animation speed"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -305,7 +362,10 @@ export default function ControlPanel() {
                   onChange={e => {
                     const ds = e.target.value;
                     const newRange = datasetRanges[ds];
-                    const defaultThreshold = newRange ? newRange.p2 ?? newRange.min : 0.5;
+                    // For ≥ mode default to p2 (keep above low end); for ≤ mode default to p98 (keep below high end)
+                    const defaultThreshold = newRange
+                      ? (mask.mode === 'max' ? (newRange.p98 ?? newRange.max) : (newRange.p2 ?? newRange.min)) ?? 0.5
+                      : 0.5;
                     dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
                   }}
                 >
@@ -317,7 +377,16 @@ export default function ControlPanel() {
                   className="sidebar-select"
                   style={{ width: 56, fontSize: '0.78em', padding: '2px 4px' }}
                   value={mask.mode}
-                  onChange={e => dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { mode: e.target.value as 'min' | 'max' } } })}
+                  onChange={e => {
+                    const newMode = e.target.value as 'min' | 'max';
+                    const r = datasetRanges[mask.dataset];
+                    // Reset threshold to a sensible default for the new mode:
+                    // ≥ (min) → p2 (low end, keep everything above); ≤ (max) → p98 (high end, keep everything below)
+                    const newThreshold = r
+                      ? (newMode === 'max' ? (r.p98 ?? r.max) : (r.p2 ?? r.min)) ?? mask.threshold
+                      : mask.threshold;
+                    dispatch({ type: 'UPDATE_LAYER_MASK', payload: { id: mask.id, updates: { mode: newMode, threshold: newThreshold } } });
+                  }}
                 >
                   <option value="min">≥</option>
                   <option value="max">≤</option>
@@ -464,9 +533,35 @@ export default function ControlPanel() {
       {/* ── REFERENCE POINT BUFFER ── */}
       <div className="sidebar-section">
         <div className="sidebar-section-label">
-          <i className="fa-solid fa-crosshairs"></i> Reference Buffer
+          <i className="fa-solid fa-crosshairs"></i> Reference Point
         </div>
-        <div className="toggle-row">
+        <div className="minmax-row">
+          <div className="minmax-field">
+            <label className="minmax-label">Lat</label>
+            <input
+              className="sidebar-input"
+              type="text"
+              inputMode="decimal"
+              value={draftRefLat}
+              onChange={e => setDraftRefLat(e.target.value)}
+              onBlur={commitRefPosition}
+              onKeyDown={e => e.key === 'Enter' && commitRefPosition()}
+            />
+          </div>
+          <div className="minmax-field">
+            <label className="minmax-label">Lon</label>
+            <input
+              className="sidebar-input"
+              type="text"
+              inputMode="decimal"
+              value={draftRefLon}
+              onChange={e => setDraftRefLon(e.target.value)}
+              onBlur={commitRefPosition}
+              onKeyDown={e => e.key === 'Enter' && commitRefPosition()}
+            />
+          </div>
+        </div>
+        <div className="toggle-row" style={{ marginTop: 6 }}>
           <span style={{ fontSize: '0.82em', color: 'var(--sb-muted)' }}>Sample around ref marker</span>
           <button
             className={`toggle-pill${state.refBufferEnabled ? ' active' : ''}`}

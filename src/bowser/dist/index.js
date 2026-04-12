@@ -7049,11 +7049,13 @@ const initialState = {
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  pickingEnabled: true,
+  pickingEnabled: false,
   refEnabled: true,
   refBufferEnabled: false,
   refBufferRadius: 500,
-  showRefChart: false
+  showRefChart: false,
+  isPlaying: false,
+  animationSpeed: 500
 };
 function appReducer(state, action) {
   switch (action.type) {
@@ -7206,6 +7208,12 @@ function appReducer(state, action) {
       return { ...state, refBufferRadius: action.payload };
     case "TOGGLE_REF_CHART":
       return { ...state, showRefChart: !state.showRefChart };
+    case "TOGGLE_PLAYING":
+      return { ...state, isPlaying: !state.isPlaying };
+    case "SET_PLAYING":
+      return { ...state, isPlaying: action.payload };
+    case "SET_ANIMATION_SPEED":
+      return { ...state, animationSpeed: action.payload };
     case "TOGGLE_CHART":
       return { ...state, showChart: !state.showChart };
     default:
@@ -7233,6 +7241,10 @@ function useApi() {
     const response = await fetch("/mode");
     const data = await response.json();
     return data.mode;
+  }, []);
+  const fetchConfig = reactExports.useCallback(async () => {
+    const response = await fetch("/config");
+    return await response.json();
   }, []);
   const fetchPointTimeSeries = reactExports.useCallback(async (lon, lat, datasetName) => {
     const params = new URLSearchParams({
@@ -7345,6 +7357,7 @@ function useApi() {
   return {
     fetchDatasets,
     fetchDataMode,
+    fetchConfig,
     fetchPointTimeSeries,
     fetchChartTimeSeries,
     fetchMultiPointTimeSeries,
@@ -8450,15 +8463,15 @@ var leafletSrc = { exports: {} };
     var CRS = {
       // @method latLngToPoint(latlng: LatLng, zoom: Number): Point
       // Projects geographical coordinates into pixel coordinates for a given zoom.
-      latLngToPoint: function(latlng, zoom2) {
-        var projectedPoint = this.projection.project(latlng), scale2 = this.scale(zoom2);
+      latLngToPoint: function(latlng, zoom3) {
+        var projectedPoint = this.projection.project(latlng), scale2 = this.scale(zoom3);
         return this.transformation._transform(projectedPoint, scale2);
       },
       // @method pointToLatLng(point: Point, zoom: Number): LatLng
       // The inverse of `latLngToPoint`. Projects pixel coordinates on a given
       // zoom into geographical coordinates.
-      pointToLatLng: function(point, zoom2) {
-        var scale2 = this.scale(zoom2), untransformedPoint = this.transformation.untransform(point, scale2);
+      pointToLatLng: function(point, zoom3) {
+        var scale2 = this.scale(zoom3), untransformedPoint = this.transformation.untransform(point, scale2);
         return this.projection.unproject(untransformedPoint);
       },
       // @method project(latlng: LatLng): Point
@@ -8477,8 +8490,8 @@ var leafletSrc = { exports: {} };
       // Returns the scale used when transforming projected coordinates into
       // pixel coordinates for a particular zoom. For example, it returns
       // `256 * 2^zoom` for Mercator-based CRS.
-      scale: function(zoom2) {
-        return 256 * Math.pow(2, zoom2);
+      scale: function(zoom3) {
+        return 256 * Math.pow(2, zoom3);
       },
       // @method zoom(scale: Number): Number
       // Inverse of `scale()`, returns the zoom level corresponding to a scale
@@ -8488,11 +8501,11 @@ var leafletSrc = { exports: {} };
       },
       // @method getProjectedBounds(zoom: Number): Bounds
       // Returns the projection's bounds scaled and transformed for the provided `zoom`.
-      getProjectedBounds: function(zoom2) {
+      getProjectedBounds: function(zoom3) {
         if (this.infinite) {
           return null;
         }
-        var b = this.projection.bounds, s = this.scale(zoom2), min = this.transformation.transform(b.min, s), max = this.transformation.transform(b.max, s);
+        var b = this.projection.bounds, s = this.scale(zoom3), min = this.transformation.transform(b.min, s), max = this.transformation.transform(b.max, s);
         return new Bounds(min, max);
       },
       // @method distance(latlng1: LatLng, latlng2: LatLng): Number
@@ -9488,9 +9501,9 @@ var leafletSrc = { exports: {} };
       // @method setView(center: LatLng, zoom: Number, options?: Zoom/pan options): this
       // Sets the view of the map (geographical center and zoom) with the given
       // animation options.
-      setView: function(center, zoom2, options) {
-        zoom2 = zoom2 === void 0 ? this._zoom : this._limitZoom(zoom2);
-        center = this._limitCenter(toLatLng(center), zoom2, this.options.maxBounds);
+      setView: function(center, zoom3, options) {
+        zoom3 = zoom3 === void 0 ? this._zoom : this._limitZoom(zoom3);
+        center = this._limitCenter(toLatLng(center), zoom3, this.options.maxBounds);
         options = options || {};
         this._stop();
         if (this._loaded && !options.reset && options !== true) {
@@ -9498,23 +9511,23 @@ var leafletSrc = { exports: {} };
             options.zoom = extend({ animate: options.animate }, options.zoom);
             options.pan = extend({ animate: options.animate, duration: options.duration }, options.pan);
           }
-          var moved = this._zoom !== zoom2 ? this._tryAnimatedZoom && this._tryAnimatedZoom(center, zoom2, options.zoom) : this._tryAnimatedPan(center, options.pan);
+          var moved = this._zoom !== zoom3 ? this._tryAnimatedZoom && this._tryAnimatedZoom(center, zoom3, options.zoom) : this._tryAnimatedPan(center, options.pan);
           if (moved) {
             clearTimeout(this._sizeTimer);
             return this;
           }
         }
-        this._resetView(center, zoom2, options.pan && options.pan.noMoveStart);
+        this._resetView(center, zoom3, options.pan && options.pan.noMoveStart);
         return this;
       },
       // @method setZoom(zoom: Number, options?: Zoom/pan options): this
       // Sets the zoom of the map.
-      setZoom: function(zoom2, options) {
+      setZoom: function(zoom3, options) {
         if (!this._loaded) {
-          this._zoom = zoom2;
+          this._zoom = zoom3;
           return this;
         }
-        return this.setView(this.getCenter(), zoom2, { zoom: options });
+        return this.setView(this.getCenter(), zoom3, { zoom: options });
       },
       // @method zoomIn(delta?: Number, options?: Zoom options): this
       // Increases the zoom of the map by `delta` ([`zoomDelta`](#map-zoomdelta) by default).
@@ -9534,25 +9547,25 @@ var leafletSrc = { exports: {} };
       // @alternative
       // @method setZoomAround(offset: Point, zoom: Number, options: Zoom options): this
       // Zooms the map while keeping a specified pixel on the map (relative to the top-left corner) stationary.
-      setZoomAround: function(latlng, zoom2, options) {
-        var scale2 = this.getZoomScale(zoom2), viewHalf = this.getSize().divideBy(2), containerPoint = latlng instanceof Point ? latlng : this.latLngToContainerPoint(latlng), centerOffset = containerPoint.subtract(viewHalf).multiplyBy(1 - 1 / scale2), newCenter = this.containerPointToLatLng(viewHalf.add(centerOffset));
-        return this.setView(newCenter, zoom2, { zoom: options });
+      setZoomAround: function(latlng, zoom3, options) {
+        var scale2 = this.getZoomScale(zoom3), viewHalf = this.getSize().divideBy(2), containerPoint = latlng instanceof Point ? latlng : this.latLngToContainerPoint(latlng), centerOffset = containerPoint.subtract(viewHalf).multiplyBy(1 - 1 / scale2), newCenter = this.containerPointToLatLng(viewHalf.add(centerOffset));
+        return this.setView(newCenter, zoom3, { zoom: options });
       },
       _getBoundsCenterZoom: function(bounds, options) {
         options = options || {};
         bounds = bounds.getBounds ? bounds.getBounds() : toLatLngBounds(bounds);
-        var paddingTL = toPoint(options.paddingTopLeft || options.padding || [0, 0]), paddingBR = toPoint(options.paddingBottomRight || options.padding || [0, 0]), zoom2 = this.getBoundsZoom(bounds, false, paddingTL.add(paddingBR));
-        zoom2 = typeof options.maxZoom === "number" ? Math.min(options.maxZoom, zoom2) : zoom2;
-        if (zoom2 === Infinity) {
+        var paddingTL = toPoint(options.paddingTopLeft || options.padding || [0, 0]), paddingBR = toPoint(options.paddingBottomRight || options.padding || [0, 0]), zoom3 = this.getBoundsZoom(bounds, false, paddingTL.add(paddingBR));
+        zoom3 = typeof options.maxZoom === "number" ? Math.min(options.maxZoom, zoom3) : zoom3;
+        if (zoom3 === Infinity) {
           return {
             center: bounds.getCenter(),
-            zoom: zoom2
+            zoom: zoom3
           };
         }
-        var paddingOffset = paddingBR.subtract(paddingTL).divideBy(2), swPoint = this.project(bounds.getSouthWest(), zoom2), nePoint = this.project(bounds.getNorthEast(), zoom2), center = this.unproject(swPoint.add(nePoint).divideBy(2).add(paddingOffset), zoom2);
+        var paddingOffset = paddingBR.subtract(paddingTL).divideBy(2), swPoint = this.project(bounds.getSouthWest(), zoom3), nePoint = this.project(bounds.getNorthEast(), zoom3), center = this.unproject(swPoint.add(nePoint).divideBy(2).add(paddingOffset), zoom3);
         return {
           center,
-          zoom: zoom2
+          zoom: zoom3
         };
       },
       // @method fitBounds(bounds: LatLngBounds, options?: fitBounds options): this
@@ -9690,26 +9703,26 @@ var leafletSrc = { exports: {} };
       },
       // @method setMinZoom(zoom: Number): this
       // Sets the lower limit for the available zoom levels (see the [minZoom](#map-minzoom) option).
-      setMinZoom: function(zoom2) {
+      setMinZoom: function(zoom3) {
         var oldZoom = this.options.minZoom;
-        this.options.minZoom = zoom2;
-        if (this._loaded && oldZoom !== zoom2) {
+        this.options.minZoom = zoom3;
+        if (this._loaded && oldZoom !== zoom3) {
           this.fire("zoomlevelschange");
           if (this.getZoom() < this.options.minZoom) {
-            return this.setZoom(zoom2);
+            return this.setZoom(zoom3);
           }
         }
         return this;
       },
       // @method setMaxZoom(zoom: Number): this
       // Sets the upper limit for the available zoom levels (see the [maxZoom](#map-maxzoom) option).
-      setMaxZoom: function(zoom2) {
+      setMaxZoom: function(zoom3) {
         var oldZoom = this.options.maxZoom;
-        this.options.maxZoom = zoom2;
-        if (this._loaded && oldZoom !== zoom2) {
+        this.options.maxZoom = zoom3;
+        if (this._loaded && oldZoom !== zoom3) {
           this.fire("zoomlevelschange");
           if (this.getZoom() > this.options.maxZoom) {
-            return this.setZoom(zoom2);
+            return this.setZoom(zoom3);
           }
         }
         return this;
@@ -9865,8 +9878,8 @@ var leafletSrc = { exports: {} };
         }
         var lat = pos.coords.latitude, lng = pos.coords.longitude, latlng = new LatLng(lat, lng), bounds = latlng.toBounds(pos.coords.accuracy * 2), options = this._locateOptions;
         if (options.setView) {
-          var zoom2 = this.getBoundsZoom(bounds);
-          this.setView(latlng, options.maxZoom ? Math.min(zoom2, options.maxZoom) : zoom2);
+          var zoom3 = this.getBoundsZoom(bounds);
+          this.setView(latlng, options.maxZoom ? Math.min(zoom3, options.maxZoom) : zoom3);
         }
         var data = {
           latlng,
@@ -9992,13 +10005,13 @@ var leafletSrc = { exports: {} };
       getBoundsZoom: function(bounds, inside, padding) {
         bounds = toLatLngBounds(bounds);
         padding = toPoint(padding || [0, 0]);
-        var zoom2 = this.getZoom() || 0, min = this.getMinZoom(), max = this.getMaxZoom(), nw = bounds.getNorthWest(), se2 = bounds.getSouthEast(), size = this.getSize().subtract(padding), boundsSize = toBounds(this.project(se2, zoom2), this.project(nw, zoom2)).getSize(), snap = Browser.any3d ? this.options.zoomSnap : 1, scalex = size.x / boundsSize.x, scaley = size.y / boundsSize.y, scale2 = inside ? Math.max(scalex, scaley) : Math.min(scalex, scaley);
-        zoom2 = this.getScaleZoom(scale2, zoom2);
+        var zoom3 = this.getZoom() || 0, min = this.getMinZoom(), max = this.getMaxZoom(), nw = bounds.getNorthWest(), se2 = bounds.getSouthEast(), size = this.getSize().subtract(padding), boundsSize = toBounds(this.project(se2, zoom3), this.project(nw, zoom3)).getSize(), snap = Browser.any3d ? this.options.zoomSnap : 1, scalex = size.x / boundsSize.x, scaley = size.y / boundsSize.y, scale2 = inside ? Math.max(scalex, scaley) : Math.min(scalex, scaley);
+        zoom3 = this.getScaleZoom(scale2, zoom3);
         if (snap) {
-          zoom2 = Math.round(zoom2 / (snap / 100)) * (snap / 100);
-          zoom2 = inside ? Math.ceil(zoom2 / snap) * snap : Math.floor(zoom2 / snap) * snap;
+          zoom3 = Math.round(zoom3 / (snap / 100)) * (snap / 100);
+          zoom3 = inside ? Math.ceil(zoom3 / snap) * snap : Math.floor(zoom3 / snap) * snap;
         }
-        return Math.max(min, Math.min(max, zoom2));
+        return Math.max(min, Math.min(max, zoom3));
       },
       // @method getSize(): Point
       // Returns the current size of the map container (in pixels).
@@ -10015,8 +10028,8 @@ var leafletSrc = { exports: {} };
       // @method getPixelBounds(): Bounds
       // Returns the bounds of the current map view in projected pixel
       // coordinates (sometimes useful in layer and overlay implementations).
-      getPixelBounds: function(center, zoom2) {
-        var topLeftPoint = this._getTopLeftPoint(center, zoom2);
+      getPixelBounds: function(center, zoom3) {
+        var topLeftPoint = this._getTopLeftPoint(center, zoom3);
         return new Bounds(topLeftPoint, topLeftPoint.add(this.getSize()));
       },
       // TODO: Check semantics - isn't the pixel origin the 0,0 coord relative to
@@ -10032,8 +10045,8 @@ var leafletSrc = { exports: {} };
       // @method getPixelWorldBounds(zoom?: Number): Bounds
       // Returns the world's bounds in pixel coordinates for zoom level `zoom`.
       // If `zoom` is omitted, the map's current zoom level is used.
-      getPixelWorldBounds: function(zoom2) {
-        return this.options.crs.getProjectedBounds(zoom2 === void 0 ? this.getZoom() : zoom2);
+      getPixelWorldBounds: function(zoom3) {
+        return this.options.crs.getProjectedBounds(zoom3 === void 0 ? this.getZoom() : zoom3);
       },
       // @section Other Methods
       // @method getPane(pane: String|HTMLElement): HTMLElement
@@ -10068,23 +10081,23 @@ var leafletSrc = { exports: {} };
       getScaleZoom: function(scale2, fromZoom) {
         var crs = this.options.crs;
         fromZoom = fromZoom === void 0 ? this._zoom : fromZoom;
-        var zoom2 = crs.zoom(scale2 * crs.scale(fromZoom));
-        return isNaN(zoom2) ? Infinity : zoom2;
+        var zoom3 = crs.zoom(scale2 * crs.scale(fromZoom));
+        return isNaN(zoom3) ? Infinity : zoom3;
       },
       // @method project(latlng: LatLng, zoom: Number): Point
       // Projects a geographical coordinate `LatLng` according to the projection
       // of the map's CRS, then scales it according to `zoom` and the CRS's
       // `Transformation`. The result is pixel coordinate relative to
       // the CRS origin.
-      project: function(latlng, zoom2) {
-        zoom2 = zoom2 === void 0 ? this._zoom : zoom2;
-        return this.options.crs.latLngToPoint(toLatLng(latlng), zoom2);
+      project: function(latlng, zoom3) {
+        zoom3 = zoom3 === void 0 ? this._zoom : zoom3;
+        return this.options.crs.latLngToPoint(toLatLng(latlng), zoom3);
       },
       // @method unproject(point: Point, zoom: Number): LatLng
       // Inverse of [`project`](#map-project).
-      unproject: function(point, zoom2) {
-        zoom2 = zoom2 === void 0 ? this._zoom : zoom2;
-        return this.options.crs.pointToLatLng(toPoint(point), zoom2);
+      unproject: function(point, zoom3) {
+        zoom3 = zoom3 === void 0 ? this._zoom : zoom3;
+        return this.options.crs.pointToLatLng(toPoint(point), zoom3);
       },
       // @method layerPointToLatLng(point: Point): LatLng
       // Given a pixel coordinate relative to the [origin pixel](#map-getpixelorigin),
@@ -10209,14 +10222,14 @@ var leafletSrc = { exports: {} };
       },
       // private methods that modify map state
       // @section Map state change events
-      _resetView: function(center, zoom2, noMoveStart) {
+      _resetView: function(center, zoom3, noMoveStart) {
         setPosition(this._mapPane, new Point(0, 0));
         var loading = !this._loaded;
         this._loaded = true;
-        zoom2 = this._limitZoom(zoom2);
+        zoom3 = this._limitZoom(zoom3);
         this.fire("viewprereset");
-        var zoomChanged = this._zoom !== zoom2;
-        this._moveStart(zoomChanged, noMoveStart)._move(center, zoom2)._moveEnd(zoomChanged);
+        var zoomChanged = this._zoom !== zoom3;
+        this._moveStart(zoomChanged, noMoveStart)._move(center, zoom3)._moveEnd(zoomChanged);
         this.fire("viewreset");
         if (loading) {
           this.fire("load");
@@ -10231,12 +10244,12 @@ var leafletSrc = { exports: {} };
         }
         return this;
       },
-      _move: function(center, zoom2, data, supressEvent) {
-        if (zoom2 === void 0) {
-          zoom2 = this._zoom;
+      _move: function(center, zoom3, data, supressEvent) {
+        if (zoom3 === void 0) {
+          zoom3 = this._zoom;
         }
-        var zoomChanged = this._zoom !== zoom2;
-        this._zoom = zoom2;
+        var zoomChanged = this._zoom !== zoom3;
+        this._zoom = zoom3;
         this._lastCenter = center;
         this._pixelOrigin = this._getNewPixelOrigin(center);
         if (!supressEvent) {
@@ -10427,25 +10440,25 @@ var leafletSrc = { exports: {} };
         var pos = this._getMapPanePos();
         return pos && !pos.equals([0, 0]);
       },
-      _getTopLeftPoint: function(center, zoom2) {
-        var pixelOrigin = center && zoom2 !== void 0 ? this._getNewPixelOrigin(center, zoom2) : this.getPixelOrigin();
+      _getTopLeftPoint: function(center, zoom3) {
+        var pixelOrigin = center && zoom3 !== void 0 ? this._getNewPixelOrigin(center, zoom3) : this.getPixelOrigin();
         return pixelOrigin.subtract(this._getMapPanePos());
       },
-      _getNewPixelOrigin: function(center, zoom2) {
+      _getNewPixelOrigin: function(center, zoom3) {
         var viewHalf = this.getSize()._divideBy(2);
-        return this.project(center, zoom2)._subtract(viewHalf)._add(this._getMapPanePos())._round();
+        return this.project(center, zoom3)._subtract(viewHalf)._add(this._getMapPanePos())._round();
       },
-      _latLngToNewLayerPoint: function(latlng, zoom2, center) {
-        var topLeft = this._getNewPixelOrigin(center, zoom2);
-        return this.project(latlng, zoom2)._subtract(topLeft);
+      _latLngToNewLayerPoint: function(latlng, zoom3, center) {
+        var topLeft = this._getNewPixelOrigin(center, zoom3);
+        return this.project(latlng, zoom3)._subtract(topLeft);
       },
-      _latLngBoundsToNewLayerBounds: function(latLngBounds, zoom2, center) {
-        var topLeft = this._getNewPixelOrigin(center, zoom2);
+      _latLngBoundsToNewLayerBounds: function(latLngBounds, zoom3, center) {
+        var topLeft = this._getNewPixelOrigin(center, zoom3);
         return toBounds([
-          this.project(latLngBounds.getSouthWest(), zoom2)._subtract(topLeft),
-          this.project(latLngBounds.getNorthWest(), zoom2)._subtract(topLeft),
-          this.project(latLngBounds.getSouthEast(), zoom2)._subtract(topLeft),
-          this.project(latLngBounds.getNorthEast(), zoom2)._subtract(topLeft)
+          this.project(latLngBounds.getSouthWest(), zoom3)._subtract(topLeft),
+          this.project(latLngBounds.getNorthWest(), zoom3)._subtract(topLeft),
+          this.project(latLngBounds.getSouthEast(), zoom3)._subtract(topLeft),
+          this.project(latLngBounds.getNorthEast(), zoom3)._subtract(topLeft)
         ]);
       },
       // layer point of the current center
@@ -10457,15 +10470,15 @@ var leafletSrc = { exports: {} };
         return this.latLngToLayerPoint(latlng).subtract(this._getCenterLayerPoint());
       },
       // adjust center for view to get inside bounds
-      _limitCenter: function(center, zoom2, bounds) {
+      _limitCenter: function(center, zoom3, bounds) {
         if (!bounds) {
           return center;
         }
-        var centerPoint = this.project(center, zoom2), viewHalf = this.getSize().divideBy(2), viewBounds = new Bounds(centerPoint.subtract(viewHalf), centerPoint.add(viewHalf)), offset = this._getBoundsOffset(viewBounds, bounds, zoom2);
+        var centerPoint = this.project(center, zoom3), viewHalf = this.getSize().divideBy(2), viewBounds = new Bounds(centerPoint.subtract(viewHalf), centerPoint.add(viewHalf)), offset = this._getBoundsOffset(viewBounds, bounds, zoom3);
         if (Math.abs(offset.x) <= 1 && Math.abs(offset.y) <= 1) {
           return center;
         }
-        return this.unproject(centerPoint.add(offset), zoom2);
+        return this.unproject(centerPoint.add(offset), zoom3);
       },
       // adjust offset for view to get inside bounds
       _limitOffset: function(offset, bounds) {
@@ -10476,22 +10489,22 @@ var leafletSrc = { exports: {} };
         return offset.add(this._getBoundsOffset(newBounds, bounds));
       },
       // returns offset needed for pxBounds to get inside maxBounds at a specified zoom
-      _getBoundsOffset: function(pxBounds, maxBounds, zoom2) {
+      _getBoundsOffset: function(pxBounds, maxBounds, zoom3) {
         var projectedMaxBounds = toBounds(
-          this.project(maxBounds.getNorthEast(), zoom2),
-          this.project(maxBounds.getSouthWest(), zoom2)
+          this.project(maxBounds.getNorthEast(), zoom3),
+          this.project(maxBounds.getSouthWest(), zoom3)
         ), minOffset = projectedMaxBounds.min.subtract(pxBounds.min), maxOffset = projectedMaxBounds.max.subtract(pxBounds.max), dx = this._rebound(minOffset.x, -maxOffset.x), dy = this._rebound(minOffset.y, -maxOffset.y);
         return new Point(dx, dy);
       },
       _rebound: function(left, right) {
         return left + right > 0 ? Math.round(left - right) / 2 : Math.max(0, Math.ceil(left)) - Math.max(0, Math.floor(right));
       },
-      _limitZoom: function(zoom2) {
+      _limitZoom: function(zoom3) {
         var min = this.getMinZoom(), max = this.getMaxZoom(), snap = Browser.any3d ? this.options.zoomSnap : 1;
         if (snap) {
-          zoom2 = Math.round(zoom2 / snap) * snap;
+          zoom3 = Math.round(zoom3 / snap) * snap;
         }
-        return Math.max(min, Math.min(max, zoom2));
+        return Math.max(min, Math.min(max, zoom3));
       },
       _onPanTransitionStep: function() {
         this.fire("move");
@@ -10538,36 +10551,36 @@ var leafletSrc = { exports: {} };
       _nothingToAnimate: function() {
         return !this._container.getElementsByClassName("leaflet-zoom-animated").length;
       },
-      _tryAnimatedZoom: function(center, zoom2, options) {
+      _tryAnimatedZoom: function(center, zoom3, options) {
         if (this._animatingZoom) {
           return true;
         }
         options = options || {};
-        if (!this._zoomAnimated || options.animate === false || this._nothingToAnimate() || Math.abs(zoom2 - this._zoom) > this.options.zoomAnimationThreshold) {
+        if (!this._zoomAnimated || options.animate === false || this._nothingToAnimate() || Math.abs(zoom3 - this._zoom) > this.options.zoomAnimationThreshold) {
           return false;
         }
-        var scale2 = this.getZoomScale(zoom2), offset = this._getCenterOffset(center)._divideBy(1 - 1 / scale2);
+        var scale2 = this.getZoomScale(zoom3), offset = this._getCenterOffset(center)._divideBy(1 - 1 / scale2);
         if (options.animate !== true && !this.getSize().contains(offset)) {
           return false;
         }
         requestAnimFrame2(function() {
-          this._moveStart(true, options.noMoveStart || false)._animateZoom(center, zoom2, true);
+          this._moveStart(true, options.noMoveStart || false)._animateZoom(center, zoom3, true);
         }, this);
         return true;
       },
-      _animateZoom: function(center, zoom2, startAnim, noUpdate) {
+      _animateZoom: function(center, zoom3, startAnim, noUpdate) {
         if (!this._mapPane) {
           return;
         }
         if (startAnim) {
           this._animatingZoom = true;
           this._animateToCenter = center;
-          this._animateToZoom = zoom2;
+          this._animateToZoom = zoom3;
           addClass(this._mapPane, "leaflet-zoom-anim");
         }
         this.fire("zoomanim", {
           center,
-          zoom: zoom2,
+          zoom: zoom3,
           noUpdate
         });
         if (!this._tempFireZoomEvent) {
@@ -10968,11 +10981,11 @@ var leafletSrc = { exports: {} };
         this._refocusOnMap();
       },
       _checkDisabledLayers: function() {
-        var inputs = this._layerControlInputs, input, layer, zoom2 = this._map.getZoom();
+        var inputs = this._layerControlInputs, input, layer, zoom3 = this._map.getZoom();
         for (var i = inputs.length - 1; i >= 0; i--) {
           input = inputs[i];
           layer = this._getLayer(input.layerId).layer;
-          input.disabled = layer.options.minZoom !== void 0 && zoom2 < layer.options.minZoom || layer.options.maxZoom !== void 0 && zoom2 > layer.options.maxZoom;
+          input.disabled = layer.options.minZoom !== void 0 && zoom3 < layer.options.minZoom || layer.options.maxZoom !== void 0 && zoom3 > layer.options.maxZoom;
         }
       },
       _expandIfNotCollapsed: function() {
@@ -11095,7 +11108,7 @@ var leafletSrc = { exports: {} };
         this.addControl(this.zoomControl);
       }
     });
-    var zoom = function(options) {
+    var zoom2 = function(options) {
       return new Zoom(options);
     };
     var Scale2 = Control.extend({
@@ -11283,7 +11296,7 @@ var leafletSrc = { exports: {} };
     Control.Scale = Scale2;
     Control.Attribution = Attribution;
     control.layers = layers;
-    control.zoom = zoom;
+    control.zoom = zoom2;
     control.scale = scale;
     control.attribution = attribution;
     var Handler = Class.extend({
@@ -11798,8 +11811,8 @@ var leafletSrc = { exports: {} };
     var Simple = extend({}, CRS, {
       projection: LonLat,
       transformation: toTransformation(1, 0, -1, 0),
-      scale: function(zoom2) {
-        return Math.pow(2, zoom2);
+      scale: function(zoom3) {
+        return Math.pow(2, zoom3);
       },
       zoom: function(scale2) {
         return Math.log(scale2) / Math.LN2;
@@ -14895,14 +14908,14 @@ var leafletSrc = { exports: {} };
         this.getPane().appendChild(this._container);
       },
       _updateLevels: function() {
-        var zoom2 = this._tileZoom, maxZoom = this.options.maxZoom;
-        if (zoom2 === void 0) {
+        var zoom3 = this._tileZoom, maxZoom = this.options.maxZoom;
+        if (zoom3 === void 0) {
           return void 0;
         }
         for (var z2 in this._levels) {
           z2 = Number(z2);
-          if (this._levels[z2].el.children.length || z2 === zoom2) {
-            this._levels[z2].el.style.zIndex = maxZoom - Math.abs(zoom2 - z2);
+          if (this._levels[z2].el.children.length || z2 === zoom3) {
+            this._levels[z2].el.style.zIndex = maxZoom - Math.abs(zoom3 - z2);
             this._onUpdateLevel(z2);
           } else {
             remove(this._levels[z2].el);
@@ -14911,13 +14924,13 @@ var leafletSrc = { exports: {} };
             delete this._levels[z2];
           }
         }
-        var level = this._levels[zoom2], map2 = this._map;
+        var level = this._levels[zoom3], map2 = this._map;
         if (!level) {
-          level = this._levels[zoom2] = {};
+          level = this._levels[zoom3] = {};
           level.el = create$1("div", "leaflet-tile-container leaflet-zoom-animated", this._container);
           level.el.style.zIndex = maxZoom;
-          level.origin = map2.project(map2.unproject(map2.getPixelOrigin()), zoom2).round();
-          level.zoom = zoom2;
+          level.origin = map2.project(map2.unproject(map2.getPixelOrigin()), zoom3).round();
+          level.zoom = zoom3;
           this._setZoomTransform(level, map2.getCenter(), map2.getZoom());
           falseFn(level.el.offsetWidth);
           this._onCreateLevel(level);
@@ -14933,8 +14946,8 @@ var leafletSrc = { exports: {} };
           return;
         }
         var key, tile;
-        var zoom2 = this._map.getZoom();
-        if (zoom2 > this.options.maxZoom || zoom2 < this.options.minZoom) {
+        var zoom3 = this._map.getZoom();
+        if (zoom3 > this.options.maxZoom || zoom3 < this.options.minZoom) {
           this._removeAllTiles();
           return;
         }
@@ -14957,9 +14970,9 @@ var leafletSrc = { exports: {} };
           }
         }
       },
-      _removeTilesAtZoom: function(zoom2) {
+      _removeTilesAtZoom: function(zoom3) {
         for (var key in this._tiles) {
-          if (this._tiles[key].coords.z !== zoom2) {
+          if (this._tiles[key].coords.z !== zoom3) {
             continue;
           }
           this._removeTile(key);
@@ -15019,18 +15032,18 @@ var leafletSrc = { exports: {} };
       _animateZoom: function(e) {
         this._setView(e.center, e.zoom, true, e.noUpdate);
       },
-      _clampZoom: function(zoom2) {
+      _clampZoom: function(zoom3) {
         var options = this.options;
-        if (void 0 !== options.minNativeZoom && zoom2 < options.minNativeZoom) {
+        if (void 0 !== options.minNativeZoom && zoom3 < options.minNativeZoom) {
           return options.minNativeZoom;
         }
-        if (void 0 !== options.maxNativeZoom && options.maxNativeZoom < zoom2) {
+        if (void 0 !== options.maxNativeZoom && options.maxNativeZoom < zoom3) {
           return options.maxNativeZoom;
         }
-        return zoom2;
+        return zoom3;
       },
-      _setView: function(center, zoom2, noPrune, noUpdate) {
-        var tileZoom = Math.round(zoom2);
+      _setView: function(center, zoom3, noPrune, noUpdate) {
+        var tileZoom = Math.round(zoom3);
         if (this.options.maxZoom !== void 0 && tileZoom > this.options.maxZoom || this.options.minZoom !== void 0 && tileZoom < this.options.minZoom) {
           tileZoom = void 0;
         } else {
@@ -15052,15 +15065,15 @@ var leafletSrc = { exports: {} };
           }
           this._noPrune = !!noPrune;
         }
-        this._setZoomTransforms(center, zoom2);
+        this._setZoomTransforms(center, zoom3);
       },
-      _setZoomTransforms: function(center, zoom2) {
+      _setZoomTransforms: function(center, zoom3) {
         for (var i in this._levels) {
-          this._setZoomTransform(this._levels[i], center, zoom2);
+          this._setZoomTransform(this._levels[i], center, zoom3);
         }
       },
-      _setZoomTransform: function(level, center, zoom2) {
-        var scale2 = this._map.getZoomScale(zoom2, level.zoom), translate = level.origin.multiplyBy(scale2).subtract(this._map._getNewPixelOrigin(center, zoom2)).round();
+      _setZoomTransform: function(level, center, zoom3) {
+        var scale2 = this._map.getZoomScale(zoom3, level.zoom), translate = level.origin.multiplyBy(scale2).subtract(this._map._getNewPixelOrigin(center, zoom3)).round();
         if (Browser.any3d) {
           setTransform(level.el, translate, scale2);
         } else {
@@ -15098,7 +15111,7 @@ var leafletSrc = { exports: {} };
         if (!map2) {
           return;
         }
-        var zoom2 = this._clampZoom(map2.getZoom());
+        var zoom3 = this._clampZoom(map2.getZoom());
         if (center === void 0) {
           center = map2.getCenter();
         }
@@ -15118,8 +15131,8 @@ var leafletSrc = { exports: {} };
             this._tiles[key].current = false;
           }
         }
-        if (Math.abs(zoom2 - this._tileZoom) > 1) {
-          this._setView(center, zoom2);
+        if (Math.abs(zoom3 - this._tileZoom) > 1) {
+          this._setView(center, zoom3);
           return;
         }
         for (var j = tileRange.min.y; j <= tileRange.max.y; j++) {
@@ -15439,11 +15452,11 @@ var leafletSrc = { exports: {} };
         e.tile.onload = null;
       },
       _getZoomForUrl: function() {
-        var zoom2 = this._tileZoom, maxZoom = this.options.maxZoom, zoomReverse = this.options.zoomReverse, zoomOffset = this.options.zoomOffset;
+        var zoom3 = this._tileZoom, maxZoom = this.options.maxZoom, zoomReverse = this.options.zoomReverse, zoomOffset = this.options.zoomOffset;
         if (zoomReverse) {
-          zoom2 = maxZoom - zoom2;
+          zoom3 = maxZoom - zoom3;
         }
-        return zoom2 + zoomOffset;
+        return zoom3 + zoomOffset;
       },
       _getSubdomain: function(tilePoint) {
         var index2 = Math.abs(tilePoint.x + tilePoint.y) % this.options.subdomains.length;
@@ -15608,8 +15621,8 @@ var leafletSrc = { exports: {} };
       _onZoom: function() {
         this._updateTransform(this._map.getCenter(), this._map.getZoom());
       },
-      _updateTransform: function(center, zoom2) {
-        var scale2 = this._map.getZoomScale(zoom2, this._zoom), viewHalf = this._map.getSize().multiplyBy(0.5 + this.options.padding), currentCenterPoint = this._map.project(this._center, zoom2), topLeftOffset = viewHalf.multiplyBy(-scale2).add(currentCenterPoint).subtract(this._map._getNewPixelOrigin(center, zoom2));
+      _updateTransform: function(center, zoom3) {
+        var scale2 = this._map.getZoomScale(zoom3, this._zoom), viewHalf = this._map.getSize().multiplyBy(0.5 + this.options.padding), currentCenterPoint = this._map.project(this._center, zoom3), topLeftOffset = viewHalf.multiplyBy(-scale2).add(currentCenterPoint).subtract(this._map._getNewPixelOrigin(center, zoom3));
         if (Browser.any3d) {
           setTransform(this._container, topLeftOffset, scale2);
         } else {
@@ -16381,11 +16394,11 @@ var leafletSrc = { exports: {} };
         this._map.off("dblclick", this._onDoubleClick, this);
       },
       _onDoubleClick: function(e) {
-        var map2 = this._map, oldZoom = map2.getZoom(), delta = map2.options.zoomDelta, zoom2 = e.originalEvent.shiftKey ? oldZoom - delta : oldZoom + delta;
+        var map2 = this._map, oldZoom = map2.getZoom(), delta = map2.options.zoomDelta, zoom3 = e.originalEvent.shiftKey ? oldZoom - delta : oldZoom + delta;
         if (map2.options.doubleClickZoom === "center") {
-          map2.setZoom(zoom2);
+          map2.setZoom(zoom3);
         } else {
-          map2.setZoomAround(e.containerPoint, zoom2);
+          map2.setZoomAround(e.containerPoint, zoom3);
         }
       }
     });
@@ -16631,13 +16644,13 @@ var leafletSrc = { exports: {} };
           keys[codes.up[i]] = [0, -1 * panDelta];
         }
       },
-      _setZoomDelta: function(zoomDelta) {
+      _setZoomDelta: function(zoomDelta2) {
         var keys = this._zoomKeys = {}, codes = this.keyCodes, i, len;
         for (i = 0, len = codes.zoomIn.length; i < len; i++) {
-          keys[codes.zoomIn[i]] = zoomDelta;
+          keys[codes.zoomIn[i]] = zoomDelta2;
         }
         for (i = 0, len = codes.zoomOut.length; i < len; i++) {
-          keys[codes.zoomOut[i]] = -zoomDelta;
+          keys[codes.zoomOut[i]] = -zoomDelta2;
         }
       },
       _addHooks: function() {
@@ -16716,18 +16729,18 @@ var leafletSrc = { exports: {} };
         stop(e);
       },
       _performZoom: function() {
-        var map2 = this._map, zoom2 = map2.getZoom(), snap = this._map.options.zoomSnap || 0;
+        var map2 = this._map, zoom3 = map2.getZoom(), snap = this._map.options.zoomSnap || 0;
         map2._stop();
-        var d2 = this._delta / (this._map.options.wheelPxPerZoomLevel * 4), d3 = 4 * Math.log(2 / (1 + Math.exp(-Math.abs(d2)))) / Math.LN2, d4 = snap ? Math.ceil(d3 / snap) * snap : d3, delta = map2._limitZoom(zoom2 + (this._delta > 0 ? d4 : -d4)) - zoom2;
+        var d2 = this._delta / (this._map.options.wheelPxPerZoomLevel * 4), d3 = 4 * Math.log(2 / (1 + Math.exp(-Math.abs(d2)))) / Math.LN2, d4 = snap ? Math.ceil(d3 / snap) * snap : d3, delta = map2._limitZoom(zoom3 + (this._delta > 0 ? d4 : -d4)) - zoom3;
         this._delta = 0;
         this._startTime = null;
         if (!delta) {
           return;
         }
         if (map2.options.scrollWheelZoom === "center") {
-          map2.setZoom(zoom2 + delta);
+          map2.setZoom(zoom3 + delta);
         } else {
-          map2.setZoomAround(this._lastMousePos, zoom2 + delta);
+          map2.setZoomAround(this._lastMousePos, zoom3 + delta);
         }
       }
     });
@@ -17093,7 +17106,7 @@ function _extends() {
   };
   return _extends.apply(this, arguments);
 }
-function MapContainerComponent({ bounds, boundsOptions, center, children, className, id: id2, placeholder, style, whenReady, zoom, ...options }, forwardedRef) {
+function MapContainerComponent({ bounds, boundsOptions, center, children, className, id: id2, placeholder, style, whenReady, zoom: zoom2, ...options }, forwardedRef) {
   const [props] = reactExports.useState({
     className,
     id: id2,
@@ -17106,8 +17119,8 @@ function MapContainerComponent({ bounds, boundsOptions, center, children, classN
   const mapRef = reactExports.useCallback((node) => {
     if (node !== null && context === null) {
       const map2 = new leafletSrcExports.Map(node, options);
-      if (center != null && zoom != null) {
-        map2.setView(center, zoom);
+      if (center != null && zoom2 != null) {
+        map2.setView(center, zoom2);
       } else if (bounds != null) {
         map2.fitBounds(bounds, boundsOptions);
       }
@@ -18296,7 +18309,7 @@ function throttled(fn, thisArg) {
     }
   };
 }
-function debounce(fn, delay) {
+function debounce$1(fn, delay) {
   let timeout;
   return function(...args) {
     if (delay) {
@@ -24435,14 +24448,14 @@ class PluginService {
   _notify(descriptors2, chart, hook, args) {
     args = args || {};
     for (const descriptor of descriptors2) {
-      const plugin = descriptor.plugin;
-      const method = plugin[hook];
+      const plugin2 = descriptor.plugin;
+      const method = plugin2[hook];
       const params = [
         chart,
         args,
         descriptor.options
       ];
-      if (callback(method, params, plugin) === false && args.cancelable) {
+      if (callback(method, params, plugin2) === false && args.cancelable) {
         return false;
       }
     }
@@ -24485,10 +24498,10 @@ function allPlugins(config) {
   }
   const local = config.plugins || [];
   for (let i = 0; i < local.length; i++) {
-    const plugin = local[i];
-    if (plugins.indexOf(plugin) === -1) {
-      plugins.push(plugin);
-      localIds[plugin.id] = true;
+    const plugin2 = local[i];
+    if (plugins.indexOf(plugin2) === -1) {
+      plugins.push(plugin2);
+      localIds[plugin2.id] = true;
     }
   }
   return {
@@ -24508,27 +24521,27 @@ function getOpts(options, all) {
 function createDescriptors(chart, { plugins, localIds }, options, all) {
   const result = [];
   const context = chart.getContext();
-  for (const plugin of plugins) {
-    const id2 = plugin.id;
+  for (const plugin2 of plugins) {
+    const id2 = plugin2.id;
     const opts = getOpts(options[id2], all);
     if (opts === null) {
       continue;
     }
     result.push({
-      plugin,
+      plugin: plugin2,
       options: pluginOpts(chart.config, {
-        plugin,
+        plugin: plugin2,
         local: localIds[id2]
       }, opts, context)
     });
   }
   return result;
 }
-function pluginOpts(config, { plugin, local }, opts, context) {
-  const keys = config.pluginScopeKeys(plugin);
+function pluginOpts(config, { plugin: plugin2, local }, opts, context) {
+  const keys = config.pluginScopeKeys(plugin2);
   const scopes = config.getOptionScopes(opts, keys);
-  if (local && plugin.defaults) {
-    scopes.push(plugin.defaults);
+  if (local && plugin2.defaults) {
+    scopes.push(plugin2.defaults);
   }
   return config.createResolver(scopes, context, [
     ""
@@ -24753,13 +24766,13 @@ class Config {
       ]
     ]);
   }
-  pluginScopeKeys(plugin) {
-    const id2 = plugin.id;
+  pluginScopeKeys(plugin2) {
+    const id2 = plugin2.id;
     const type = this.type;
     return cachedKeys(`${type}-plugin-${id2}`, () => [
       [
         `plugins.${id2}`,
-        ...plugin.additionalOptionScopes || []
+        ...plugin2.additionalOptionScopes || []
       ]
     ]);
   }
@@ -24869,7 +24882,7 @@ function needContext(proxy, names2) {
   }
   return false;
 }
-var version = "4.4.9";
+var version$1 = "4.4.9";
 const KNOWN_POSITIONS = [
   "top",
   "bottom",
@@ -24986,7 +24999,7 @@ let Chart$1 = (_b = class {
     this.attached = false;
     this._animationsDisabled = void 0;
     this.$context = void 0;
-    this._doResize = debounce((mode) => this.update(mode), options.resizeDelay || 0);
+    this._doResize = debounce$1((mode) => this.update(mode), options.resizeDelay || 0);
     this._dataChanges = [];
     instances[this.id] = this;
     if (!context || !canvas) {
@@ -25700,7 +25713,7 @@ let Chart$1 = (_b = class {
       cancelable: true,
       inChartArea: this.isPointInArea(e)
     };
-    const eventFilter = (plugin) => (plugin.options.events || this.options.events).includes(e.native.type);
+    const eventFilter = (plugin2) => (plugin2.options.events || this.options.events).includes(e.native.type);
     if (this.notifyPlugins("beforeEvent", args, eventFilter) === false) {
       return;
     }
@@ -25751,7 +25764,7 @@ let Chart$1 = (_b = class {
     const hoverOptions = this.options.hover;
     return this.getElementsAtEventForMode(e, hoverOptions.mode, hoverOptions, useFinalPosition);
   }
-}, __publicField(_b, "defaults", defaults), __publicField(_b, "instances", instances), __publicField(_b, "overrides", overrides), __publicField(_b, "registry", registry), __publicField(_b, "version", version), __publicField(_b, "getChart", getChart), _b);
+}, __publicField(_b, "defaults", defaults), __publicField(_b, "instances", instances), __publicField(_b, "overrides", overrides), __publicField(_b, "registry", registry), __publicField(_b, "version", version$1), __publicField(_b, "getChart", getChart), _b);
 function invalidatePlugins() {
   return each(Chart$1.instances, (chart) => chart._plugins.invalidate());
 }
@@ -25900,7 +25913,7 @@ function strokePathDirect(ctx, line, start, count) {
   }
 }
 const usePath2D = typeof Path2D === "function";
-function draw(ctx, line, start, count) {
+function draw$1(ctx, line, start, count) {
   if (usePath2D && !line.options.segment) {
     strokePathWithCache(ctx, line, start, count);
   } else {
@@ -26009,7 +26022,7 @@ class LineElement extends Element$1 {
     const points = this.points || [];
     if (points.length && options.borderWidth) {
       ctx.save();
-      draw(ctx, this, start, count);
+      draw$1(ctx, this, start, count);
       ctx.restore();
     }
     if (this.animated) {
@@ -29558,7 +29571,8 @@ function RasterTileLayer() {
         params.algorithm = currentDatasetInfo.algorithm;
       }
       if (state.refEnabled && state.refValues[state.currentDataset] && currentDatasetInfo.algorithm === "shift") {
-        const shift = state.refValues[state.currentDataset][timeIdx];
+        const refArr = state.refValues[state.currentDataset];
+        const shift = refArr[timeIdx] ?? refArr[0];
         if (shift !== void 0) {
           params.algorithm_params = JSON.stringify({ shift });
         }
@@ -29859,7 +29873,7 @@ function Histogram() {
   const [histData, setHistData] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(false);
   const fetchHistogram = reactExports.useCallback(async () => {
-    if (!state.currentDataset) return;
+    if (!state.currentDataset || state.isPlaying) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({ time_index: String(state.currentTimeIndex) });
@@ -29873,7 +29887,7 @@ function Histogram() {
     } finally {
       setLoading(false);
     }
-  }, [state.currentDataset, state.currentTimeIndex]);
+  }, [state.currentDataset, state.currentTimeIndex, state.isPlaying]);
   reactExports.useEffect(() => {
     fetchHistogram();
   }, [fetchHistogram]);
@@ -29963,12 +29977,15 @@ const colormapOptions = [
   { value: "gray", label: "Grays" },
   { value: "jet", label: "Jet" }
 ];
-function ControlPanel() {
+function ControlPanel({ title }) {
+  var _a2;
   const { state, dispatch } = useAppContext();
   const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
   const [draftVmax, setDraftVmax] = reactExports.useState(String(state.vmax));
   const [lightTheme, setLightTheme] = reactExports.useState(false);
+  const [draftRefLat, setDraftRefLat] = reactExports.useState(String(state.refMarkerPosition[0]));
+  const [draftRefLon, setDraftRefLon] = reactExports.useState(String(state.refMarkerPosition[1]));
   const [datasetRanges, setDatasetRanges] = reactExports.useState({});
   reactExports.useEffect(() => {
     const missing = state.layerMasks.map((m2) => m2.dataset).filter((ds) => ds && !(ds in datasetRanges));
@@ -29991,6 +30008,10 @@ function ControlPanel() {
   };
   reactExports.useEffect(() => setDraftVmin(String(state.vmin)), [state.vmin]);
   reactExports.useEffect(() => setDraftVmax(String(state.vmax)), [state.vmax]);
+  reactExports.useEffect(() => {
+    setDraftRefLat(state.refMarkerPosition[0].toFixed(6));
+    setDraftRefLon(state.refMarkerPosition[1].toFixed(6));
+  }, [state.refMarkerPosition]);
   reactExports.useEffect(() => {
     const datasetName = state.currentDataset;
     if (!datasetName) return;
@@ -30042,14 +30063,14 @@ function ControlPanel() {
     if (!Number.isNaN(v2)) dispatch({ type: "SET_VMAX", payload: v2 });
   }, [draftVmax, dispatch]);
   const setRefValues = async (ds) => {
-    var _a2, _b2, _c;
+    var _a3, _b2, _c;
     const [lat, lng] = state.refMarkerPosition;
     try {
       let values;
       if (state.refBufferEnabled && state.refBufferRadius > 0) {
         const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
         if (result == null ? void 0 : result.median) {
-          const xValues = ((_b2 = (_a2 = state.datasetInfo[ds]) == null ? void 0 : _a2.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
+          const xValues = ((_b2 = (_a3 = state.datasetInfo[ds]) == null ? void 0 : _a3.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
           const byX = Object.fromEntries(result.median.map((pt) => [String(pt.x), pt.y]));
           values = xValues.map((x2) => byX[x2] ?? NaN);
         }
@@ -30062,10 +30083,32 @@ function ControlPanel() {
       console.error("Error setting reference values:", error);
     }
   };
+  const commitRefPosition = reactExports.useCallback(() => {
+    var _a3;
+    const lat = parseFloat(draftRefLat);
+    const lon = parseFloat(draftRefLon);
+    if (isNaN(lat) || isNaN(lon)) return;
+    dispatch({ type: "SET_REF_MARKER_POSITION", payload: [lat, lon] });
+    const ds = state.currentDataset;
+    if (ds && ((_a3 = state.datasetInfo[ds]) == null ? void 0 : _a3.uses_spatial_ref)) setRefValues(ds);
+  }, [draftRefLat, draftRefLon, state.currentDataset, state.datasetInfo, dispatch]);
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const currentTimeValue = currentDatasetInfo ? currentDatasetInfo.x_values[state.currentTimeIndex] : "";
+  const nTimes = ((_a2 = currentDatasetInfo == null ? void 0 : currentDatasetInfo.x_values) == null ? void 0 : _a2.length) ?? 0;
+  const timeIndexRef = reactExports.useRef(state.currentTimeIndex);
+  timeIndexRef.current = state.currentTimeIndex;
+  const nTimesRef = reactExports.useRef(nTimes);
+  nTimesRef.current = nTimes;
+  reactExports.useEffect(() => {
+    if (!state.isPlaying || nTimes === 0) return;
+    const id2 = setInterval(() => {
+      dispatch({ type: "SET_TIME_INDEX", payload: (timeIndexRef.current + 1) % nTimesRef.current });
+    }, state.animationSpeed);
+    return () => clearInterval(id2);
+  }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "menu", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-theme-toggle", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "theme-toggle-btn", onClick: toggleTheme, title: lightTheme ? "Switch to dark theme" : "Switch to light theme", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${lightTheme ? "fa-moon" : "fa-sun"}` }) }) }),
+    title && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-title", children: title }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-layer-group" }),
@@ -30096,7 +30139,41 @@ function ControlPanel() {
             value: state.currentTimeIndex,
             onChange: (e) => dispatch({ type: "SET_TIME_INDEX", payload: parseInt(e.target.value) })
           }
-        )
+        ),
+        currentDatasetInfo.x_values.length > 1 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "anim-controls", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              className: `toggle-pill anim-play-btn${state.isPlaying ? " active" : ""}`,
+              onClick: () => dispatch({ type: "TOGGLE_PLAYING" }),
+              title: state.isPlaying ? "Pause animation" : "Play animation",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.isPlaying ? "fa-pause" : "fa-play"}` }),
+                state.isPlaying ? "Pause" : "Play"
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", style: { marginTop: 4 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Speed" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
+              (1e3 / state.animationSpeed).toFixed(1),
+              "×"
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "range",
+              className: "sidebar-range",
+              min: "100",
+              max: "2000",
+              step: "100",
+              value: 2100 - state.animationSpeed,
+              onChange: (e) => dispatch({ type: "SET_ANIMATION_SPEED", payload: 2100 - parseInt(e.target.value) }),
+              title: "Animation speed"
+            }
+          )
+        ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
@@ -30236,7 +30313,7 @@ function ControlPanel() {
                 onChange: (e) => {
                   const ds = e.target.value;
                   const newRange = datasetRanges[ds];
-                  const defaultThreshold = newRange ? newRange.p2 ?? newRange.min : 0.5;
+                  const defaultThreshold = newRange ? (mask.mode === "max" ? newRange.p98 ?? newRange.max : newRange.p2 ?? newRange.min) ?? 0.5 : 0.5;
                   dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
                 },
                 children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
@@ -30248,7 +30325,12 @@ function ControlPanel() {
                 className: "sidebar-select",
                 style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
                 value: mask.mode,
-                onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: e.target.value } } }),
+                onChange: (e) => {
+                  const newMode = e.target.value;
+                  const r2 = datasetRanges[mask.dataset];
+                  const newThreshold = r2 ? (newMode === "max" ? r2.p98 ?? r2.max : r2.p2 ?? r2.min) ?? mask.threshold : mask.threshold;
+                  dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: newMode, threshold: newThreshold } } });
+                },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
@@ -30336,8 +30418,8 @@ function ControlPanel() {
                 accept: ".tif,.tiff",
                 style: { display: "none" },
                 onChange: async (e) => {
-                  var _a2;
-                  const f2 = (_a2 = e.target.files) == null ? void 0 : _a2[0];
+                  var _a3;
+                  const f2 = (_a3 = e.target.files) == null ? void 0 : _a3[0];
                   if (!f2) return;
                   const form = new FormData();
                   form.append("file", f2);
@@ -30424,9 +30506,41 @@ function ControlPanel() {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-crosshairs" }),
-        " Reference Buffer"
+        " Reference Point"
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "Lat" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftRefLat,
+              onChange: (e) => setDraftRefLat(e.target.value),
+              onBlur: commitRefPosition,
+              onKeyDown: (e) => e.key === "Enter" && commitRefPosition()
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "Lon" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftRefLon,
+              onChange: (e) => setDraftRefLon(e.target.value),
+              onBlur: commitRefPosition,
+              onKeyDown: (e) => e.key === "Enter" && commitRefPosition()
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", style: { marginTop: 6 }, children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "Sample around ref marker" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
@@ -34211,6 +34325,2755 @@ adapters._date.override({
     }
   }
 });
+var hammer = { exports: {} };
+/*! Hammer.JS - v2.0.7 - 2016-04-22
+ * http://hammerjs.github.io/
+ *
+ * Copyright (c) 2016 Jorik Tangelder;
+ * Licensed under the MIT license */
+(function(module) {
+  (function(window2, document2, exportName, undefined$1) {
+    var VENDOR_PREFIXES = ["", "webkit", "Moz", "MS", "ms", "o"];
+    var TEST_ELEMENT = document2.createElement("div");
+    var TYPE_FUNCTION = "function";
+    var round2 = Math.round;
+    var abs = Math.abs;
+    var now = Date.now;
+    function setTimeoutContext(fn, timeout, context) {
+      return setTimeout(bindFn(fn, context), timeout);
+    }
+    function invokeArrayArg(arg, fn, context) {
+      if (Array.isArray(arg)) {
+        each2(arg, context[fn], context);
+        return true;
+      }
+      return false;
+    }
+    function each2(obj, iterator, context) {
+      var i;
+      if (!obj) {
+        return;
+      }
+      if (obj.forEach) {
+        obj.forEach(iterator, context);
+      } else if (obj.length !== undefined$1) {
+        i = 0;
+        while (i < obj.length) {
+          iterator.call(context, obj[i], i, obj);
+          i++;
+        }
+      } else {
+        for (i in obj) {
+          obj.hasOwnProperty(i) && iterator.call(context, obj[i], i, obj);
+        }
+      }
+    }
+    function deprecate(method, name, message2) {
+      var deprecationMessage = "DEPRECATED METHOD: " + name + "\n" + message2 + " AT \n";
+      return function() {
+        var e = new Error("get-stack-trace");
+        var stack = e && e.stack ? e.stack.replace(/^[^\(]+?[\n$]/gm, "").replace(/^\s+at\s+/gm, "").replace(/^Object.<anonymous>\s*\(/gm, "{anonymous}()@") : "Unknown Stack Trace";
+        var log = window2.console && (window2.console.warn || window2.console.log);
+        if (log) {
+          log.call(window2.console, deprecationMessage, stack);
+        }
+        return method.apply(this, arguments);
+      };
+    }
+    var assign;
+    if (typeof Object.assign !== "function") {
+      assign = function assign2(target) {
+        if (target === undefined$1 || target === null) {
+          throw new TypeError("Cannot convert undefined or null to object");
+        }
+        var output = Object(target);
+        for (var index = 1; index < arguments.length; index++) {
+          var source = arguments[index];
+          if (source !== undefined$1 && source !== null) {
+            for (var nextKey in source) {
+              if (source.hasOwnProperty(nextKey)) {
+                output[nextKey] = source[nextKey];
+              }
+            }
+          }
+        }
+        return output;
+      };
+    } else {
+      assign = Object.assign;
+    }
+    var extend = deprecate(function extend2(dest, src, merge3) {
+      var keys = Object.keys(src);
+      var i = 0;
+      while (i < keys.length) {
+        if (!merge3 || merge3 && dest[keys[i]] === undefined$1) {
+          dest[keys[i]] = src[keys[i]];
+        }
+        i++;
+      }
+      return dest;
+    }, "extend", "Use `assign`.");
+    var merge2 = deprecate(function merge3(dest, src) {
+      return extend(dest, src, true);
+    }, "merge", "Use `assign`.");
+    function inherit(child, base, properties) {
+      var baseP = base.prototype, childP;
+      childP = child.prototype = Object.create(baseP);
+      childP.constructor = child;
+      childP._super = baseP;
+      if (properties) {
+        assign(childP, properties);
+      }
+    }
+    function bindFn(fn, context) {
+      return function boundFn() {
+        return fn.apply(context, arguments);
+      };
+    }
+    function boolOrFn(val, args) {
+      if (typeof val == TYPE_FUNCTION) {
+        return val.apply(args ? args[0] || undefined$1 : undefined$1, args);
+      }
+      return val;
+    }
+    function ifUndefined(val1, val2) {
+      return val1 === undefined$1 ? val2 : val1;
+    }
+    function addEventListeners(target, types, handler) {
+      each2(splitStr(types), function(type) {
+        target.addEventListener(type, handler, false);
+      });
+    }
+    function removeEventListeners(target, types, handler) {
+      each2(splitStr(types), function(type) {
+        target.removeEventListener(type, handler, false);
+      });
+    }
+    function hasParent(node, parent) {
+      while (node) {
+        if (node == parent) {
+          return true;
+        }
+        node = node.parentNode;
+      }
+      return false;
+    }
+    function inStr(str, find) {
+      return str.indexOf(find) > -1;
+    }
+    function splitStr(str) {
+      return str.trim().split(/\s+/g);
+    }
+    function inArray(src, find, findByKey) {
+      if (src.indexOf && !findByKey) {
+        return src.indexOf(find);
+      } else {
+        var i = 0;
+        while (i < src.length) {
+          if (findByKey && src[i][findByKey] == find || !findByKey && src[i] === find) {
+            return i;
+          }
+          i++;
+        }
+        return -1;
+      }
+    }
+    function toArray(obj) {
+      return Array.prototype.slice.call(obj, 0);
+    }
+    function uniqueArray(src, key, sort) {
+      var results = [];
+      var values = [];
+      var i = 0;
+      while (i < src.length) {
+        var val = src[i][key];
+        if (inArray(values, val) < 0) {
+          results.push(src[i]);
+        }
+        values[i] = val;
+        i++;
+      }
+      {
+        {
+          results = results.sort(function sortUniqueArray(a, b) {
+            return a[key] > b[key];
+          });
+        }
+      }
+      return results;
+    }
+    function prefixed(obj, property) {
+      var prefix, prop;
+      var camelProp = property[0].toUpperCase() + property.slice(1);
+      var i = 0;
+      while (i < VENDOR_PREFIXES.length) {
+        prefix = VENDOR_PREFIXES[i];
+        prop = prefix ? prefix + camelProp : property;
+        if (prop in obj) {
+          return prop;
+        }
+        i++;
+      }
+      return undefined$1;
+    }
+    var _uniqueId = 1;
+    function uniqueId() {
+      return _uniqueId++;
+    }
+    function getWindowForElement(element) {
+      var doc = element.ownerDocument || element;
+      return doc.defaultView || doc.parentWindow || window2;
+    }
+    var MOBILE_REGEX = /mobile|tablet|ip(ad|hone|od)|android/i;
+    var SUPPORT_TOUCH = "ontouchstart" in window2;
+    var SUPPORT_POINTER_EVENTS = prefixed(window2, "PointerEvent") !== undefined$1;
+    var SUPPORT_ONLY_TOUCH = SUPPORT_TOUCH && MOBILE_REGEX.test(navigator.userAgent);
+    var INPUT_TYPE_TOUCH = "touch";
+    var INPUT_TYPE_PEN = "pen";
+    var INPUT_TYPE_MOUSE = "mouse";
+    var INPUT_TYPE_KINECT = "kinect";
+    var COMPUTE_INTERVAL = 25;
+    var INPUT_START = 1;
+    var INPUT_MOVE = 2;
+    var INPUT_END = 4;
+    var INPUT_CANCEL = 8;
+    var DIRECTION_NONE = 1;
+    var DIRECTION_LEFT = 2;
+    var DIRECTION_RIGHT = 4;
+    var DIRECTION_UP = 8;
+    var DIRECTION_DOWN = 16;
+    var DIRECTION_HORIZONTAL = DIRECTION_LEFT | DIRECTION_RIGHT;
+    var DIRECTION_VERTICAL = DIRECTION_UP | DIRECTION_DOWN;
+    var DIRECTION_ALL = DIRECTION_HORIZONTAL | DIRECTION_VERTICAL;
+    var PROPS_XY = ["x", "y"];
+    var PROPS_CLIENT_XY = ["clientX", "clientY"];
+    function Input(manager, callback2) {
+      var self2 = this;
+      this.manager = manager;
+      this.callback = callback2;
+      this.element = manager.element;
+      this.target = manager.options.inputTarget;
+      this.domHandler = function(ev) {
+        if (boolOrFn(manager.options.enable, [manager])) {
+          self2.handler(ev);
+        }
+      };
+      this.init();
+    }
+    Input.prototype = {
+      /**
+       * should handle the inputEvent data and trigger the callback
+       * @virtual
+       */
+      handler: function() {
+      },
+      /**
+       * bind the events
+       */
+      init: function() {
+        this.evEl && addEventListeners(this.element, this.evEl, this.domHandler);
+        this.evTarget && addEventListeners(this.target, this.evTarget, this.domHandler);
+        this.evWin && addEventListeners(getWindowForElement(this.element), this.evWin, this.domHandler);
+      },
+      /**
+       * unbind the events
+       */
+      destroy: function() {
+        this.evEl && removeEventListeners(this.element, this.evEl, this.domHandler);
+        this.evTarget && removeEventListeners(this.target, this.evTarget, this.domHandler);
+        this.evWin && removeEventListeners(getWindowForElement(this.element), this.evWin, this.domHandler);
+      }
+    };
+    function createInputInstance(manager) {
+      var Type;
+      var inputClass = manager.options.inputClass;
+      if (inputClass) {
+        Type = inputClass;
+      } else if (SUPPORT_POINTER_EVENTS) {
+        Type = PointerEventInput;
+      } else if (SUPPORT_ONLY_TOUCH) {
+        Type = TouchInput;
+      } else if (!SUPPORT_TOUCH) {
+        Type = MouseInput;
+      } else {
+        Type = TouchMouseInput;
+      }
+      return new Type(manager, inputHandler);
+    }
+    function inputHandler(manager, eventType, input) {
+      var pointersLen = input.pointers.length;
+      var changedPointersLen = input.changedPointers.length;
+      var isFirst = eventType & INPUT_START && pointersLen - changedPointersLen === 0;
+      var isFinal = eventType & (INPUT_END | INPUT_CANCEL) && pointersLen - changedPointersLen === 0;
+      input.isFirst = !!isFirst;
+      input.isFinal = !!isFinal;
+      if (isFirst) {
+        manager.session = {};
+      }
+      input.eventType = eventType;
+      computeInputData(manager, input);
+      manager.emit("hammer.input", input);
+      manager.recognize(input);
+      manager.session.prevInput = input;
+    }
+    function computeInputData(manager, input) {
+      var session = manager.session;
+      var pointers = input.pointers;
+      var pointersLength = pointers.length;
+      if (!session.firstInput) {
+        session.firstInput = simpleCloneInputData(input);
+      }
+      if (pointersLength > 1 && !session.firstMultiple) {
+        session.firstMultiple = simpleCloneInputData(input);
+      } else if (pointersLength === 1) {
+        session.firstMultiple = false;
+      }
+      var firstInput = session.firstInput;
+      var firstMultiple = session.firstMultiple;
+      var offsetCenter = firstMultiple ? firstMultiple.center : firstInput.center;
+      var center = input.center = getCenter2(pointers);
+      input.timeStamp = now();
+      input.deltaTime = input.timeStamp - firstInput.timeStamp;
+      input.angle = getAngle(offsetCenter, center);
+      input.distance = getDistance(offsetCenter, center);
+      computeDeltaXY(session, input);
+      input.offsetDirection = getDirection(input.deltaX, input.deltaY);
+      var overallVelocity = getVelocity(input.deltaTime, input.deltaX, input.deltaY);
+      input.overallVelocityX = overallVelocity.x;
+      input.overallVelocityY = overallVelocity.y;
+      input.overallVelocity = abs(overallVelocity.x) > abs(overallVelocity.y) ? overallVelocity.x : overallVelocity.y;
+      input.scale = firstMultiple ? getScale(firstMultiple.pointers, pointers) : 1;
+      input.rotation = firstMultiple ? getRotation(firstMultiple.pointers, pointers) : 0;
+      input.maxPointers = !session.prevInput ? input.pointers.length : input.pointers.length > session.prevInput.maxPointers ? input.pointers.length : session.prevInput.maxPointers;
+      computeIntervalInputData(session, input);
+      var target = manager.element;
+      if (hasParent(input.srcEvent.target, target)) {
+        target = input.srcEvent.target;
+      }
+      input.target = target;
+    }
+    function computeDeltaXY(session, input) {
+      var center = input.center;
+      var offset = session.offsetDelta || {};
+      var prevDelta = session.prevDelta || {};
+      var prevInput = session.prevInput || {};
+      if (input.eventType === INPUT_START || prevInput.eventType === INPUT_END) {
+        prevDelta = session.prevDelta = {
+          x: prevInput.deltaX || 0,
+          y: prevInput.deltaY || 0
+        };
+        offset = session.offsetDelta = {
+          x: center.x,
+          y: center.y
+        };
+      }
+      input.deltaX = prevDelta.x + (center.x - offset.x);
+      input.deltaY = prevDelta.y + (center.y - offset.y);
+    }
+    function computeIntervalInputData(session, input) {
+      var last = session.lastInterval || input, deltaTime = input.timeStamp - last.timeStamp, velocity, velocityX, velocityY, direction;
+      if (input.eventType != INPUT_CANCEL && (deltaTime > COMPUTE_INTERVAL || last.velocity === undefined$1)) {
+        var deltaX = input.deltaX - last.deltaX;
+        var deltaY = input.deltaY - last.deltaY;
+        var v2 = getVelocity(deltaTime, deltaX, deltaY);
+        velocityX = v2.x;
+        velocityY = v2.y;
+        velocity = abs(v2.x) > abs(v2.y) ? v2.x : v2.y;
+        direction = getDirection(deltaX, deltaY);
+        session.lastInterval = input;
+      } else {
+        velocity = last.velocity;
+        velocityX = last.velocityX;
+        velocityY = last.velocityY;
+        direction = last.direction;
+      }
+      input.velocity = velocity;
+      input.velocityX = velocityX;
+      input.velocityY = velocityY;
+      input.direction = direction;
+    }
+    function simpleCloneInputData(input) {
+      var pointers = [];
+      var i = 0;
+      while (i < input.pointers.length) {
+        pointers[i] = {
+          clientX: round2(input.pointers[i].clientX),
+          clientY: round2(input.pointers[i].clientY)
+        };
+        i++;
+      }
+      return {
+        timeStamp: now(),
+        pointers,
+        center: getCenter2(pointers),
+        deltaX: input.deltaX,
+        deltaY: input.deltaY
+      };
+    }
+    function getCenter2(pointers) {
+      var pointersLength = pointers.length;
+      if (pointersLength === 1) {
+        return {
+          x: round2(pointers[0].clientX),
+          y: round2(pointers[0].clientY)
+        };
+      }
+      var x2 = 0, y2 = 0, i = 0;
+      while (i < pointersLength) {
+        x2 += pointers[i].clientX;
+        y2 += pointers[i].clientY;
+        i++;
+      }
+      return {
+        x: round2(x2 / pointersLength),
+        y: round2(y2 / pointersLength)
+      };
+    }
+    function getVelocity(deltaTime, x2, y2) {
+      return {
+        x: x2 / deltaTime || 0,
+        y: y2 / deltaTime || 0
+      };
+    }
+    function getDirection(x2, y2) {
+      if (x2 === y2) {
+        return DIRECTION_NONE;
+      }
+      if (abs(x2) >= abs(y2)) {
+        return x2 < 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
+      }
+      return y2 < 0 ? DIRECTION_UP : DIRECTION_DOWN;
+    }
+    function getDistance(p1, p2, props) {
+      if (!props) {
+        props = PROPS_XY;
+      }
+      var x2 = p2[props[0]] - p1[props[0]], y2 = p2[props[1]] - p1[props[1]];
+      return Math.sqrt(x2 * x2 + y2 * y2);
+    }
+    function getAngle(p1, p2, props) {
+      if (!props) {
+        props = PROPS_XY;
+      }
+      var x2 = p2[props[0]] - p1[props[0]], y2 = p2[props[1]] - p1[props[1]];
+      return Math.atan2(y2, x2) * 180 / Math.PI;
+    }
+    function getRotation(start, end) {
+      return getAngle(end[1], end[0], PROPS_CLIENT_XY) + getAngle(start[1], start[0], PROPS_CLIENT_XY);
+    }
+    function getScale(start, end) {
+      return getDistance(end[0], end[1], PROPS_CLIENT_XY) / getDistance(start[0], start[1], PROPS_CLIENT_XY);
+    }
+    var MOUSE_INPUT_MAP = {
+      mousedown: INPUT_START,
+      mousemove: INPUT_MOVE,
+      mouseup: INPUT_END
+    };
+    var MOUSE_ELEMENT_EVENTS = "mousedown";
+    var MOUSE_WINDOW_EVENTS = "mousemove mouseup";
+    function MouseInput() {
+      this.evEl = MOUSE_ELEMENT_EVENTS;
+      this.evWin = MOUSE_WINDOW_EVENTS;
+      this.pressed = false;
+      Input.apply(this, arguments);
+    }
+    inherit(MouseInput, Input, {
+      /**
+       * handle mouse events
+       * @param {Object} ev
+       */
+      handler: function MEhandler(ev) {
+        var eventType = MOUSE_INPUT_MAP[ev.type];
+        if (eventType & INPUT_START && ev.button === 0) {
+          this.pressed = true;
+        }
+        if (eventType & INPUT_MOVE && ev.which !== 1) {
+          eventType = INPUT_END;
+        }
+        if (!this.pressed) {
+          return;
+        }
+        if (eventType & INPUT_END) {
+          this.pressed = false;
+        }
+        this.callback(this.manager, eventType, {
+          pointers: [ev],
+          changedPointers: [ev],
+          pointerType: INPUT_TYPE_MOUSE,
+          srcEvent: ev
+        });
+      }
+    });
+    var POINTER_INPUT_MAP = {
+      pointerdown: INPUT_START,
+      pointermove: INPUT_MOVE,
+      pointerup: INPUT_END,
+      pointercancel: INPUT_CANCEL,
+      pointerout: INPUT_CANCEL
+    };
+    var IE10_POINTER_TYPE_ENUM = {
+      2: INPUT_TYPE_TOUCH,
+      3: INPUT_TYPE_PEN,
+      4: INPUT_TYPE_MOUSE,
+      5: INPUT_TYPE_KINECT
+      // see https://twitter.com/jacobrossi/status/480596438489890816
+    };
+    var POINTER_ELEMENT_EVENTS = "pointerdown";
+    var POINTER_WINDOW_EVENTS = "pointermove pointerup pointercancel";
+    if (window2.MSPointerEvent && !window2.PointerEvent) {
+      POINTER_ELEMENT_EVENTS = "MSPointerDown";
+      POINTER_WINDOW_EVENTS = "MSPointerMove MSPointerUp MSPointerCancel";
+    }
+    function PointerEventInput() {
+      this.evEl = POINTER_ELEMENT_EVENTS;
+      this.evWin = POINTER_WINDOW_EVENTS;
+      Input.apply(this, arguments);
+      this.store = this.manager.session.pointerEvents = [];
+    }
+    inherit(PointerEventInput, Input, {
+      /**
+       * handle mouse events
+       * @param {Object} ev
+       */
+      handler: function PEhandler(ev) {
+        var store = this.store;
+        var removePointer = false;
+        var eventTypeNormalized = ev.type.toLowerCase().replace("ms", "");
+        var eventType = POINTER_INPUT_MAP[eventTypeNormalized];
+        var pointerType = IE10_POINTER_TYPE_ENUM[ev.pointerType] || ev.pointerType;
+        var isTouch = pointerType == INPUT_TYPE_TOUCH;
+        var storeIndex = inArray(store, ev.pointerId, "pointerId");
+        if (eventType & INPUT_START && (ev.button === 0 || isTouch)) {
+          if (storeIndex < 0) {
+            store.push(ev);
+            storeIndex = store.length - 1;
+          }
+        } else if (eventType & (INPUT_END | INPUT_CANCEL)) {
+          removePointer = true;
+        }
+        if (storeIndex < 0) {
+          return;
+        }
+        store[storeIndex] = ev;
+        this.callback(this.manager, eventType, {
+          pointers: store,
+          changedPointers: [ev],
+          pointerType,
+          srcEvent: ev
+        });
+        if (removePointer) {
+          store.splice(storeIndex, 1);
+        }
+      }
+    });
+    var SINGLE_TOUCH_INPUT_MAP = {
+      touchstart: INPUT_START,
+      touchmove: INPUT_MOVE,
+      touchend: INPUT_END,
+      touchcancel: INPUT_CANCEL
+    };
+    var SINGLE_TOUCH_TARGET_EVENTS = "touchstart";
+    var SINGLE_TOUCH_WINDOW_EVENTS = "touchstart touchmove touchend touchcancel";
+    function SingleTouchInput() {
+      this.evTarget = SINGLE_TOUCH_TARGET_EVENTS;
+      this.evWin = SINGLE_TOUCH_WINDOW_EVENTS;
+      this.started = false;
+      Input.apply(this, arguments);
+    }
+    inherit(SingleTouchInput, Input, {
+      handler: function TEhandler(ev) {
+        var type = SINGLE_TOUCH_INPUT_MAP[ev.type];
+        if (type === INPUT_START) {
+          this.started = true;
+        }
+        if (!this.started) {
+          return;
+        }
+        var touches = normalizeSingleTouches.call(this, ev, type);
+        if (type & (INPUT_END | INPUT_CANCEL) && touches[0].length - touches[1].length === 0) {
+          this.started = false;
+        }
+        this.callback(this.manager, type, {
+          pointers: touches[0],
+          changedPointers: touches[1],
+          pointerType: INPUT_TYPE_TOUCH,
+          srcEvent: ev
+        });
+      }
+    });
+    function normalizeSingleTouches(ev, type) {
+      var all = toArray(ev.touches);
+      var changed = toArray(ev.changedTouches);
+      if (type & (INPUT_END | INPUT_CANCEL)) {
+        all = uniqueArray(all.concat(changed), "identifier");
+      }
+      return [all, changed];
+    }
+    var TOUCH_INPUT_MAP = {
+      touchstart: INPUT_START,
+      touchmove: INPUT_MOVE,
+      touchend: INPUT_END,
+      touchcancel: INPUT_CANCEL
+    };
+    var TOUCH_TARGET_EVENTS = "touchstart touchmove touchend touchcancel";
+    function TouchInput() {
+      this.evTarget = TOUCH_TARGET_EVENTS;
+      this.targetIds = {};
+      Input.apply(this, arguments);
+    }
+    inherit(TouchInput, Input, {
+      handler: function MTEhandler(ev) {
+        var type = TOUCH_INPUT_MAP[ev.type];
+        var touches = getTouches.call(this, ev, type);
+        if (!touches) {
+          return;
+        }
+        this.callback(this.manager, type, {
+          pointers: touches[0],
+          changedPointers: touches[1],
+          pointerType: INPUT_TYPE_TOUCH,
+          srcEvent: ev
+        });
+      }
+    });
+    function getTouches(ev, type) {
+      var allTouches = toArray(ev.touches);
+      var targetIds = this.targetIds;
+      if (type & (INPUT_START | INPUT_MOVE) && allTouches.length === 1) {
+        targetIds[allTouches[0].identifier] = true;
+        return [allTouches, allTouches];
+      }
+      var i, targetTouches, changedTouches = toArray(ev.changedTouches), changedTargetTouches = [], target = this.target;
+      targetTouches = allTouches.filter(function(touch) {
+        return hasParent(touch.target, target);
+      });
+      if (type === INPUT_START) {
+        i = 0;
+        while (i < targetTouches.length) {
+          targetIds[targetTouches[i].identifier] = true;
+          i++;
+        }
+      }
+      i = 0;
+      while (i < changedTouches.length) {
+        if (targetIds[changedTouches[i].identifier]) {
+          changedTargetTouches.push(changedTouches[i]);
+        }
+        if (type & (INPUT_END | INPUT_CANCEL)) {
+          delete targetIds[changedTouches[i].identifier];
+        }
+        i++;
+      }
+      if (!changedTargetTouches.length) {
+        return;
+      }
+      return [
+        // merge targetTouches with changedTargetTouches so it contains ALL touches, including 'end' and 'cancel'
+        uniqueArray(targetTouches.concat(changedTargetTouches), "identifier"),
+        changedTargetTouches
+      ];
+    }
+    var DEDUP_TIMEOUT = 2500;
+    var DEDUP_DISTANCE = 25;
+    function TouchMouseInput() {
+      Input.apply(this, arguments);
+      var handler = bindFn(this.handler, this);
+      this.touch = new TouchInput(this.manager, handler);
+      this.mouse = new MouseInput(this.manager, handler);
+      this.primaryTouch = null;
+      this.lastTouches = [];
+    }
+    inherit(TouchMouseInput, Input, {
+      /**
+       * handle mouse and touch events
+       * @param {Hammer} manager
+       * @param {String} inputEvent
+       * @param {Object} inputData
+       */
+      handler: function TMEhandler(manager, inputEvent, inputData) {
+        var isTouch = inputData.pointerType == INPUT_TYPE_TOUCH, isMouse = inputData.pointerType == INPUT_TYPE_MOUSE;
+        if (isMouse && inputData.sourceCapabilities && inputData.sourceCapabilities.firesTouchEvents) {
+          return;
+        }
+        if (isTouch) {
+          recordTouches.call(this, inputEvent, inputData);
+        } else if (isMouse && isSyntheticEvent.call(this, inputData)) {
+          return;
+        }
+        this.callback(manager, inputEvent, inputData);
+      },
+      /**
+       * remove the event listeners
+       */
+      destroy: function destroy() {
+        this.touch.destroy();
+        this.mouse.destroy();
+      }
+    });
+    function recordTouches(eventType, eventData) {
+      if (eventType & INPUT_START) {
+        this.primaryTouch = eventData.changedPointers[0].identifier;
+        setLastTouch.call(this, eventData);
+      } else if (eventType & (INPUT_END | INPUT_CANCEL)) {
+        setLastTouch.call(this, eventData);
+      }
+    }
+    function setLastTouch(eventData) {
+      var touch = eventData.changedPointers[0];
+      if (touch.identifier === this.primaryTouch) {
+        var lastTouch = { x: touch.clientX, y: touch.clientY };
+        this.lastTouches.push(lastTouch);
+        var lts = this.lastTouches;
+        var removeLastTouch = function() {
+          var i = lts.indexOf(lastTouch);
+          if (i > -1) {
+            lts.splice(i, 1);
+          }
+        };
+        setTimeout(removeLastTouch, DEDUP_TIMEOUT);
+      }
+    }
+    function isSyntheticEvent(eventData) {
+      var x2 = eventData.srcEvent.clientX, y2 = eventData.srcEvent.clientY;
+      for (var i = 0; i < this.lastTouches.length; i++) {
+        var t2 = this.lastTouches[i];
+        var dx = Math.abs(x2 - t2.x), dy = Math.abs(y2 - t2.y);
+        if (dx <= DEDUP_DISTANCE && dy <= DEDUP_DISTANCE) {
+          return true;
+        }
+      }
+      return false;
+    }
+    var PREFIXED_TOUCH_ACTION = prefixed(TEST_ELEMENT.style, "touchAction");
+    var NATIVE_TOUCH_ACTION = PREFIXED_TOUCH_ACTION !== undefined$1;
+    var TOUCH_ACTION_COMPUTE = "compute";
+    var TOUCH_ACTION_AUTO = "auto";
+    var TOUCH_ACTION_MANIPULATION = "manipulation";
+    var TOUCH_ACTION_NONE = "none";
+    var TOUCH_ACTION_PAN_X = "pan-x";
+    var TOUCH_ACTION_PAN_Y = "pan-y";
+    var TOUCH_ACTION_MAP = getTouchActionProps();
+    function TouchAction(manager, value) {
+      this.manager = manager;
+      this.set(value);
+    }
+    TouchAction.prototype = {
+      /**
+       * set the touchAction value on the element or enable the polyfill
+       * @param {String} value
+       */
+      set: function(value) {
+        if (value == TOUCH_ACTION_COMPUTE) {
+          value = this.compute();
+        }
+        if (NATIVE_TOUCH_ACTION && this.manager.element.style && TOUCH_ACTION_MAP[value]) {
+          this.manager.element.style[PREFIXED_TOUCH_ACTION] = value;
+        }
+        this.actions = value.toLowerCase().trim();
+      },
+      /**
+       * just re-set the touchAction value
+       */
+      update: function() {
+        this.set(this.manager.options.touchAction);
+      },
+      /**
+       * compute the value for the touchAction property based on the recognizer's settings
+       * @returns {String} value
+       */
+      compute: function() {
+        var actions = [];
+        each2(this.manager.recognizers, function(recognizer) {
+          if (boolOrFn(recognizer.options.enable, [recognizer])) {
+            actions = actions.concat(recognizer.getTouchAction());
+          }
+        });
+        return cleanTouchActions(actions.join(" "));
+      },
+      /**
+       * this method is called on each input cycle and provides the preventing of the browser behavior
+       * @param {Object} input
+       */
+      preventDefaults: function(input) {
+        var srcEvent = input.srcEvent;
+        var direction = input.offsetDirection;
+        if (this.manager.session.prevented) {
+          srcEvent.preventDefault();
+          return;
+        }
+        var actions = this.actions;
+        var hasNone = inStr(actions, TOUCH_ACTION_NONE) && !TOUCH_ACTION_MAP[TOUCH_ACTION_NONE];
+        var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y) && !TOUCH_ACTION_MAP[TOUCH_ACTION_PAN_Y];
+        var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X) && !TOUCH_ACTION_MAP[TOUCH_ACTION_PAN_X];
+        if (hasNone) {
+          var isTapPointer = input.pointers.length === 1;
+          var isTapMovement = input.distance < 2;
+          var isTapTouchTime = input.deltaTime < 250;
+          if (isTapPointer && isTapMovement && isTapTouchTime) {
+            return;
+          }
+        }
+        if (hasPanX && hasPanY) {
+          return;
+        }
+        if (hasNone || hasPanY && direction & DIRECTION_HORIZONTAL || hasPanX && direction & DIRECTION_VERTICAL) {
+          return this.preventSrc(srcEvent);
+        }
+      },
+      /**
+       * call preventDefault to prevent the browser's default behavior (scrolling in most cases)
+       * @param {Object} srcEvent
+       */
+      preventSrc: function(srcEvent) {
+        this.manager.session.prevented = true;
+        srcEvent.preventDefault();
+      }
+    };
+    function cleanTouchActions(actions) {
+      if (inStr(actions, TOUCH_ACTION_NONE)) {
+        return TOUCH_ACTION_NONE;
+      }
+      var hasPanX = inStr(actions, TOUCH_ACTION_PAN_X);
+      var hasPanY = inStr(actions, TOUCH_ACTION_PAN_Y);
+      if (hasPanX && hasPanY) {
+        return TOUCH_ACTION_NONE;
+      }
+      if (hasPanX || hasPanY) {
+        return hasPanX ? TOUCH_ACTION_PAN_X : TOUCH_ACTION_PAN_Y;
+      }
+      if (inStr(actions, TOUCH_ACTION_MANIPULATION)) {
+        return TOUCH_ACTION_MANIPULATION;
+      }
+      return TOUCH_ACTION_AUTO;
+    }
+    function getTouchActionProps() {
+      if (!NATIVE_TOUCH_ACTION) {
+        return false;
+      }
+      var touchMap = {};
+      var cssSupports = window2.CSS && window2.CSS.supports;
+      ["auto", "manipulation", "pan-y", "pan-x", "pan-x pan-y", "none"].forEach(function(val) {
+        touchMap[val] = cssSupports ? window2.CSS.supports("touch-action", val) : true;
+      });
+      return touchMap;
+    }
+    var STATE_POSSIBLE = 1;
+    var STATE_BEGAN = 2;
+    var STATE_CHANGED = 4;
+    var STATE_ENDED = 8;
+    var STATE_RECOGNIZED = STATE_ENDED;
+    var STATE_CANCELLED = 16;
+    var STATE_FAILED = 32;
+    function Recognizer(options) {
+      this.options = assign({}, this.defaults, options || {});
+      this.id = uniqueId();
+      this.manager = null;
+      this.options.enable = ifUndefined(this.options.enable, true);
+      this.state = STATE_POSSIBLE;
+      this.simultaneous = {};
+      this.requireFail = [];
+    }
+    Recognizer.prototype = {
+      /**
+       * @virtual
+       * @type {Object}
+       */
+      defaults: {},
+      /**
+       * set options
+       * @param {Object} options
+       * @return {Recognizer}
+       */
+      set: function(options) {
+        assign(this.options, options);
+        this.manager && this.manager.touchAction.update();
+        return this;
+      },
+      /**
+       * recognize simultaneous with an other recognizer.
+       * @param {Recognizer} otherRecognizer
+       * @returns {Recognizer} this
+       */
+      recognizeWith: function(otherRecognizer) {
+        if (invokeArrayArg(otherRecognizer, "recognizeWith", this)) {
+          return this;
+        }
+        var simultaneous = this.simultaneous;
+        otherRecognizer = getRecognizerByNameIfManager(otherRecognizer, this);
+        if (!simultaneous[otherRecognizer.id]) {
+          simultaneous[otherRecognizer.id] = otherRecognizer;
+          otherRecognizer.recognizeWith(this);
+        }
+        return this;
+      },
+      /**
+       * drop the simultaneous link. it doesnt remove the link on the other recognizer.
+       * @param {Recognizer} otherRecognizer
+       * @returns {Recognizer} this
+       */
+      dropRecognizeWith: function(otherRecognizer) {
+        if (invokeArrayArg(otherRecognizer, "dropRecognizeWith", this)) {
+          return this;
+        }
+        otherRecognizer = getRecognizerByNameIfManager(otherRecognizer, this);
+        delete this.simultaneous[otherRecognizer.id];
+        return this;
+      },
+      /**
+       * recognizer can only run when an other is failing
+       * @param {Recognizer} otherRecognizer
+       * @returns {Recognizer} this
+       */
+      requireFailure: function(otherRecognizer) {
+        if (invokeArrayArg(otherRecognizer, "requireFailure", this)) {
+          return this;
+        }
+        var requireFail = this.requireFail;
+        otherRecognizer = getRecognizerByNameIfManager(otherRecognizer, this);
+        if (inArray(requireFail, otherRecognizer) === -1) {
+          requireFail.push(otherRecognizer);
+          otherRecognizer.requireFailure(this);
+        }
+        return this;
+      },
+      /**
+       * drop the requireFailure link. it does not remove the link on the other recognizer.
+       * @param {Recognizer} otherRecognizer
+       * @returns {Recognizer} this
+       */
+      dropRequireFailure: function(otherRecognizer) {
+        if (invokeArrayArg(otherRecognizer, "dropRequireFailure", this)) {
+          return this;
+        }
+        otherRecognizer = getRecognizerByNameIfManager(otherRecognizer, this);
+        var index = inArray(this.requireFail, otherRecognizer);
+        if (index > -1) {
+          this.requireFail.splice(index, 1);
+        }
+        return this;
+      },
+      /**
+       * has require failures boolean
+       * @returns {boolean}
+       */
+      hasRequireFailures: function() {
+        return this.requireFail.length > 0;
+      },
+      /**
+       * if the recognizer can recognize simultaneous with an other recognizer
+       * @param {Recognizer} otherRecognizer
+       * @returns {Boolean}
+       */
+      canRecognizeWith: function(otherRecognizer) {
+        return !!this.simultaneous[otherRecognizer.id];
+      },
+      /**
+       * You should use `tryEmit` instead of `emit` directly to check
+       * that all the needed recognizers has failed before emitting.
+       * @param {Object} input
+       */
+      emit: function(input) {
+        var self2 = this;
+        var state = this.state;
+        function emit(event) {
+          self2.manager.emit(event, input);
+        }
+        if (state < STATE_ENDED) {
+          emit(self2.options.event + stateStr(state));
+        }
+        emit(self2.options.event);
+        if (input.additionalEvent) {
+          emit(input.additionalEvent);
+        }
+        if (state >= STATE_ENDED) {
+          emit(self2.options.event + stateStr(state));
+        }
+      },
+      /**
+       * Check that all the require failure recognizers has failed,
+       * if true, it emits a gesture event,
+       * otherwise, setup the state to FAILED.
+       * @param {Object} input
+       */
+      tryEmit: function(input) {
+        if (this.canEmit()) {
+          return this.emit(input);
+        }
+        this.state = STATE_FAILED;
+      },
+      /**
+       * can we emit?
+       * @returns {boolean}
+       */
+      canEmit: function() {
+        var i = 0;
+        while (i < this.requireFail.length) {
+          if (!(this.requireFail[i].state & (STATE_FAILED | STATE_POSSIBLE))) {
+            return false;
+          }
+          i++;
+        }
+        return true;
+      },
+      /**
+       * update the recognizer
+       * @param {Object} inputData
+       */
+      recognize: function(inputData) {
+        var inputDataClone = assign({}, inputData);
+        if (!boolOrFn(this.options.enable, [this, inputDataClone])) {
+          this.reset();
+          this.state = STATE_FAILED;
+          return;
+        }
+        if (this.state & (STATE_RECOGNIZED | STATE_CANCELLED | STATE_FAILED)) {
+          this.state = STATE_POSSIBLE;
+        }
+        this.state = this.process(inputDataClone);
+        if (this.state & (STATE_BEGAN | STATE_CHANGED | STATE_ENDED | STATE_CANCELLED)) {
+          this.tryEmit(inputDataClone);
+        }
+      },
+      /**
+       * return the state of the recognizer
+       * the actual recognizing happens in this method
+       * @virtual
+       * @param {Object} inputData
+       * @returns {Const} STATE
+       */
+      process: function(inputData) {
+      },
+      // jshint ignore:line
+      /**
+       * return the preferred touch-action
+       * @virtual
+       * @returns {Array}
+       */
+      getTouchAction: function() {
+      },
+      /**
+       * called when the gesture isn't allowed to recognize
+       * like when another is being recognized or it is disabled
+       * @virtual
+       */
+      reset: function() {
+      }
+    };
+    function stateStr(state) {
+      if (state & STATE_CANCELLED) {
+        return "cancel";
+      } else if (state & STATE_ENDED) {
+        return "end";
+      } else if (state & STATE_CHANGED) {
+        return "move";
+      } else if (state & STATE_BEGAN) {
+        return "start";
+      }
+      return "";
+    }
+    function directionStr(direction) {
+      if (direction == DIRECTION_DOWN) {
+        return "down";
+      } else if (direction == DIRECTION_UP) {
+        return "up";
+      } else if (direction == DIRECTION_LEFT) {
+        return "left";
+      } else if (direction == DIRECTION_RIGHT) {
+        return "right";
+      }
+      return "";
+    }
+    function getRecognizerByNameIfManager(otherRecognizer, recognizer) {
+      var manager = recognizer.manager;
+      if (manager) {
+        return manager.get(otherRecognizer);
+      }
+      return otherRecognizer;
+    }
+    function AttrRecognizer() {
+      Recognizer.apply(this, arguments);
+    }
+    inherit(AttrRecognizer, Recognizer, {
+      /**
+       * @namespace
+       * @memberof AttrRecognizer
+       */
+      defaults: {
+        /**
+         * @type {Number}
+         * @default 1
+         */
+        pointers: 1
+      },
+      /**
+       * Used to check if it the recognizer receives valid input, like input.distance > 10.
+       * @memberof AttrRecognizer
+       * @param {Object} input
+       * @returns {Boolean} recognized
+       */
+      attrTest: function(input) {
+        var optionPointers = this.options.pointers;
+        return optionPointers === 0 || input.pointers.length === optionPointers;
+      },
+      /**
+       * Process the input and return the state for the recognizer
+       * @memberof AttrRecognizer
+       * @param {Object} input
+       * @returns {*} State
+       */
+      process: function(input) {
+        var state = this.state;
+        var eventType = input.eventType;
+        var isRecognized = state & (STATE_BEGAN | STATE_CHANGED);
+        var isValid2 = this.attrTest(input);
+        if (isRecognized && (eventType & INPUT_CANCEL || !isValid2)) {
+          return state | STATE_CANCELLED;
+        } else if (isRecognized || isValid2) {
+          if (eventType & INPUT_END) {
+            return state | STATE_ENDED;
+          } else if (!(state & STATE_BEGAN)) {
+            return STATE_BEGAN;
+          }
+          return state | STATE_CHANGED;
+        }
+        return STATE_FAILED;
+      }
+    });
+    function PanRecognizer() {
+      AttrRecognizer.apply(this, arguments);
+      this.pX = null;
+      this.pY = null;
+    }
+    inherit(PanRecognizer, AttrRecognizer, {
+      /**
+       * @namespace
+       * @memberof PanRecognizer
+       */
+      defaults: {
+        event: "pan",
+        threshold: 10,
+        pointers: 1,
+        direction: DIRECTION_ALL
+      },
+      getTouchAction: function() {
+        var direction = this.options.direction;
+        var actions = [];
+        if (direction & DIRECTION_HORIZONTAL) {
+          actions.push(TOUCH_ACTION_PAN_Y);
+        }
+        if (direction & DIRECTION_VERTICAL) {
+          actions.push(TOUCH_ACTION_PAN_X);
+        }
+        return actions;
+      },
+      directionTest: function(input) {
+        var options = this.options;
+        var hasMoved = true;
+        var distance = input.distance;
+        var direction = input.direction;
+        var x2 = input.deltaX;
+        var y2 = input.deltaY;
+        if (!(direction & options.direction)) {
+          if (options.direction & DIRECTION_HORIZONTAL) {
+            direction = x2 === 0 ? DIRECTION_NONE : x2 < 0 ? DIRECTION_LEFT : DIRECTION_RIGHT;
+            hasMoved = x2 != this.pX;
+            distance = Math.abs(input.deltaX);
+          } else {
+            direction = y2 === 0 ? DIRECTION_NONE : y2 < 0 ? DIRECTION_UP : DIRECTION_DOWN;
+            hasMoved = y2 != this.pY;
+            distance = Math.abs(input.deltaY);
+          }
+        }
+        input.direction = direction;
+        return hasMoved && distance > options.threshold && direction & options.direction;
+      },
+      attrTest: function(input) {
+        return AttrRecognizer.prototype.attrTest.call(this, input) && (this.state & STATE_BEGAN || !(this.state & STATE_BEGAN) && this.directionTest(input));
+      },
+      emit: function(input) {
+        this.pX = input.deltaX;
+        this.pY = input.deltaY;
+        var direction = directionStr(input.direction);
+        if (direction) {
+          input.additionalEvent = this.options.event + direction;
+        }
+        this._super.emit.call(this, input);
+      }
+    });
+    function PinchRecognizer() {
+      AttrRecognizer.apply(this, arguments);
+    }
+    inherit(PinchRecognizer, AttrRecognizer, {
+      /**
+       * @namespace
+       * @memberof PinchRecognizer
+       */
+      defaults: {
+        event: "pinch",
+        threshold: 0,
+        pointers: 2
+      },
+      getTouchAction: function() {
+        return [TOUCH_ACTION_NONE];
+      },
+      attrTest: function(input) {
+        return this._super.attrTest.call(this, input) && (Math.abs(input.scale - 1) > this.options.threshold || this.state & STATE_BEGAN);
+      },
+      emit: function(input) {
+        if (input.scale !== 1) {
+          var inOut = input.scale < 1 ? "in" : "out";
+          input.additionalEvent = this.options.event + inOut;
+        }
+        this._super.emit.call(this, input);
+      }
+    });
+    function PressRecognizer() {
+      Recognizer.apply(this, arguments);
+      this._timer = null;
+      this._input = null;
+    }
+    inherit(PressRecognizer, Recognizer, {
+      /**
+       * @namespace
+       * @memberof PressRecognizer
+       */
+      defaults: {
+        event: "press",
+        pointers: 1,
+        time: 251,
+        // minimal time of the pointer to be pressed
+        threshold: 9
+        // a minimal movement is ok, but keep it low
+      },
+      getTouchAction: function() {
+        return [TOUCH_ACTION_AUTO];
+      },
+      process: function(input) {
+        var options = this.options;
+        var validPointers = input.pointers.length === options.pointers;
+        var validMovement = input.distance < options.threshold;
+        var validTime = input.deltaTime > options.time;
+        this._input = input;
+        if (!validMovement || !validPointers || input.eventType & (INPUT_END | INPUT_CANCEL) && !validTime) {
+          this.reset();
+        } else if (input.eventType & INPUT_START) {
+          this.reset();
+          this._timer = setTimeoutContext(function() {
+            this.state = STATE_RECOGNIZED;
+            this.tryEmit();
+          }, options.time, this);
+        } else if (input.eventType & INPUT_END) {
+          return STATE_RECOGNIZED;
+        }
+        return STATE_FAILED;
+      },
+      reset: function() {
+        clearTimeout(this._timer);
+      },
+      emit: function(input) {
+        if (this.state !== STATE_RECOGNIZED) {
+          return;
+        }
+        if (input && input.eventType & INPUT_END) {
+          this.manager.emit(this.options.event + "up", input);
+        } else {
+          this._input.timeStamp = now();
+          this.manager.emit(this.options.event, this._input);
+        }
+      }
+    });
+    function RotateRecognizer() {
+      AttrRecognizer.apply(this, arguments);
+    }
+    inherit(RotateRecognizer, AttrRecognizer, {
+      /**
+       * @namespace
+       * @memberof RotateRecognizer
+       */
+      defaults: {
+        event: "rotate",
+        threshold: 0,
+        pointers: 2
+      },
+      getTouchAction: function() {
+        return [TOUCH_ACTION_NONE];
+      },
+      attrTest: function(input) {
+        return this._super.attrTest.call(this, input) && (Math.abs(input.rotation) > this.options.threshold || this.state & STATE_BEGAN);
+      }
+    });
+    function SwipeRecognizer() {
+      AttrRecognizer.apply(this, arguments);
+    }
+    inherit(SwipeRecognizer, AttrRecognizer, {
+      /**
+       * @namespace
+       * @memberof SwipeRecognizer
+       */
+      defaults: {
+        event: "swipe",
+        threshold: 10,
+        velocity: 0.3,
+        direction: DIRECTION_HORIZONTAL | DIRECTION_VERTICAL,
+        pointers: 1
+      },
+      getTouchAction: function() {
+        return PanRecognizer.prototype.getTouchAction.call(this);
+      },
+      attrTest: function(input) {
+        var direction = this.options.direction;
+        var velocity;
+        if (direction & (DIRECTION_HORIZONTAL | DIRECTION_VERTICAL)) {
+          velocity = input.overallVelocity;
+        } else if (direction & DIRECTION_HORIZONTAL) {
+          velocity = input.overallVelocityX;
+        } else if (direction & DIRECTION_VERTICAL) {
+          velocity = input.overallVelocityY;
+        }
+        return this._super.attrTest.call(this, input) && direction & input.offsetDirection && input.distance > this.options.threshold && input.maxPointers == this.options.pointers && abs(velocity) > this.options.velocity && input.eventType & INPUT_END;
+      },
+      emit: function(input) {
+        var direction = directionStr(input.offsetDirection);
+        if (direction) {
+          this.manager.emit(this.options.event + direction, input);
+        }
+        this.manager.emit(this.options.event, input);
+      }
+    });
+    function TapRecognizer() {
+      Recognizer.apply(this, arguments);
+      this.pTime = false;
+      this.pCenter = false;
+      this._timer = null;
+      this._input = null;
+      this.count = 0;
+    }
+    inherit(TapRecognizer, Recognizer, {
+      /**
+       * @namespace
+       * @memberof PinchRecognizer
+       */
+      defaults: {
+        event: "tap",
+        pointers: 1,
+        taps: 1,
+        interval: 300,
+        // max time between the multi-tap taps
+        time: 250,
+        // max time of the pointer to be down (like finger on the screen)
+        threshold: 9,
+        // a minimal movement is ok, but keep it low
+        posThreshold: 10
+        // a multi-tap can be a bit off the initial position
+      },
+      getTouchAction: function() {
+        return [TOUCH_ACTION_MANIPULATION];
+      },
+      process: function(input) {
+        var options = this.options;
+        var validPointers = input.pointers.length === options.pointers;
+        var validMovement = input.distance < options.threshold;
+        var validTouchTime = input.deltaTime < options.time;
+        this.reset();
+        if (input.eventType & INPUT_START && this.count === 0) {
+          return this.failTimeout();
+        }
+        if (validMovement && validTouchTime && validPointers) {
+          if (input.eventType != INPUT_END) {
+            return this.failTimeout();
+          }
+          var validInterval = this.pTime ? input.timeStamp - this.pTime < options.interval : true;
+          var validMultiTap = !this.pCenter || getDistance(this.pCenter, input.center) < options.posThreshold;
+          this.pTime = input.timeStamp;
+          this.pCenter = input.center;
+          if (!validMultiTap || !validInterval) {
+            this.count = 1;
+          } else {
+            this.count += 1;
+          }
+          this._input = input;
+          var tapCount = this.count % options.taps;
+          if (tapCount === 0) {
+            if (!this.hasRequireFailures()) {
+              return STATE_RECOGNIZED;
+            } else {
+              this._timer = setTimeoutContext(function() {
+                this.state = STATE_RECOGNIZED;
+                this.tryEmit();
+              }, options.interval, this);
+              return STATE_BEGAN;
+            }
+          }
+        }
+        return STATE_FAILED;
+      },
+      failTimeout: function() {
+        this._timer = setTimeoutContext(function() {
+          this.state = STATE_FAILED;
+        }, this.options.interval, this);
+        return STATE_FAILED;
+      },
+      reset: function() {
+        clearTimeout(this._timer);
+      },
+      emit: function() {
+        if (this.state == STATE_RECOGNIZED) {
+          this._input.tapCount = this.count;
+          this.manager.emit(this.options.event, this._input);
+        }
+      }
+    });
+    function Hammer2(element, options) {
+      options = options || {};
+      options.recognizers = ifUndefined(options.recognizers, Hammer2.defaults.preset);
+      return new Manager(element, options);
+    }
+    Hammer2.VERSION = "2.0.7";
+    Hammer2.defaults = {
+      /**
+       * set if DOM events are being triggered.
+       * But this is slower and unused by simple implementations, so disabled by default.
+       * @type {Boolean}
+       * @default false
+       */
+      domEvents: false,
+      /**
+       * The value for the touchAction property/fallback.
+       * When set to `compute` it will magically set the correct value based on the added recognizers.
+       * @type {String}
+       * @default compute
+       */
+      touchAction: TOUCH_ACTION_COMPUTE,
+      /**
+       * @type {Boolean}
+       * @default true
+       */
+      enable: true,
+      /**
+       * EXPERIMENTAL FEATURE -- can be removed/changed
+       * Change the parent input target element.
+       * If Null, then it is being set the to main element.
+       * @type {Null|EventTarget}
+       * @default null
+       */
+      inputTarget: null,
+      /**
+       * force an input class
+       * @type {Null|Function}
+       * @default null
+       */
+      inputClass: null,
+      /**
+       * Default recognizer setup when calling `Hammer()`
+       * When creating a new Manager these will be skipped.
+       * @type {Array}
+       */
+      preset: [
+        // RecognizerClass, options, [recognizeWith, ...], [requireFailure, ...]
+        [RotateRecognizer, { enable: false }],
+        [PinchRecognizer, { enable: false }, ["rotate"]],
+        [SwipeRecognizer, { direction: DIRECTION_HORIZONTAL }],
+        [PanRecognizer, { direction: DIRECTION_HORIZONTAL }, ["swipe"]],
+        [TapRecognizer],
+        [TapRecognizer, { event: "doubletap", taps: 2 }, ["tap"]],
+        [PressRecognizer]
+      ],
+      /**
+       * Some CSS properties can be used to improve the working of Hammer.
+       * Add them to this method and they will be set when creating a new Manager.
+       * @namespace
+       */
+      cssProps: {
+        /**
+         * Disables text selection to improve the dragging gesture. Mainly for desktop browsers.
+         * @type {String}
+         * @default 'none'
+         */
+        userSelect: "none",
+        /**
+         * Disable the Windows Phone grippers when pressing an element.
+         * @type {String}
+         * @default 'none'
+         */
+        touchSelect: "none",
+        /**
+         * Disables the default callout shown when you touch and hold a touch target.
+         * On iOS, when you touch and hold a touch target such as a link, Safari displays
+         * a callout containing information about the link. This property allows you to disable that callout.
+         * @type {String}
+         * @default 'none'
+         */
+        touchCallout: "none",
+        /**
+         * Specifies whether zooming is enabled. Used by IE10>
+         * @type {String}
+         * @default 'none'
+         */
+        contentZooming: "none",
+        /**
+         * Specifies that an entire element should be draggable instead of its contents. Mainly for desktop browsers.
+         * @type {String}
+         * @default 'none'
+         */
+        userDrag: "none",
+        /**
+         * Overrides the highlight color shown when the user taps a link or a JavaScript
+         * clickable element in iOS. This property obeys the alpha value, if specified.
+         * @type {String}
+         * @default 'rgba(0,0,0,0)'
+         */
+        tapHighlightColor: "rgba(0,0,0,0)"
+      }
+    };
+    var STOP = 1;
+    var FORCED_STOP = 2;
+    function Manager(element, options) {
+      this.options = assign({}, Hammer2.defaults, options || {});
+      this.options.inputTarget = this.options.inputTarget || element;
+      this.handlers = {};
+      this.session = {};
+      this.recognizers = [];
+      this.oldCssProps = {};
+      this.element = element;
+      this.input = createInputInstance(this);
+      this.touchAction = new TouchAction(this, this.options.touchAction);
+      toggleCssProps(this, true);
+      each2(this.options.recognizers, function(item) {
+        var recognizer = this.add(new item[0](item[1]));
+        item[2] && recognizer.recognizeWith(item[2]);
+        item[3] && recognizer.requireFailure(item[3]);
+      }, this);
+    }
+    Manager.prototype = {
+      /**
+       * set options
+       * @param {Object} options
+       * @returns {Manager}
+       */
+      set: function(options) {
+        assign(this.options, options);
+        if (options.touchAction) {
+          this.touchAction.update();
+        }
+        if (options.inputTarget) {
+          this.input.destroy();
+          this.input.target = options.inputTarget;
+          this.input.init();
+        }
+        return this;
+      },
+      /**
+       * stop recognizing for this session.
+       * This session will be discarded, when a new [input]start event is fired.
+       * When forced, the recognizer cycle is stopped immediately.
+       * @param {Boolean} [force]
+       */
+      stop: function(force) {
+        this.session.stopped = force ? FORCED_STOP : STOP;
+      },
+      /**
+       * run the recognizers!
+       * called by the inputHandler function on every movement of the pointers (touches)
+       * it walks through all the recognizers and tries to detect the gesture that is being made
+       * @param {Object} inputData
+       */
+      recognize: function(inputData) {
+        var session = this.session;
+        if (session.stopped) {
+          return;
+        }
+        this.touchAction.preventDefaults(inputData);
+        var recognizer;
+        var recognizers = this.recognizers;
+        var curRecognizer = session.curRecognizer;
+        if (!curRecognizer || curRecognizer && curRecognizer.state & STATE_RECOGNIZED) {
+          curRecognizer = session.curRecognizer = null;
+        }
+        var i = 0;
+        while (i < recognizers.length) {
+          recognizer = recognizers[i];
+          if (session.stopped !== FORCED_STOP && // 1
+          (!curRecognizer || recognizer == curRecognizer || // 2
+          recognizer.canRecognizeWith(curRecognizer))) {
+            recognizer.recognize(inputData);
+          } else {
+            recognizer.reset();
+          }
+          if (!curRecognizer && recognizer.state & (STATE_BEGAN | STATE_CHANGED | STATE_ENDED)) {
+            curRecognizer = session.curRecognizer = recognizer;
+          }
+          i++;
+        }
+      },
+      /**
+       * get a recognizer by its event name.
+       * @param {Recognizer|String} recognizer
+       * @returns {Recognizer|Null}
+       */
+      get: function(recognizer) {
+        if (recognizer instanceof Recognizer) {
+          return recognizer;
+        }
+        var recognizers = this.recognizers;
+        for (var i = 0; i < recognizers.length; i++) {
+          if (recognizers[i].options.event == recognizer) {
+            return recognizers[i];
+          }
+        }
+        return null;
+      },
+      /**
+       * add a recognizer to the manager
+       * existing recognizers with the same event name will be removed
+       * @param {Recognizer} recognizer
+       * @returns {Recognizer|Manager}
+       */
+      add: function(recognizer) {
+        if (invokeArrayArg(recognizer, "add", this)) {
+          return this;
+        }
+        var existing = this.get(recognizer.options.event);
+        if (existing) {
+          this.remove(existing);
+        }
+        this.recognizers.push(recognizer);
+        recognizer.manager = this;
+        this.touchAction.update();
+        return recognizer;
+      },
+      /**
+       * remove a recognizer by name or instance
+       * @param {Recognizer|String} recognizer
+       * @returns {Manager}
+       */
+      remove: function(recognizer) {
+        if (invokeArrayArg(recognizer, "remove", this)) {
+          return this;
+        }
+        recognizer = this.get(recognizer);
+        if (recognizer) {
+          var recognizers = this.recognizers;
+          var index = inArray(recognizers, recognizer);
+          if (index !== -1) {
+            recognizers.splice(index, 1);
+            this.touchAction.update();
+          }
+        }
+        return this;
+      },
+      /**
+       * bind event
+       * @param {String} events
+       * @param {Function} handler
+       * @returns {EventEmitter} this
+       */
+      on: function(events, handler) {
+        if (events === undefined$1) {
+          return;
+        }
+        if (handler === undefined$1) {
+          return;
+        }
+        var handlers = this.handlers;
+        each2(splitStr(events), function(event) {
+          handlers[event] = handlers[event] || [];
+          handlers[event].push(handler);
+        });
+        return this;
+      },
+      /**
+       * unbind event, leave emit blank to remove all handlers
+       * @param {String} events
+       * @param {Function} [handler]
+       * @returns {EventEmitter} this
+       */
+      off: function(events, handler) {
+        if (events === undefined$1) {
+          return;
+        }
+        var handlers = this.handlers;
+        each2(splitStr(events), function(event) {
+          if (!handler) {
+            delete handlers[event];
+          } else {
+            handlers[event] && handlers[event].splice(inArray(handlers[event], handler), 1);
+          }
+        });
+        return this;
+      },
+      /**
+       * emit event to the listeners
+       * @param {String} event
+       * @param {Object} data
+       */
+      emit: function(event, data) {
+        if (this.options.domEvents) {
+          triggerDomEvent(event, data);
+        }
+        var handlers = this.handlers[event] && this.handlers[event].slice();
+        if (!handlers || !handlers.length) {
+          return;
+        }
+        data.type = event;
+        data.preventDefault = function() {
+          data.srcEvent.preventDefault();
+        };
+        var i = 0;
+        while (i < handlers.length) {
+          handlers[i](data);
+          i++;
+        }
+      },
+      /**
+       * destroy the manager and unbinds all events
+       * it doesn't unbind dom events, that is the user own responsibility
+       */
+      destroy: function() {
+        this.element && toggleCssProps(this, false);
+        this.handlers = {};
+        this.session = {};
+        this.input.destroy();
+        this.element = null;
+      }
+    };
+    function toggleCssProps(manager, add) {
+      var element = manager.element;
+      if (!element.style) {
+        return;
+      }
+      var prop;
+      each2(manager.options.cssProps, function(value, name) {
+        prop = prefixed(element.style, name);
+        if (add) {
+          manager.oldCssProps[prop] = element.style[prop];
+          element.style[prop] = value;
+        } else {
+          element.style[prop] = manager.oldCssProps[prop] || "";
+        }
+      });
+      if (!add) {
+        manager.oldCssProps = {};
+      }
+    }
+    function triggerDomEvent(event, data) {
+      var gestureEvent = document2.createEvent("Event");
+      gestureEvent.initEvent(event, true, true);
+      gestureEvent.gesture = data;
+      data.target.dispatchEvent(gestureEvent);
+    }
+    assign(Hammer2, {
+      INPUT_START,
+      INPUT_MOVE,
+      INPUT_END,
+      INPUT_CANCEL,
+      STATE_POSSIBLE,
+      STATE_BEGAN,
+      STATE_CHANGED,
+      STATE_ENDED,
+      STATE_RECOGNIZED,
+      STATE_CANCELLED,
+      STATE_FAILED,
+      DIRECTION_NONE,
+      DIRECTION_LEFT,
+      DIRECTION_RIGHT,
+      DIRECTION_UP,
+      DIRECTION_DOWN,
+      DIRECTION_HORIZONTAL,
+      DIRECTION_VERTICAL,
+      DIRECTION_ALL,
+      Manager,
+      Input,
+      TouchAction,
+      TouchInput,
+      MouseInput,
+      PointerEventInput,
+      TouchMouseInput,
+      SingleTouchInput,
+      Recognizer,
+      AttrRecognizer,
+      Tap: TapRecognizer,
+      Pan: PanRecognizer,
+      Swipe: SwipeRecognizer,
+      Pinch: PinchRecognizer,
+      Rotate: RotateRecognizer,
+      Press: PressRecognizer,
+      on: addEventListeners,
+      off: removeEventListeners,
+      each: each2,
+      merge: merge2,
+      extend,
+      assign,
+      inherit,
+      bindFn,
+      prefixed
+    });
+    var freeGlobal = typeof window2 !== "undefined" ? window2 : typeof self !== "undefined" ? self : {};
+    freeGlobal.Hammer = Hammer2;
+    if (module.exports) {
+      module.exports = Hammer2;
+    } else {
+      window2[exportName] = Hammer2;
+    }
+  })(window, document, "Hammer");
+})(hammer);
+var hammerExports = hammer.exports;
+const Hammer = /* @__PURE__ */ getDefaultExportFromCjs(hammerExports);
+/*!
+* chartjs-plugin-zoom v2.2.0
+* https://www.chartjs.org/chartjs-plugin-zoom/2.2.0/
+ * (c) 2016-2024 chartjs-plugin-zoom Contributors
+ * Released under the MIT License
+ */
+const getModifierKey = (opts) => opts && opts.enabled && opts.modifierKey;
+const keyPressed = (key, event) => key && event[key + "Key"];
+const keyNotPressed = (key, event) => key && !event[key + "Key"];
+function directionEnabled(mode, dir, chart) {
+  if (mode === void 0) {
+    return true;
+  } else if (typeof mode === "string") {
+    return mode.indexOf(dir) !== -1;
+  } else if (typeof mode === "function") {
+    return mode({ chart }).indexOf(dir) !== -1;
+  }
+  return false;
+}
+function directionsEnabled(mode, chart) {
+  if (typeof mode === "function") {
+    mode = mode({ chart });
+  }
+  if (typeof mode === "string") {
+    return { x: mode.indexOf("x") !== -1, y: mode.indexOf("y") !== -1 };
+  }
+  return { x: false, y: false };
+}
+function debounce(fn, delay) {
+  let timeout;
+  return function() {
+    clearTimeout(timeout);
+    timeout = setTimeout(fn, delay);
+    return delay;
+  };
+}
+function getScaleUnderPoint({ x: x2, y: y2 }, chart) {
+  const scales = chart.scales;
+  const scaleIds = Object.keys(scales);
+  for (let i = 0; i < scaleIds.length; i++) {
+    const scale = scales[scaleIds[i]];
+    if (y2 >= scale.top && y2 <= scale.bottom && x2 >= scale.left && x2 <= scale.right) {
+      return scale;
+    }
+  }
+  return null;
+}
+function getEnabledScalesByPoint(options, point, chart) {
+  const { mode = "xy", scaleMode, overScaleMode } = options || {};
+  const scale = getScaleUnderPoint(point, chart);
+  const enabled = directionsEnabled(mode, chart);
+  const scaleEnabled = directionsEnabled(scaleMode, chart);
+  if (overScaleMode) {
+    const overScaleEnabled = directionsEnabled(overScaleMode, chart);
+    for (const axis of ["x", "y"]) {
+      if (overScaleEnabled[axis]) {
+        scaleEnabled[axis] = enabled[axis];
+        enabled[axis] = false;
+      }
+    }
+  }
+  if (scale && scaleEnabled[scale.axis]) {
+    return [scale];
+  }
+  const enabledScales = [];
+  each(chart.scales, function(scaleItem) {
+    if (enabled[scaleItem.axis]) {
+      enabledScales.push(scaleItem);
+    }
+  });
+  return enabledScales;
+}
+const chartStates = /* @__PURE__ */ new WeakMap();
+function getState(chart) {
+  let state = chartStates.get(chart);
+  if (!state) {
+    state = {
+      originalScaleLimits: {},
+      updatedScaleLimits: {},
+      handlers: {},
+      panDelta: {},
+      dragging: false,
+      panning: false
+    };
+    chartStates.set(chart, state);
+  }
+  return state;
+}
+function removeState(chart) {
+  chartStates.delete(chart);
+}
+function zoomDelta(val, min, range, newRange) {
+  const minPercent = Math.max(0, Math.min(1, (val - min) / range || 0));
+  const maxPercent = 1 - minPercent;
+  return {
+    min: newRange * minPercent,
+    max: newRange * maxPercent
+  };
+}
+function getValueAtPoint(scale, point) {
+  const pixel = scale.isHorizontal() ? point.x : point.y;
+  return scale.getValueForPixel(pixel);
+}
+function linearZoomDelta(scale, zoom2, center) {
+  const range = scale.max - scale.min;
+  const newRange = range * (zoom2 - 1);
+  const centerValue = getValueAtPoint(scale, center);
+  return zoomDelta(centerValue, scale.min, range, newRange);
+}
+function logarithmicZoomRange(scale, zoom2, center) {
+  const centerValue = getValueAtPoint(scale, center);
+  if (centerValue === void 0) {
+    return { min: scale.min, max: scale.max };
+  }
+  const logMin = Math.log10(scale.min);
+  const logMax = Math.log10(scale.max);
+  const logCenter = Math.log10(centerValue);
+  const logRange = logMax - logMin;
+  const newLogRange = logRange * (zoom2 - 1);
+  const delta = zoomDelta(logCenter, logMin, logRange, newLogRange);
+  return {
+    min: Math.pow(10, logMin + delta.min),
+    max: Math.pow(10, logMax - delta.max)
+  };
+}
+function getScaleLimits(scale, limits) {
+  return limits && (limits[scale.id] || limits[scale.axis]) || {};
+}
+function getLimit(state, scale, scaleLimits, prop, fallback) {
+  let limit = scaleLimits[prop];
+  if (limit === "original") {
+    const original = state.originalScaleLimits[scale.id][prop];
+    limit = valueOrDefault(original.options, original.scale);
+  }
+  return valueOrDefault(limit, fallback);
+}
+function linearRange(scale, pixel0, pixel1) {
+  const v0 = scale.getValueForPixel(pixel0);
+  const v1 = scale.getValueForPixel(pixel1);
+  return {
+    min: Math.min(v0, v1),
+    max: Math.max(v0, v1)
+  };
+}
+function fixRange(range, { min, max, minLimit, maxLimit }, originalLimits) {
+  const offset = (range - max + min) / 2;
+  min -= offset;
+  max += offset;
+  const origMin = originalLimits.min.options ?? originalLimits.min.scale;
+  const origMax = originalLimits.max.options ?? originalLimits.max.scale;
+  const epsilon = range / 1e6;
+  if (almostEquals(min, origMin, epsilon)) {
+    min = origMin;
+  }
+  if (almostEquals(max, origMax, epsilon)) {
+    max = origMax;
+  }
+  if (min < minLimit) {
+    min = minLimit;
+    max = Math.min(minLimit + range, maxLimit);
+  } else if (max > maxLimit) {
+    max = maxLimit;
+    min = Math.max(maxLimit - range, minLimit);
+  }
+  return { min, max };
+}
+function updateRange(scale, { min, max }, limits, zoom2 = false) {
+  const state = getState(scale.chart);
+  const { options: scaleOpts } = scale;
+  const scaleLimits = getScaleLimits(scale, limits);
+  const { minRange = 0 } = scaleLimits;
+  const minLimit = getLimit(state, scale, scaleLimits, "min", -Infinity);
+  const maxLimit = getLimit(state, scale, scaleLimits, "max", Infinity);
+  if (zoom2 === "pan" && (min < minLimit || max > maxLimit)) {
+    return true;
+  }
+  const scaleRange = scale.max - scale.min;
+  const range = zoom2 ? Math.max(max - min, minRange) : scaleRange;
+  if (zoom2 && range === minRange && scaleRange <= minRange) {
+    return true;
+  }
+  const newRange = fixRange(range, { min, max, minLimit, maxLimit }, state.originalScaleLimits[scale.id]);
+  scaleOpts.min = newRange.min;
+  scaleOpts.max = newRange.max;
+  state.updatedScaleLimits[scale.id] = newRange;
+  return scale.parse(newRange.min) !== scale.min || scale.parse(newRange.max) !== scale.max;
+}
+function zoomNumericalScale(scale, zoom2, center, limits) {
+  const delta = linearZoomDelta(scale, zoom2, center);
+  const newRange = { min: scale.min + delta.min, max: scale.max - delta.max };
+  return updateRange(scale, newRange, limits, true);
+}
+function zoomLogarithmicScale(scale, zoom2, center, limits) {
+  const newRange = logarithmicZoomRange(scale, zoom2, center);
+  return updateRange(scale, newRange, limits, true);
+}
+function zoomRectNumericalScale(scale, from2, to2, limits) {
+  updateRange(scale, linearRange(scale, from2, to2), limits, true);
+}
+const integerChange = (v2) => v2 === 0 || isNaN(v2) ? 0 : v2 < 0 ? Math.min(Math.round(v2), -1) : Math.max(Math.round(v2), 1);
+function existCategoryFromMaxZoom(scale) {
+  const labels = scale.getLabels();
+  const maxIndex = labels.length - 1;
+  if (scale.min > 0) {
+    scale.min -= 1;
+  }
+  if (scale.max < maxIndex) {
+    scale.max += 1;
+  }
+}
+function zoomCategoryScale(scale, zoom2, center, limits) {
+  const delta = linearZoomDelta(scale, zoom2, center);
+  if (scale.min === scale.max && zoom2 < 1) {
+    existCategoryFromMaxZoom(scale);
+  }
+  const newRange = { min: scale.min + integerChange(delta.min), max: scale.max - integerChange(delta.max) };
+  return updateRange(scale, newRange, limits, true);
+}
+function scaleLength(scale) {
+  return scale.isHorizontal() ? scale.width : scale.height;
+}
+function panCategoryScale(scale, delta, limits) {
+  const labels = scale.getLabels();
+  const lastLabelIndex = labels.length - 1;
+  let { min, max } = scale;
+  const range = Math.max(max - min, 1);
+  const stepDelta = Math.round(scaleLength(scale) / Math.max(range, 10));
+  const stepSize = Math.round(Math.abs(delta / stepDelta));
+  let applied;
+  if (delta < -stepDelta) {
+    max = Math.min(max + stepSize, lastLabelIndex);
+    min = range === 1 ? max : max - range;
+    applied = max === lastLabelIndex;
+  } else if (delta > stepDelta) {
+    min = Math.max(0, min - stepSize);
+    max = range === 1 ? min : min + range;
+    applied = min === 0;
+  }
+  return updateRange(scale, { min, max }, limits) || applied;
+}
+const OFFSETS = {
+  second: 500,
+  minute: 30 * 1e3,
+  hour: 30 * 60 * 1e3,
+  day: 12 * 60 * 60 * 1e3,
+  week: 3.5 * 24 * 60 * 60 * 1e3,
+  month: 15 * 24 * 60 * 60 * 1e3,
+  quarter: 60 * 24 * 60 * 60 * 1e3,
+  year: 182 * 24 * 60 * 60 * 1e3
+};
+function panNumericalScale(scale, delta, limits, pan2 = false) {
+  const { min: prevStart, max: prevEnd, options } = scale;
+  const round2 = options.time && options.time.round;
+  const offset = OFFSETS[round2] || 0;
+  const newMin = scale.getValueForPixel(scale.getPixelForValue(prevStart + offset) - delta);
+  const newMax = scale.getValueForPixel(scale.getPixelForValue(prevEnd + offset) - delta);
+  if (isNaN(newMin) || isNaN(newMax)) {
+    return true;
+  }
+  return updateRange(scale, { min: newMin, max: newMax }, limits, pan2 ? "pan" : false);
+}
+function panNonLinearScale(scale, delta, limits) {
+  return panNumericalScale(scale, delta, limits, true);
+}
+const zoomFunctions = {
+  category: zoomCategoryScale,
+  default: zoomNumericalScale,
+  logarithmic: zoomLogarithmicScale
+};
+const zoomRectFunctions = {
+  default: zoomRectNumericalScale
+};
+const panFunctions = {
+  category: panCategoryScale,
+  default: panNumericalScale,
+  logarithmic: panNonLinearScale,
+  timeseries: panNonLinearScale
+};
+function shouldUpdateScaleLimits(scale, originalScaleLimits, updatedScaleLimits) {
+  const { id: id2, options: { min, max } } = scale;
+  if (!originalScaleLimits[id2] || !updatedScaleLimits[id2]) {
+    return true;
+  }
+  const previous = updatedScaleLimits[id2];
+  return previous.min !== min || previous.max !== max;
+}
+function removeMissingScales(limits, scales) {
+  each(limits, (opt, key) => {
+    if (!scales[key]) {
+      delete limits[key];
+    }
+  });
+}
+function storeOriginalScaleLimits(chart, state) {
+  const { scales } = chart;
+  const { originalScaleLimits, updatedScaleLimits } = state;
+  each(scales, function(scale) {
+    if (shouldUpdateScaleLimits(scale, originalScaleLimits, updatedScaleLimits)) {
+      originalScaleLimits[scale.id] = {
+        min: { scale: scale.min, options: scale.options.min },
+        max: { scale: scale.max, options: scale.options.max }
+      };
+    }
+  });
+  removeMissingScales(originalScaleLimits, scales);
+  removeMissingScales(updatedScaleLimits, scales);
+  return originalScaleLimits;
+}
+function doZoom(scale, amount, center, limits) {
+  const fn = zoomFunctions[scale.type] || zoomFunctions.default;
+  callback(fn, [scale, amount, center, limits]);
+}
+function doZoomRect(scale, from2, to2, limits) {
+  const fn = zoomRectFunctions[scale.type] || zoomRectFunctions.default;
+  callback(fn, [scale, from2, to2, limits]);
+}
+function getCenter(chart) {
+  const ca2 = chart.chartArea;
+  return {
+    x: (ca2.left + ca2.right) / 2,
+    y: (ca2.top + ca2.bottom) / 2
+  };
+}
+function zoom(chart, amount, transition = "none", trigger = "api") {
+  const { x: x2 = 1, y: y2 = 1, focalPoint = getCenter(chart) } = typeof amount === "number" ? { x: amount, y: amount } : amount;
+  const state = getState(chart);
+  const { options: { limits, zoom: zoomOptions } } = state;
+  storeOriginalScaleLimits(chart, state);
+  const xEnabled = x2 !== 1;
+  const yEnabled = y2 !== 1;
+  const enabledScales = getEnabledScalesByPoint(zoomOptions, focalPoint, chart);
+  each(enabledScales || chart.scales, function(scale) {
+    if (scale.isHorizontal() && xEnabled) {
+      doZoom(scale, x2, focalPoint, limits);
+    } else if (!scale.isHorizontal() && yEnabled) {
+      doZoom(scale, y2, focalPoint, limits);
+    }
+  });
+  chart.update(transition);
+  callback(zoomOptions.onZoom, [{ chart, trigger }]);
+}
+function zoomRect(chart, p0, p1, transition = "none", trigger = "api") {
+  const state = getState(chart);
+  const { options: { limits, zoom: zoomOptions } } = state;
+  const { mode = "xy" } = zoomOptions;
+  storeOriginalScaleLimits(chart, state);
+  const xEnabled = directionEnabled(mode, "x", chart);
+  const yEnabled = directionEnabled(mode, "y", chart);
+  each(chart.scales, function(scale) {
+    if (scale.isHorizontal() && xEnabled) {
+      doZoomRect(scale, p0.x, p1.x, limits);
+    } else if (!scale.isHorizontal() && yEnabled) {
+      doZoomRect(scale, p0.y, p1.y, limits);
+    }
+  });
+  chart.update(transition);
+  callback(zoomOptions.onZoom, [{ chart, trigger }]);
+}
+function zoomScale(chart, scaleId, range, transition = "none", trigger = "api") {
+  var _a2;
+  const state = getState(chart);
+  storeOriginalScaleLimits(chart, state);
+  const scale = chart.scales[scaleId];
+  updateRange(scale, range, void 0, true);
+  chart.update(transition);
+  callback((_a2 = state.options.zoom) == null ? void 0 : _a2.onZoom, [{ chart, trigger }]);
+}
+function resetZoom(chart, transition = "default") {
+  const state = getState(chart);
+  const originalScaleLimits = storeOriginalScaleLimits(chart, state);
+  each(chart.scales, function(scale) {
+    const scaleOptions = scale.options;
+    if (originalScaleLimits[scale.id]) {
+      scaleOptions.min = originalScaleLimits[scale.id].min.options;
+      scaleOptions.max = originalScaleLimits[scale.id].max.options;
+    } else {
+      delete scaleOptions.min;
+      delete scaleOptions.max;
+    }
+    delete state.updatedScaleLimits[scale.id];
+  });
+  chart.update(transition);
+  callback(state.options.zoom.onZoomComplete, [{ chart }]);
+}
+function getOriginalRange(state, scaleId) {
+  const original = state.originalScaleLimits[scaleId];
+  if (!original) {
+    return;
+  }
+  const { min, max } = original;
+  return valueOrDefault(max.options, max.scale) - valueOrDefault(min.options, min.scale);
+}
+function getZoomLevel(chart) {
+  const state = getState(chart);
+  let min = 1;
+  let max = 1;
+  each(chart.scales, function(scale) {
+    const origRange = getOriginalRange(state, scale.id);
+    if (origRange) {
+      const level = Math.round(origRange / (scale.max - scale.min) * 100) / 100;
+      min = Math.min(min, level);
+      max = Math.max(max, level);
+    }
+  });
+  return min < 1 ? min : max;
+}
+function panScale(scale, delta, limits, state) {
+  const { panDelta } = state;
+  const storedDelta = panDelta[scale.id] || 0;
+  if (sign(storedDelta) === sign(delta)) {
+    delta += storedDelta;
+  }
+  const fn = panFunctions[scale.type] || panFunctions.default;
+  if (callback(fn, [scale, delta, limits])) {
+    panDelta[scale.id] = 0;
+  } else {
+    panDelta[scale.id] = delta;
+  }
+}
+function pan(chart, delta, enabledScales, transition = "none") {
+  const { x: x2 = 0, y: y2 = 0 } = typeof delta === "number" ? { x: delta, y: delta } : delta;
+  const state = getState(chart);
+  const { options: { pan: panOptions, limits } } = state;
+  const { onPan } = panOptions || {};
+  storeOriginalScaleLimits(chart, state);
+  const xEnabled = x2 !== 0;
+  const yEnabled = y2 !== 0;
+  each(enabledScales || chart.scales, function(scale) {
+    if (scale.isHorizontal() && xEnabled) {
+      panScale(scale, x2, limits, state);
+    } else if (!scale.isHorizontal() && yEnabled) {
+      panScale(scale, y2, limits, state);
+    }
+  });
+  chart.update(transition);
+  callback(onPan, [{ chart }]);
+}
+function getInitialScaleBounds(chart) {
+  const state = getState(chart);
+  storeOriginalScaleLimits(chart, state);
+  const scaleBounds = {};
+  for (const scaleId of Object.keys(chart.scales)) {
+    const { min, max } = state.originalScaleLimits[scaleId] || { min: {}, max: {} };
+    scaleBounds[scaleId] = { min: min.scale, max: max.scale };
+  }
+  return scaleBounds;
+}
+function getZoomedScaleBounds(chart) {
+  const state = getState(chart);
+  const scaleBounds = {};
+  for (const scaleId of Object.keys(chart.scales)) {
+    scaleBounds[scaleId] = state.updatedScaleLimits[scaleId];
+  }
+  return scaleBounds;
+}
+function isZoomedOrPanned(chart) {
+  const scaleBounds = getInitialScaleBounds(chart);
+  for (const scaleId of Object.keys(chart.scales)) {
+    const { min: originalMin, max: originalMax } = scaleBounds[scaleId];
+    if (originalMin !== void 0 && chart.scales[scaleId].min !== originalMin) {
+      return true;
+    }
+    if (originalMax !== void 0 && chart.scales[scaleId].max !== originalMax) {
+      return true;
+    }
+  }
+  return false;
+}
+function isZoomingOrPanning(chart) {
+  const state = getState(chart);
+  return state.panning || state.dragging;
+}
+const clamp = (x2, from2, to2) => Math.min(to2, Math.max(from2, x2));
+function removeHandler(chart, type) {
+  const { handlers } = getState(chart);
+  const handler = handlers[type];
+  if (handler && handler.target) {
+    handler.target.removeEventListener(type, handler);
+    delete handlers[type];
+  }
+}
+function addHandler(chart, target, type, handler) {
+  const { handlers, options } = getState(chart);
+  const oldHandler = handlers[type];
+  if (oldHandler && oldHandler.target === target) {
+    return;
+  }
+  removeHandler(chart, type);
+  handlers[type] = (event) => handler(chart, event, options);
+  handlers[type].target = target;
+  const passive = type === "wheel" ? false : void 0;
+  target.addEventListener(type, handlers[type], { passive });
+}
+function mouseMove(chart, event) {
+  const state = getState(chart);
+  if (state.dragStart) {
+    state.dragging = true;
+    state.dragEnd = event;
+    chart.update("none");
+  }
+}
+function keyDown(chart, event) {
+  const state = getState(chart);
+  if (!state.dragStart || event.key !== "Escape") {
+    return;
+  }
+  removeHandler(chart, "keydown");
+  state.dragging = false;
+  state.dragStart = state.dragEnd = null;
+  chart.update("none");
+}
+function getPointPosition(event, chart) {
+  if (event.target !== chart.canvas) {
+    const canvasArea = chart.canvas.getBoundingClientRect();
+    return {
+      x: event.clientX - canvasArea.left,
+      y: event.clientY - canvasArea.top
+    };
+  }
+  return getRelativePosition(event, chart);
+}
+function zoomStart(chart, event, zoomOptions) {
+  const { onZoomStart, onZoomRejected } = zoomOptions;
+  if (onZoomStart) {
+    const point = getPointPosition(event, chart);
+    if (callback(onZoomStart, [{ chart, event, point }]) === false) {
+      callback(onZoomRejected, [{ chart, event }]);
+      return false;
+    }
+  }
+}
+function mouseDown(chart, event) {
+  if (chart.legend) {
+    const point = getRelativePosition(event, chart);
+    if (_isPointInArea(point, chart.legend)) {
+      return;
+    }
+  }
+  const state = getState(chart);
+  const { pan: panOptions, zoom: zoomOptions = {} } = state.options;
+  if (event.button !== 0 || keyPressed(getModifierKey(panOptions), event) || keyNotPressed(getModifierKey(zoomOptions.drag), event)) {
+    return callback(zoomOptions.onZoomRejected, [{ chart, event }]);
+  }
+  if (zoomStart(chart, event, zoomOptions) === false) {
+    return;
+  }
+  state.dragStart = event;
+  addHandler(chart, chart.canvas.ownerDocument, "mousemove", mouseMove);
+  addHandler(chart, window.document, "keydown", keyDown);
+}
+function applyAspectRatio({ begin, end }, aspectRatio) {
+  let width = end.x - begin.x;
+  let height = end.y - begin.y;
+  const ratio = Math.abs(width / height);
+  if (ratio > aspectRatio) {
+    width = Math.sign(width) * Math.abs(height * aspectRatio);
+  } else if (ratio < aspectRatio) {
+    height = Math.sign(height) * Math.abs(width / aspectRatio);
+  }
+  end.x = begin.x + width;
+  end.y = begin.y + height;
+}
+function applyMinMaxProps(rect, chartArea, points, { min, max, prop }) {
+  rect[min] = clamp(Math.min(points.begin[prop], points.end[prop]), chartArea[min], chartArea[max]);
+  rect[max] = clamp(Math.max(points.begin[prop], points.end[prop]), chartArea[min], chartArea[max]);
+}
+function getRelativePoints(chart, pointEvents, maintainAspectRatio) {
+  const points = {
+    begin: getPointPosition(pointEvents.dragStart, chart),
+    end: getPointPosition(pointEvents.dragEnd, chart)
+  };
+  if (maintainAspectRatio) {
+    const aspectRatio = chart.chartArea.width / chart.chartArea.height;
+    applyAspectRatio(points, aspectRatio);
+  }
+  return points;
+}
+function computeDragRect(chart, mode, pointEvents, maintainAspectRatio) {
+  const xEnabled = directionEnabled(mode, "x", chart);
+  const yEnabled = directionEnabled(mode, "y", chart);
+  const { top, left, right, bottom, width: chartWidth, height: chartHeight } = chart.chartArea;
+  const rect = { top, left, right, bottom };
+  const points = getRelativePoints(chart, pointEvents, maintainAspectRatio && xEnabled && yEnabled);
+  if (xEnabled) {
+    applyMinMaxProps(rect, chart.chartArea, points, { min: "left", max: "right", prop: "x" });
+  }
+  if (yEnabled) {
+    applyMinMaxProps(rect, chart.chartArea, points, { min: "top", max: "bottom", prop: "y" });
+  }
+  const width = rect.right - rect.left;
+  const height = rect.bottom - rect.top;
+  return {
+    ...rect,
+    width,
+    height,
+    zoomX: xEnabled && width ? 1 + (chartWidth - width) / chartWidth : 1,
+    zoomY: yEnabled && height ? 1 + (chartHeight - height) / chartHeight : 1
+  };
+}
+function mouseUp(chart, event) {
+  const state = getState(chart);
+  if (!state.dragStart) {
+    return;
+  }
+  removeHandler(chart, "mousemove");
+  const { mode, onZoomComplete, drag: { threshold = 0, maintainAspectRatio } } = state.options.zoom;
+  const rect = computeDragRect(chart, mode, { dragStart: state.dragStart, dragEnd: event }, maintainAspectRatio);
+  const distanceX = directionEnabled(mode, "x", chart) ? rect.width : 0;
+  const distanceY = directionEnabled(mode, "y", chart) ? rect.height : 0;
+  const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+  state.dragStart = state.dragEnd = null;
+  if (distance <= threshold) {
+    state.dragging = false;
+    chart.update("none");
+    return;
+  }
+  zoomRect(chart, { x: rect.left, y: rect.top }, { x: rect.right, y: rect.bottom }, "zoom", "drag");
+  state.dragging = false;
+  state.filterNextClick = true;
+  callback(onZoomComplete, [{ chart }]);
+}
+function wheelPreconditions(chart, event, zoomOptions) {
+  if (keyNotPressed(getModifierKey(zoomOptions.wheel), event)) {
+    callback(zoomOptions.onZoomRejected, [{ chart, event }]);
+    return;
+  }
+  if (zoomStart(chart, event, zoomOptions) === false) {
+    return;
+  }
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+  if (event.deltaY === void 0) {
+    return;
+  }
+  return true;
+}
+function wheel(chart, event) {
+  const { handlers: { onZoomComplete }, options: { zoom: zoomOptions } } = getState(chart);
+  if (!wheelPreconditions(chart, event, zoomOptions)) {
+    return;
+  }
+  const rect = event.target.getBoundingClientRect();
+  const speed = zoomOptions.wheel.speed;
+  const percentage = event.deltaY >= 0 ? 2 - 1 / (1 - speed) : 1 + speed;
+  const amount = {
+    x: percentage,
+    y: percentage,
+    focalPoint: {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    }
+  };
+  zoom(chart, amount, "zoom", "wheel");
+  callback(onZoomComplete, [{ chart }]);
+}
+function addDebouncedHandler(chart, name, handler, delay) {
+  if (handler) {
+    getState(chart).handlers[name] = debounce(() => callback(handler, [{ chart }]), delay);
+  }
+}
+function addListeners(chart, options) {
+  const canvas = chart.canvas;
+  const { wheel: wheelOptions, drag: dragOptions, onZoomComplete } = options.zoom;
+  if (wheelOptions.enabled) {
+    addHandler(chart, canvas, "wheel", wheel);
+    addDebouncedHandler(chart, "onZoomComplete", onZoomComplete, 250);
+  } else {
+    removeHandler(chart, "wheel");
+  }
+  if (dragOptions.enabled) {
+    addHandler(chart, canvas, "mousedown", mouseDown);
+    addHandler(chart, canvas.ownerDocument, "mouseup", mouseUp);
+  } else {
+    removeHandler(chart, "mousedown");
+    removeHandler(chart, "mousemove");
+    removeHandler(chart, "mouseup");
+    removeHandler(chart, "keydown");
+  }
+}
+function removeListeners(chart) {
+  removeHandler(chart, "mousedown");
+  removeHandler(chart, "mousemove");
+  removeHandler(chart, "mouseup");
+  removeHandler(chart, "wheel");
+  removeHandler(chart, "click");
+  removeHandler(chart, "keydown");
+}
+function createEnabler(chart, state) {
+  return function(recognizer, event) {
+    const { pan: panOptions, zoom: zoomOptions = {} } = state.options;
+    if (!panOptions || !panOptions.enabled) {
+      return false;
+    }
+    const srcEvent = event && event.srcEvent;
+    if (!srcEvent) {
+      return true;
+    }
+    if (!state.panning && event.pointerType === "mouse" && (keyNotPressed(getModifierKey(panOptions), srcEvent) || keyPressed(getModifierKey(zoomOptions.drag), srcEvent))) {
+      callback(panOptions.onPanRejected, [{ chart, event }]);
+      return false;
+    }
+    return true;
+  };
+}
+function pinchAxes(p0, p1) {
+  const pinchX = Math.abs(p0.clientX - p1.clientX);
+  const pinchY = Math.abs(p0.clientY - p1.clientY);
+  const p2 = pinchX / pinchY;
+  let x2, y2;
+  if (p2 > 0.3 && p2 < 1.7) {
+    x2 = y2 = true;
+  } else if (pinchX > pinchY) {
+    x2 = true;
+  } else {
+    y2 = true;
+  }
+  return { x: x2, y: y2 };
+}
+function handlePinch(chart, state, e) {
+  if (state.scale) {
+    const { center, pointers } = e;
+    const zoomPercent = 1 / state.scale * e.scale;
+    const rect = e.target.getBoundingClientRect();
+    const pinch = pinchAxes(pointers[0], pointers[1]);
+    const mode = state.options.zoom.mode;
+    const amount = {
+      x: pinch.x && directionEnabled(mode, "x", chart) ? zoomPercent : 1,
+      y: pinch.y && directionEnabled(mode, "y", chart) ? zoomPercent : 1,
+      focalPoint: {
+        x: center.x - rect.left,
+        y: center.y - rect.top
+      }
+    };
+    zoom(chart, amount, "zoom", "pinch");
+    state.scale = e.scale;
+  }
+}
+function startPinch(chart, state, event) {
+  if (state.options.zoom.pinch.enabled) {
+    const point = getRelativePosition(event, chart);
+    if (callback(state.options.zoom.onZoomStart, [{ chart, event, point }]) === false) {
+      state.scale = null;
+      callback(state.options.zoom.onZoomRejected, [{ chart, event }]);
+    } else {
+      state.scale = 1;
+    }
+  }
+}
+function endPinch(chart, state, e) {
+  if (state.scale) {
+    handlePinch(chart, state, e);
+    state.scale = null;
+    callback(state.options.zoom.onZoomComplete, [{ chart }]);
+  }
+}
+function handlePan(chart, state, e) {
+  const delta = state.delta;
+  if (delta) {
+    state.panning = true;
+    pan(chart, { x: e.deltaX - delta.x, y: e.deltaY - delta.y }, state.panScales);
+    state.delta = { x: e.deltaX, y: e.deltaY };
+  }
+}
+function startPan(chart, state, event) {
+  const { enabled, onPanStart, onPanRejected } = state.options.pan;
+  if (!enabled) {
+    return;
+  }
+  const rect = event.target.getBoundingClientRect();
+  const point = {
+    x: event.center.x - rect.left,
+    y: event.center.y - rect.top
+  };
+  if (callback(onPanStart, [{ chart, event, point }]) === false) {
+    return callback(onPanRejected, [{ chart, event }]);
+  }
+  state.panScales = getEnabledScalesByPoint(state.options.pan, point, chart);
+  state.delta = { x: 0, y: 0 };
+  handlePan(chart, state, event);
+}
+function endPan(chart, state) {
+  state.delta = null;
+  if (state.panning) {
+    state.panning = false;
+    state.filterNextClick = true;
+    callback(state.options.pan.onPanComplete, [{ chart }]);
+  }
+}
+const hammers = /* @__PURE__ */ new WeakMap();
+function startHammer(chart, options) {
+  const state = getState(chart);
+  const canvas = chart.canvas;
+  const { pan: panOptions, zoom: zoomOptions } = options;
+  const mc2 = new Hammer.Manager(canvas);
+  if (zoomOptions && zoomOptions.pinch.enabled) {
+    mc2.add(new Hammer.Pinch());
+    mc2.on("pinchstart", (e) => startPinch(chart, state, e));
+    mc2.on("pinch", (e) => handlePinch(chart, state, e));
+    mc2.on("pinchend", (e) => endPinch(chart, state, e));
+  }
+  if (panOptions && panOptions.enabled) {
+    mc2.add(new Hammer.Pan({
+      threshold: panOptions.threshold,
+      enable: createEnabler(chart, state)
+    }));
+    mc2.on("panstart", (e) => startPan(chart, state, e));
+    mc2.on("panmove", (e) => handlePan(chart, state, e));
+    mc2.on("panend", () => endPan(chart, state));
+  }
+  hammers.set(chart, mc2);
+}
+function stopHammer(chart) {
+  const mc2 = hammers.get(chart);
+  if (mc2) {
+    mc2.remove("pinchstart");
+    mc2.remove("pinch");
+    mc2.remove("pinchend");
+    mc2.remove("panstart");
+    mc2.remove("pan");
+    mc2.remove("panend");
+    mc2.destroy();
+    hammers.delete(chart);
+  }
+}
+function hammerOptionsChanged(oldOptions, newOptions) {
+  var _a2, _b2, _c, _d;
+  const { pan: oldPan, zoom: oldZoom } = oldOptions;
+  const { pan: newPan, zoom: newZoom } = newOptions;
+  if (((_b2 = (_a2 = oldZoom == null ? void 0 : oldZoom.zoom) == null ? void 0 : _a2.pinch) == null ? void 0 : _b2.enabled) !== ((_d = (_c = newZoom == null ? void 0 : newZoom.zoom) == null ? void 0 : _c.pinch) == null ? void 0 : _d.enabled)) {
+    return true;
+  }
+  if ((oldPan == null ? void 0 : oldPan.enabled) !== (newPan == null ? void 0 : newPan.enabled)) {
+    return true;
+  }
+  if ((oldPan == null ? void 0 : oldPan.threshold) !== (newPan == null ? void 0 : newPan.threshold)) {
+    return true;
+  }
+  return false;
+}
+var version = "2.2.0";
+function draw(chart, caller, options) {
+  const dragOptions = options.zoom.drag;
+  const { dragStart, dragEnd } = getState(chart);
+  if (dragOptions.drawTime !== caller || !dragEnd) {
+    return;
+  }
+  const { left, top, width, height } = computeDragRect(chart, options.zoom.mode, { dragStart, dragEnd }, dragOptions.maintainAspectRatio);
+  const ctx = chart.ctx;
+  ctx.save();
+  ctx.beginPath();
+  ctx.fillStyle = dragOptions.backgroundColor || "rgba(225,225,225,0.3)";
+  ctx.fillRect(left, top, width, height);
+  if (dragOptions.borderWidth > 0) {
+    ctx.lineWidth = dragOptions.borderWidth;
+    ctx.strokeStyle = dragOptions.borderColor || "rgba(225,225,225)";
+    ctx.strokeRect(left, top, width, height);
+  }
+  ctx.restore();
+}
+var plugin = {
+  id: "zoom",
+  version,
+  defaults: {
+    pan: {
+      enabled: false,
+      mode: "xy",
+      threshold: 10,
+      modifierKey: null
+    },
+    zoom: {
+      wheel: {
+        enabled: false,
+        speed: 0.1,
+        modifierKey: null
+      },
+      drag: {
+        enabled: false,
+        drawTime: "beforeDatasetsDraw",
+        modifierKey: null
+      },
+      pinch: {
+        enabled: false
+      },
+      mode: "xy"
+    }
+  },
+  start: function(chart, _args, options) {
+    const state = getState(chart);
+    state.options = options;
+    if (Object.prototype.hasOwnProperty.call(options.zoom, "enabled")) {
+      console.warn("The option `zoom.enabled` is no longer supported. Please use `zoom.wheel.enabled`, `zoom.drag.enabled`, or `zoom.pinch.enabled`.");
+    }
+    if (Object.prototype.hasOwnProperty.call(options.zoom, "overScaleMode") || Object.prototype.hasOwnProperty.call(options.pan, "overScaleMode")) {
+      console.warn("The option `overScaleMode` is deprecated. Please use `scaleMode` instead (and update `mode` as desired).");
+    }
+    if (Hammer) {
+      startHammer(chart, options);
+    }
+    chart.pan = (delta, panScales, transition) => pan(chart, delta, panScales, transition);
+    chart.zoom = (args, transition) => zoom(chart, args, transition);
+    chart.zoomRect = (p0, p1, transition) => zoomRect(chart, p0, p1, transition);
+    chart.zoomScale = (id2, range, transition) => zoomScale(chart, id2, range, transition);
+    chart.resetZoom = (transition) => resetZoom(chart, transition);
+    chart.getZoomLevel = () => getZoomLevel(chart);
+    chart.getInitialScaleBounds = () => getInitialScaleBounds(chart);
+    chart.getZoomedScaleBounds = () => getZoomedScaleBounds(chart);
+    chart.isZoomedOrPanned = () => isZoomedOrPanned(chart);
+    chart.isZoomingOrPanning = () => isZoomingOrPanning(chart);
+  },
+  beforeEvent(chart, { event }) {
+    if (isZoomingOrPanning(chart)) {
+      return false;
+    }
+    if (event.type === "click" || event.type === "mouseup") {
+      const state = getState(chart);
+      if (state.filterNextClick) {
+        state.filterNextClick = false;
+        return false;
+      }
+    }
+  },
+  beforeUpdate: function(chart, args, options) {
+    const state = getState(chart);
+    const previousOptions = state.options;
+    state.options = options;
+    if (hammerOptionsChanged(previousOptions, options)) {
+      stopHammer(chart);
+      startHammer(chart, options);
+    }
+    addListeners(chart, options);
+  },
+  beforeDatasetsDraw(chart, _args, options) {
+    draw(chart, "beforeDatasetsDraw", options);
+  },
+  afterDatasetsDraw(chart, _args, options) {
+    draw(chart, "afterDatasetsDraw", options);
+  },
+  beforeDraw(chart, _args, options) {
+    draw(chart, "beforeDraw", options);
+  },
+  afterDraw(chart, _args, options) {
+    draw(chart, "afterDraw", options);
+  },
+  stop: function(chart) {
+    removeListeners(chart);
+    if (Hammer) {
+      stopHammer(chart);
+    }
+    removeState(chart);
+  },
+  panFunctions,
+  zoomFunctions,
+  zoomRectFunctions
+};
+Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend, plugin);
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
@@ -34223,7 +37086,6 @@ function useThemeVersion() {
   }, []);
   return v2;
 }
-Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend);
 function toIsoDate(xVal) {
   const dateStr = xVal.includes("_") ? xVal.split("_").pop() : xVal;
   if (/^\d{8}$/.test(dateStr)) {
@@ -34238,6 +37100,8 @@ function TimeSeriesChart() {
   const [chartData, setChartData] = reactExports.useState(null);
   const [bufferData, setBufferData] = reactExports.useState({});
   const [isLoading, setIsLoading] = reactExports.useState(false);
+  const [isZoomed, setIsZoomed] = reactExports.useState(false);
+  const chartRef = reactExports.useRef(null);
   const updateChart = reactExports.useCallback(async () => {
     if (!state.showChart || !state.currentDataset || state.timeSeriesPoints.length === 0) {
       setChartData(null);
@@ -34417,6 +37281,8 @@ function TimeSeriesChart() {
     const textColor = cssVar("--sb-text", "#dde0f0");
     const mutedColor = cssVar("--sb-muted", "#7880a8");
     const gridColor = cssVar("--sb-border", "#2c2f4a");
+    const dsInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+    const yLabel = (dsInfo == null ? void 0 : dsInfo.label) && (dsInfo == null ? void 0 : dsInfo.unit) ? `${dsInfo.label} (${dsInfo.unit})` : (dsInfo == null ? void 0 : dsInfo.label) || (dsInfo == null ? void 0 : dsInfo.unit) || "Displacement (m)";
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -34459,12 +37325,26 @@ function TimeSeriesChart() {
               var _a2, _b2;
               const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
               if (!dataset) return "";
-              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
+              const unit = (dsInfo == null ? void 0 : dsInfo.unit) || "m";
+              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} ${unit}`;
               if (((_b2 = dataset.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 && state.showTrends) {
                 label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
               }
               return label;
             }
+          }
+        },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: "x",
+            onPanComplete: () => setIsZoomed(true)
+          },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: "x",
+            onZoomComplete: () => setIsZoomed(true)
           }
         }
       },
@@ -34477,7 +37357,7 @@ function TimeSeriesChart() {
           ticks: { color: mutedColor }
         },
         y: {
-          title: { display: true, text: "Displacement (m)", color: mutedColor },
+          title: { display: true, text: yLabel, color: mutedColor },
           suggestedMin: state.vmin,
           suggestedMax: state.vmax,
           grid: { color: gridColor },
@@ -34486,7 +37366,7 @@ function TimeSeriesChart() {
       },
       onClick: handleChartClick
     };
-  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, handleChartClick]);
+  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, state.currentDataset, state.datasetInfo, handleChartClick]);
   if (!state.showChart) return null;
   if (state.timeSeriesPoints.length === 0) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-placeholder", children: [
@@ -34619,15 +37499,31 @@ function TimeSeriesChart() {
             ]
           }
         ),
+        isZoomed && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "chart-btn",
+            onClick: () => {
+              var _a2;
+              (_a2 = chartRef.current) == null ? void 0 : _a2.resetZoom();
+              setIsZoomed(false);
+            },
+            title: "Reset zoom",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-magnifying-glass-minus" }),
+              " Reset"
+            ]
+          }
+        ),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", onClick: handleExportToCSV, title: "Export data to CSV", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-download" }),
           " CSV"
         ] })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: formattedChartData, options: chartOptions }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { ref: chartRef, data: formattedChartData, options: chartOptions }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-help", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
-      "Click chart points to sync map time",
+      "Scroll to zoom · Drag to pan · Click points to sync map time",
       state.bufferEnabled && Object.keys(bufferData).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         " · Buffer: ",
         Object.values(bufferData).map((b) => b.n_pixels).join(", "),
@@ -34822,11 +37718,16 @@ function PointManagerPanel() {
 }
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { fetchDatasets, fetchDataMode } = useApi();
+  const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
+  const [appTitle, setAppTitle] = reactExports.useState("");
   reactExports.useEffect(() => {
     const initializeApp = async () => {
       try {
-        const mode = await fetchDataMode();
+        const [config, mode] = await Promise.all([fetchConfig(), fetchDataMode()]);
+        if (config.title) {
+          setAppTitle(config.title);
+          document.title = config.title;
+        }
         dispatch({ type: "SET_DATA_MODE", payload: mode });
         const datasets = await fetchDatasets();
         dispatch({ type: "SET_DATASETS", payload: datasets });
@@ -34843,9 +37744,9 @@ function AppContent() {
       }
     };
     initializeApp();
-  }, [fetchDatasets, fetchDataMode, dispatch]);
+  }, [fetchDatasets, fetchDataMode, fetchConfig, dispatch]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-container", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(ControlPanel, {}),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(ControlPanel, { title: appTitle }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-container", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(MapContainer, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PointManagerPanel, {}),

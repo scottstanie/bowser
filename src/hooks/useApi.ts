@@ -13,6 +13,11 @@ export function useApi() {
     return data.mode;
   }, []);
 
+  const fetchConfig = useCallback(async (): Promise<{ title: string }> => {
+    const response = await fetch('/config');
+    return await response.json();
+  }, []);
+
   const fetchPointTimeSeries = useCallback(async (lon: number, lat: number, datasetName: string) => {
     const params = new URLSearchParams({
       dataset_name: datasetName,
@@ -167,6 +172,7 @@ export function useApi() {
   return {
     fetchDatasets,
     fetchDataMode,
+    fetchConfig,
     fetchPointTimeSeries,
     fetchChartTimeSeries,
     fetchMultiPointTimeSeries,

@@ -40,11 +40,13 @@ const initialState: AppState = {
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  pickingEnabled: true,
+  pickingEnabled: false,
   refEnabled: true,
   refBufferEnabled: false,
   refBufferRadius: 500,
   showRefChart: false,
+  isPlaying: false,
+  animationSpeed: 500,
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -215,6 +217,12 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, refBufferRadius: action.payload };
     case 'TOGGLE_REF_CHART':
       return { ...state, showRefChart: !state.showRefChart };
+    case 'TOGGLE_PLAYING':
+      return { ...state, isPlaying: !state.isPlaying };
+    case 'SET_PLAYING':
+      return { ...state, isPlaying: action.payload };
+    case 'SET_ANIMATION_SPEED':
+      return { ...state, animationSpeed: action.payload };
     case 'TOGGLE_CHART':
       return { ...state, showChart: !state.showChart };
     default:

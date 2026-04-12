@@ -1,10 +1,13 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Chart as ChartJS, TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, InteractionItem } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import 'chartjs-adapter-date-fns';
+import zoomPlugin from 'chartjs-plugin-zoom';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import { MultiPointTimeSeriesData } from '../types';
+
+ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, zoomPlugin);
 
 /** Read a CSS variable from the document root at call time. */
 function cssVar(name: string, fallback: string): string {
@@ -21,8 +24,6 @@ function useThemeVersion(): number {
   }, []);
   return v;
 }
-
-ChartJS.register(TimeScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
 /** Convert "YYYYMMDD_YYYYMMDD" or "YYYYMMDD" → "YYYY-MM-DD" (secondary/only date). */
 function toIsoDate(xVal: string): string {
@@ -47,6 +48,8 @@ export default function TimeSeriesChart() {
   const [chartData, setChartData] = useState<MultiPointTimeSeriesData | null>(null);
   const [bufferData, setBufferData] = useState<{ [pointId: string]: BufferResult }>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const chartRef = useRef<ChartJS<'line'>>(null);
 
   const updateChart = useCallback(async () => {
     if (!state.showChart || !state.currentDataset || state.timeSeriesPoints.length === 0) {
@@ -222,6 +225,10 @@ export default function TimeSeriesChart() {
     const textColor  = cssVar('--sb-text',   '#dde0f0');
     const mutedColor = cssVar('--sb-muted',  '#7880a8');
     const gridColor  = cssVar('--sb-border', '#2c2f4a');
+    const dsInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+    const yLabel = dsInfo?.label && dsInfo?.unit
+      ? `${dsInfo.label} (${dsInfo.unit})`
+      : dsInfo?.label || dsInfo?.unit || 'Displacement (m)';
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -265,12 +272,26 @@ export default function TimeSeriesChart() {
             label: (context: any) => {
               const dataset = chartData?.datasets?.[context.datasetIndex];
               if (!dataset) return '';
-              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} m`;
+              const unit = dsInfo?.unit || 'm';
+              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} ${unit}`;
               if (dataset.trend?.mmPerYear !== undefined && state.showTrends) {
                 label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
               }
               return label;
             },
+          },
+        },
+        zoom: {
+          pan: {
+            enabled: true,
+            mode: 'x' as const,
+            onPanComplete: () => setIsZoomed(true),
+          },
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: 'x' as const,
+            onZoomComplete: () => setIsZoomed(true),
           },
         },
       },
@@ -283,7 +304,7 @@ export default function TimeSeriesChart() {
           ticks: { color: mutedColor },
         },
         y: {
-          title: { display: true, text: 'Displacement (m)', color: mutedColor },
+          title: { display: true, text: yLabel, color: mutedColor },
           suggestedMin: state.vmin,
           suggestedMax: state.vmax,
           grid: { color: gridColor },
@@ -293,7 +314,7 @@ export default function TimeSeriesChart() {
       onClick: handleChartClick,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, handleChartClick]);
+  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, state.currentDataset, state.datasetInfo, handleChartClick]);
 
   if (!state.showChart) return null;
 
@@ -452,17 +473,26 @@ export default function TimeSeriesChart() {
               {state.showResiduals ? 'Hide' : 'Show'} Residuals
             </button>
           )}
+          {isZoomed && (
+            <button
+              className="chart-btn"
+              onClick={() => { chartRef.current?.resetZoom(); setIsZoomed(false); }}
+              title="Reset zoom"
+            >
+              <i className="fa-solid fa-magnifying-glass-minus"></i> Reset
+            </button>
+          )}
           <button className="chart-btn" onClick={handleExportToCSV} title="Export data to CSV">
             <i className="fa-solid fa-download"></i> CSV
           </button>
         </div>
       </div>
       <div className="chart-content">
-        <Line data={formattedChartData} options={chartOptions} />
+        <Line ref={chartRef} data={formattedChartData} options={chartOptions as any} />
       </div>
       <div className="chart-help">
         <small>
-          Click chart points to sync map time
+          Scroll to zoom · Drag to pan · Click points to sync map time
           {state.bufferEnabled && Object.keys(bufferData).length > 0 && (
             <> · Buffer: {Object.values(bufferData).map((b: any) => b.n_pixels).join(', ')} px</>
           )}

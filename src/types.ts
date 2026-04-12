@@ -9,6 +9,8 @@ export interface RasterGroup {
   latlon_bounds: [number, number, number, number];
   x_values: Array<number | string>;
   available_mask_vars: string[];
+  label?: string;
+  unit?: string;
 }
 
 export interface TimeSeriesPoint {
@@ -77,6 +79,8 @@ export interface AppState {
   refBufferEnabled: boolean;
   refBufferRadius: number;
   showRefChart: boolean;
+  isPlaying: boolean;
+  animationSpeed: number;
 }
 
 export type AppAction =
@@ -111,7 +115,10 @@ export type AppAction =
   | { type: 'TOGGLE_REF_ENABLED' }
   | { type: 'TOGGLE_REF_BUFFER' }
   | { type: 'SET_REF_BUFFER_RADIUS'; payload: number }
-  | { type: 'TOGGLE_REF_CHART' };
+  | { type: 'TOGGLE_REF_CHART' }
+  | { type: 'TOGGLE_PLAYING' }
+  | { type: 'SET_PLAYING'; payload: boolean }
+  | { type: 'SET_ANIMATION_SPEED'; payload: number };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

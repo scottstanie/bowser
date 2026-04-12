@@ -24,7 +24,7 @@ export default function Histogram() {
   const [loading, setLoading] = useState(false);
 
   const fetchHistogram = useCallback(async () => {
-    if (!state.currentDataset) return;
+    if (!state.currentDataset || state.isPlaying) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({ time_index: String(state.currentTimeIndex) });
@@ -38,7 +38,7 @@ export default function Histogram() {
     } finally {
       setLoading(false);
     }
-  }, [state.currentDataset, state.currentTimeIndex]);
+  }, [state.currentDataset, state.currentTimeIndex, state.isPlaying]);
 
   useEffect(() => { fetchHistogram(); }, [fetchHistogram]);
 

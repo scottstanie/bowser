@@ -113,7 +113,9 @@ function RasterTileLayer() {
 
       // Add shift for reference point if available and re-referencing is enabled
       if (state.refEnabled && state.refValues[state.currentDataset] && currentDatasetInfo.algorithm === 'shift') {
-        const shift = state.refValues[state.currentDataset][timeIdx];
+        const refArr = state.refValues[state.currentDataset];
+        // For 2D variables (no time dim) the ref array has only one element; fall back to index 0
+        const shift = refArr[timeIdx] ?? refArr[0];
         if (shift !== undefined) {
           params.algorithm_params = JSON.stringify({ shift });
         }

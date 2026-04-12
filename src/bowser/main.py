@@ -78,6 +78,10 @@ def load_data_sources():
             else xr.open_dataset(stack_file)
         )
         crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
+        # Collapse spatial_ref to scalar if it has a time dimension so that
+        # 2D variables (no time dim) still inherit the CRS coordinate.
+        if "time" in ds.spatial_ref.dims:
+            ds = ds.assign_coords(spatial_ref=ds.spatial_ref.isel(time=0).drop_vars("time"))
         ds.rio.write_crs(crs, inplace=True)
         transformer = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
         return "md", ds, None, transformer
@@ -138,19 +142,22 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
     for var_name, var in ds.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
             use_moving_reference = (
-                "displacement" in str(var_name).lower()
-                and "short_wave" not in str(var_name).lower()
-                and not skip_spatial_reference
-            )
+                ("displacement" in str(var_name).lower() and "short_wave" not in str(var_name).lower())
+                or "velocity" in str(var_name).lower()
+            ) and not skip_spatial_reference
             available_mask_vars = [
                 v for v in ["temporal_coherence", "phase_similarity", "recommended_mask"]
                 if v in ds.data_vars
             ]
+            has_time = "time" in var.dims
+            attrs = dict(var.attrs)
             dataset_info[var_name] = {
                 "name": var_name,
-                "file_list": [
-                    f"variable:{var_name}:time:{i}" for i in range(len(ds.time))
-                ],
+                "file_list": (
+                    [f"variable:{var_name}:time:{i}" for i in range(len(ds.time))]
+                    if has_time
+                    else [f"variable:{var_name}"]
+                ),
                 "mask_file_list": [],
                 "mask_min_value": 0.1,
                 "nodata": None,
@@ -158,8 +165,10 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
                 "algorithm": "shift" if use_moving_reference else None,
                 "bounds": list(bounds),
                 "latlon_bounds": list(latlon_bounds),
-                "x_values": time_values,
+                "x_values": time_values if has_time else [],
                 "available_mask_vars": available_mask_vars,
+                "label": attrs.get("long_name", var_name),
+                "unit": attrs.get("units", ""),
             }
 
     return dataset_info
@@ -197,6 +206,12 @@ async def datasets():
 async def get_mode():
     """Return the current data mode (md or cog) for frontend routing."""
     return {"mode": DATA_MODE}
+
+
+@app.get("/config")
+async def get_config():
+    """Return app configuration for the frontend."""
+    return {"title": settings.BOWSER_TITLE}
 
 
 @app.get("/variables")
@@ -641,8 +656,11 @@ async def get_histogram(
         if dataset_name not in XARRAY_DATASET.data_vars:
             raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
         da = XARRAY_DATASET[dataset_name]
-        time_index = min(time_index, da.shape[0] - 1)
-        arr = da.isel(time=time_index).values.ravel().astype(float)
+        if "time" in da.dims:
+            time_index = min(time_index, da.sizes["time"] - 1)
+            arr = da.isel(time=time_index).values.ravel().astype(float)
+        else:
+            arr = da.values.ravel().astype(float)
     else:
         if dataset_name not in RASTER_GROUPS:
             raise HTTPException(status_code=404, detail=f"Dataset {dataset_name} not found")

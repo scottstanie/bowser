@@ -72,6 +72,11 @@ def cli_app():
     is_flag=True,
     help="Don't use recommended mask for `displacement` ",
 )
+@click.option(
+    "--title",
+    default="",
+    help="Title to display on the map.",
+)
 def run(
     stack_file,
     rasters_file,
@@ -82,6 +87,7 @@ def run(
     ignore_sidecar_files,
     no_spatial_reference,
     no_recommended_mask,
+    title,
 ):
     """Run the web server."""
     import uvicorn
@@ -97,6 +103,8 @@ def run(
         "NO" if no_spatial_reference else "YES"
     )
     os.environ["BOWSER_USE_RECOMMENDED_MASK"] = "NO" if no_recommended_mask else "YES"
+    if title:
+        os.environ["BOWSER_TITLE"] = title
 
     print(f"Setting up on http://localhost:{port}")
     uvicorn.run(
@@ -284,7 +292,7 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
                 return result
         return []
 
-    wd = dolphin_work_dir.rstrip("/")
+    wd = str(Path(dolphin_work_dir).resolve())
 
     dolphin_outputs = [
         {
@@ -378,6 +386,15 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
         {
             "name": "Amplitude dispersion",
             "file_list": _glob(f"{wd}/interferograms/amp_dispersion_looked*.tif"),
+            "algorithm": Algorithm.AMPLITUDE.value,
+        },
+        {
+            "name": "Amplitude mean",
+            "file_list": _glob_first(
+                f"{wd}/interferograms/amp_mean_looked*.tif",
+                f"{wd}/interferograms/amp_mean*.tif",
+            ),
+            "algorithm": Algorithm.AMPLITUDE.value,
         },
         {
             "name": "SHP counts",

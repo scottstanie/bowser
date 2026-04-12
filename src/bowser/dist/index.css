@@ -686,6 +686,15 @@ svg.leaflet-image-layer.leaflet-interactive path {
 }
 
 /* ── Theme toggle button ───────────────────────────────────── */
+.sidebar-title {
+  padding: 8px 12px 4px;
+  font-size: 0.95em;
+  font-weight: 600;
+  color: var(--sb-text);
+  text-align: center;
+  word-break: break-word;
+}
+
 .sidebar-theme-toggle {
   display: flex;
   justify-content: flex-end;
@@ -1151,6 +1160,47 @@ img.huechange { filter: hue-rotate(120deg); }
   color: var(--sb-muted);
   text-align: center;
   font-size: 0.75em;
+}
+
+/* ── Animation controls (chart bottom + sidebar) ─────────────── */
+.chart-animation-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--sb-border);
+  flex-wrap: wrap;
+}
+
+.chart-anim-speed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 120px;
+  font-size: 0.78em;
+  color: var(--sb-muted);
+}
+
+.chart-anim-speed input[type="range"] {
+  flex: 1;
+}
+
+.chart-anim-speed span:last-child {
+  min-width: 28px;
+  text-align: right;
+  color: var(--sb-text);
+}
+
+.anim-controls {
+  margin-top: 6px;
+}
+
+.anim-play-btn {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 2px;
 }
 
 /* ── Mouse position control ─────────────────────────────────── */
