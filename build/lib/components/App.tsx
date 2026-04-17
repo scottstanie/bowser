@@ -1,45 +1,38 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AppProvider, useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import MapContainer from './MapContainer';
 import ControlPanel from './ControlPanel';
 import TimeSeriesChart from './TimeSeriesChart';
 import PointManagerPanel from './PointManagerPanel';
-import RefPointChart from './RefPointChart';
-import ColormapBar from './ColormapBar';
-import { ProfileProvider, ProfileChart } from './ProfileTool';
 import '../style.css';
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
-  const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
-  const [appTitle, setAppTitle] = useState('');
-  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const { fetchDatasets, fetchDataMode } = useApi();
 
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Fetch config (title), data mode, and datasets
-        const [config, mode] = await Promise.all([fetchConfig(), fetchDataMode()]);
-
-        if (config.title) {
-          setAppTitle(config.title);
-          document.title = config.title;
-        }
-
+        // Fetch data mode first
+        const mode = await fetchDataMode();
         dispatch({ type: 'SET_DATA_MODE', payload: mode });
 
+        // Then fetch datasets
         const datasets = await fetchDatasets();
         dispatch({ type: 'SET_DATASETS', payload: datasets });
 
+        // Set initial dataset and position
         const firstDataset = Object.keys(datasets)[0];
         if (firstDataset) {
           dispatch({ type: 'SET_CURRENT_DATASET', payload: firstDataset });
 
+          // Compute center from bounds
           const bounds = datasets[firstDataset].latlon_bounds;
           const centerLat = (bounds[1] + bounds[3]) / 2;
           const centerLng = (bounds[0] + bounds[2]) / 2;
 
+          // Set reference marker position
           dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [centerLat, centerLng] });
         }
       } catch (error) {
@@ -48,27 +41,15 @@ function AppContent() {
     };
 
     initializeApp();
-  }, [fetchDatasets, fetchDataMode, fetchConfig, dispatch]);
+  }, [fetchDatasets, fetchDataMode, dispatch]);
 
   return (
-    <div className={`app-container${sidebarHidden ? ' sidebar-hidden' : ''}`}>
-      <ControlPanel title={appTitle} />
+    <div className="app-container">
+      <ControlPanel />
       <div className="map-container">
-        <button
-          className="sidebar-toggle-btn"
-          onClick={() => setSidebarHidden(h => !h)}
-          title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
-        >
-          <i className={`fa-solid fa-chevron-${sidebarHidden ? 'right' : 'left'}`} />
-        </button>
         <MapContainer />
         <PointManagerPanel />
-        <RefPointChart />
-        <ColormapBar />
-        <ProfileChart />
-        {state.showChart && state.chartWindows.map(w => (
-          <TimeSeriesChart key={w.id} windowId={w.id} />
-        ))}
+        {state.showChart && <TimeSeriesChart />}
       </div>
     </div>
   );
@@ -77,9 +58,7 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <ProfileProvider>
-        <AppContent />
-      </ProfileProvider>
+      <AppContent />
     </AppProvider>
   );
 }

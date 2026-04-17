@@ -11,10 +11,7 @@ class Settings(BaseSettings):
     # Can be overridden by environment variable:
     BOWSER_DATASET_CONFIG_FILE: str = "bowser_rasters.json"
     BOWSER_STACK_DATA_FILE: str = ""
-    BOWSER_TITLE: str = ""
     LOG_LEVEL: str = "WARNING"
-    # Path to an htpasswd-format file for HTTP Basic Auth (empty = no auth)
-    BOWSER_HTPASSWD_FILE: str = ""
 
     # SECRET_KEY: str = secrets.token_urlsafe(32)
     # SERVER_NAME: str

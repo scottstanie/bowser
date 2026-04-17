@@ -8,6 +8,9 @@ export interface RasterGroup {
   algorithm: string | null;
   latlon_bounds: [number, number, number, number];
   x_values: Array<number | string>;
+  available_mask_vars: string[];
+  label?: string;
+  unit?: string;
 }
 
 export interface TimeSeriesPoint {
@@ -42,9 +45,22 @@ export interface BaseMapItem {
   attribution: string;
 }
 
+export interface LayerMask {
+  id: string;
+  dataset: string;
+  threshold: number;
+  mode: 'min' | 'max';  // 'min' = keep pixels >= threshold; 'max' = keep pixels <= threshold
+}
+
+export interface ChartWindow {
+  id: string;
+  dsNames: string[];  // datasets shown in this window; empty = follow currentDataset
+}
+
 export interface AppState {
   datasetInfo: { [key: string]: RasterGroup };
   timeSeriesPoints: TimeSeriesPoint[];
+  chartWindows: ChartWindow[];
   refMarkerPosition: [number, number];
   currentDataset: string;
   currentTimeIndex: number;
@@ -58,6 +74,24 @@ export interface AppState {
   showChart: boolean;
   selectedPointId: string | null;
   showTrends: boolean;
+  showResiduals: boolean;
+  layerMasks: LayerMask[];
+  customMaskPath: string | null;
+  bufferEnabled: boolean;
+  bufferRadius: number;
+  bufferSamples: number;
+  pickingEnabled: boolean;
+  refEnabled: boolean;
+  refBufferEnabled: boolean;
+  refBufferRadius: number;
+  showRefChart: boolean;
+  isPlaying: boolean;
+  animationSpeed: number;
+  markerSize: number;
+  dateRangeStart: string | null;
+  dateRangeEnd: string | null;
+  viewBounds: [number, number, number, number] | null; // [south, west, north, east]
+  showColorbar: boolean;
 }
 
 export type AppAction =
@@ -79,7 +113,31 @@ export type AppAction =
   | { type: 'SET_OPACITY'; payload: number }
   | { type: 'TOGGLE_CHART' }
   | { type: 'SET_SELECTED_POINT'; payload: string | null }
-  | { type: 'TOGGLE_TRENDS' };
+  | { type: 'TOGGLE_TRENDS' }
+  | { type: 'TOGGLE_RESIDUALS' }
+  | { type: 'ADD_LAYER_MASK'; payload: LayerMask }
+  | { type: 'REMOVE_LAYER_MASK'; payload: string }
+  | { type: 'UPDATE_LAYER_MASK'; payload: { id: string; updates: Partial<LayerMask> } }
+  | { type: 'SET_CUSTOM_MASK_PATH'; payload: string | null }
+  | { type: 'TOGGLE_BUFFER' }
+  | { type: 'SET_BUFFER_RADIUS'; payload: number }
+  | { type: 'SET_BUFFER_SAMPLES'; payload: number }
+  | { type: 'TOGGLE_PICKING' }
+  | { type: 'TOGGLE_REF_ENABLED' }
+  | { type: 'TOGGLE_REF_BUFFER' }
+  | { type: 'SET_REF_BUFFER_RADIUS'; payload: number }
+  | { type: 'TOGGLE_REF_CHART' }
+  | { type: 'TOGGLE_PLAYING' }
+  | { type: 'SET_PLAYING'; payload: boolean }
+  | { type: 'SET_ANIMATION_SPEED'; payload: number }
+  | { type: 'SET_MARKER_SIZE'; payload: number }
+  | { type: 'SET_DATE_RANGE_START'; payload: string | null }
+  | { type: 'SET_DATE_RANGE_END'; payload: string | null }
+  | { type: 'SET_VIEW_BOUNDS'; payload: [number, number, number, number] | null }
+  | { type: 'TOGGLE_COLORBAR' }
+  | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }
+  | { type: 'REMOVE_CHART_WINDOW'; payload: string }
+  | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };
