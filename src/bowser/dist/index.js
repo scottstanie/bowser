@@ -29717,7 +29717,7 @@ function RasterTileLayer() {
     {
       url: tileUrl,
       opacity: state.opacity,
-      maxZoom: 19
+      maxZoom: 22
     },
     tileUrl
   );
@@ -29933,7 +29933,7 @@ function MapContainer() {
             {
               url: selectedBasemap.url,
               attribution: selectedBasemap.attribution,
-              maxZoom: 19
+              maxZoom: 22
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(RasterTileLayer, {}),
@@ -37293,7 +37293,7 @@ const linkedLegendPlugin = {
   }
 };
 Chart$1.register(linkedLegendPlugin);
-Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend, plugin);
+Chart$1.register(TimeScale, LinearScale, CategoryScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend, plugin);
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
@@ -37531,18 +37531,35 @@ function TimeSeriesChart({ windowId }) {
   }, [chartDataMap, firstDs, activeDatasetsForChart, state.currentDataset]);
   const activeChartDs = Object.keys(chartDataMap);
   const chartOptions = reactExports.useMemo(() => {
+    var _a2, _b2, _c;
     const textColor = cssVar("--sb-text", "#dde0f0");
     const mutedColor = cssVar("--sb-muted", "#7880a8");
     const gridColor = cssVar("--sb-border", "#2c2f4a");
-    const scales = {
-      x: {
-        type: "time",
-        time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
-        title: { display: true, text: "Date", color: mutedColor },
-        grid: { color: gridColor },
-        ticks: { color: mutedColor }
-      }
+    const referenceDate = state.currentDataset ? (_a2 = state.datasetInfo[state.currentDataset]) == null ? void 0 : _a2.reference_date : null;
+    const firstLabel = activeChartDs.length > 0 ? (_c = (_b2 = chartDataMap[activeChartDs[0]]) == null ? void 0 : _b2.labels) == null ? void 0 : _c[0] : void 0;
+    const labelType = typeof firstLabel === "number" ? "linear" : typeof firstLabel === "string" && firstLabel.includes("_") ? "category" : "time";
+    const xScale = labelType === "time" ? {
+      type: "time",
+      time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
+      title: {
+        display: true,
+        text: referenceDate ? `Date (ref: ${referenceDate})` : "Date",
+        color: mutedColor
+      },
+      grid: { color: gridColor },
+      ticks: { color: mutedColor }
+    } : labelType === "category" ? {
+      type: "category",
+      title: { display: true, text: "Date pair (reference_secondary)", color: mutedColor },
+      grid: { color: gridColor },
+      ticks: { color: mutedColor, maxRotation: 45, autoSkip: true }
+    } : {
+      type: "linear",
+      title: { display: true, text: "Image index", color: mutedColor },
+      grid: { color: gridColor },
+      ticks: { color: mutedColor, stepSize: 1 }
     };
+    const scales = { x: xScale };
     activeChartDs.forEach((ds, i) => {
       const info = state.datasetInfo[ds];
       const yLabel = (info == null ? void 0 : info.label) && (info == null ? void 0 : info.unit) ? `${info.label} (${info.unit})` : (info == null ? void 0 : info.label) || (info == null ? void 0 : info.unit) || ds;
@@ -37578,8 +37595,8 @@ function TimeSeriesChart({ windowId }) {
             color: textColor,
             generateLabels: (chart) => {
               const isBuffer = chart.data.datasets.some((ds) => {
-                var _a2;
-                return (_a2 = ds.label) == null ? void 0 : _a2.endsWith(" median");
+                var _a3;
+                return (_a3 = ds.label) == null ? void 0 : _a3.endsWith(" median");
               });
               return chart.data.datasets.map((ds, index) => ({ ds, index })).filter(({ ds }) => {
                 if (ds.label.includes(" sample ")) return false;
@@ -37608,8 +37625,8 @@ function TimeSeriesChart({ windowId }) {
         tooltip: {
           callbacks: {
             title: (context) => {
-              var _a2;
-              return `${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
+              var _a3;
+              return `${((_a3 = context[0]) == null ? void 0 : _a3.label) || ""}`;
             },
             label: (context) => {
               const ds = context.chart.data.datasets[context.datasetIndex];
