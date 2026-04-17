@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -8,7 +8,6 @@ import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
 import MeasureTool from './MeasureTool';
 import ProfileTool from './ProfileTool';
-import RefPointChart from './RefPointChart';
 
 // Fix for default markers in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -36,6 +35,50 @@ function MapEvents() {
           position: [e.latlng.lat, e.latlng.lng],
           name: `Point ${Date.now().toString().slice(-4)}`
         }
+      });
+    },
+  });
+
+  return null;
+}
+
+// Syncs map view ↔ state.viewBounds.
+// When viewBounds changes (user edited sidebar), fly to it.
+// When user pans/zooms, update viewBounds in state so sidebar stays in sync.
+function MapViewController() {
+  const { state, dispatch } = useAppContext();
+  const map = useMap();
+  const flyingRef = useRef(false);
+
+  // Fly to bounds when state changes (triggered from sidebar "Apply")
+  useEffect(() => {
+    if (!state.viewBounds) return;
+    const [s, w, n, e] = state.viewBounds;
+    flyingRef.current = true;
+    const bounds = L.latLngBounds([[s, w], [n, e]]);
+    const center = bounds.getCenter();
+    // getBoundsZoom with inside=true returns fractional zoom — no integer snapping
+    const zoom = map.getBoundsZoom(bounds, true);
+    map.setView(center, zoom, { animate: true });
+    const onEnd = () => { flyingRef.current = false; };
+    map.once('moveend', onEnd);
+    return () => { map.off('moveend', onEnd); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.viewBounds]);
+
+  // Update state when user moves map (throttled to moveend only)
+  useMapEvents({
+    moveend: () => {
+      if (flyingRef.current) return;
+      const b = map.getBounds();
+      dispatch({
+        type: 'SET_VIEW_BOUNDS',
+        payload: [
+          parseFloat(b.getSouth().toFixed(6)),
+          parseFloat(b.getWest().toFixed(6)),
+          parseFloat(b.getNorth().toFixed(6)),
+          parseFloat(b.getEast().toFixed(6)),
+        ],
       });
     },
   });
@@ -434,7 +477,7 @@ export default function MapContainer() {
       <ScaleBar />
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
       <ProfileTool active={profileActive} onDeactivate={() => setProfileActive(false)} />
-      <RefPointChart />
+      <MapViewController />
     </LeafletMapContainer>
     </div>
   );

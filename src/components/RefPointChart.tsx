@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Line } from 'react-chartjs-2';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
+import { useDraggableResizable } from '../hooks/useDraggableResizable';
 
 interface BufferResult {
   labels: string[];
@@ -16,6 +17,12 @@ export default function RefPointChart() {
   const [bufferData, setBufferData] = useState<BufferResult | null>(null);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 520,
+    defaultHeight: 280,
+    initialRight: 16,
+    initialBottom: 20,
+  });
 
   useEffect(() => {
     if (!state.refBufferEnabled || !state.showRefChart || !state.currentDataset) {
@@ -48,7 +55,7 @@ export default function RefPointChart() {
   if (!state.refBufferEnabled || !state.showRefChart) return null;
   if (loading) {
     return (
-      <div className="profile-panel" style={{ left: '50%', transform: 'translateX(-50%)', bottom: 0, right: 'auto', width: 500 }}>
+      <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
         <div className="chart-placeholder"><p>Loading reference buffer…</p></div>
       </div>
     );
@@ -186,15 +193,16 @@ export default function RefPointChart() {
   };
 
   return (
-    <div className="profile-panel" style={{ right: 16, left: 'auto', width: 520 }}>
-      <div className="chart-header">
+    <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
+      <div className="chart-header" onMouseDown={onDragMouseDown} style={{ cursor: 'grab' }}>
         <h4>
           Ref Buffer — {bufferData.n_pixels} px, r={state.refBufferRadius} m
         </h4>
       </div>
-      <div style={{ height: 200, position: 'relative' }}>
+      <div style={{ flex: 1, minHeight: 120, position: 'relative' }}>
         <Line data={chartData as any} options={options as any} />
       </div>
+      {resizeGrip}
     </div>
   );
 }

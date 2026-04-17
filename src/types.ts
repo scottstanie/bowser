@@ -52,9 +52,15 @@ export interface LayerMask {
   mode: 'min' | 'max';  // 'min' = keep pixels >= threshold; 'max' = keep pixels <= threshold
 }
 
+export interface ChartWindow {
+  id: string;
+  dsNames: string[];  // datasets shown in this window; empty = follow currentDataset
+}
+
 export interface AppState {
   datasetInfo: { [key: string]: RasterGroup };
   timeSeriesPoints: TimeSeriesPoint[];
+  chartWindows: ChartWindow[];
   refMarkerPosition: [number, number];
   currentDataset: string;
   currentTimeIndex: number;
@@ -81,6 +87,11 @@ export interface AppState {
   showRefChart: boolean;
   isPlaying: boolean;
   animationSpeed: number;
+  markerSize: number;
+  dateRangeStart: string | null;
+  dateRangeEnd: string | null;
+  viewBounds: [number, number, number, number] | null; // [south, west, north, east]
+  showColorbar: boolean;
 }
 
 export type AppAction =
@@ -118,7 +129,15 @@ export type AppAction =
   | { type: 'TOGGLE_REF_CHART' }
   | { type: 'TOGGLE_PLAYING' }
   | { type: 'SET_PLAYING'; payload: boolean }
-  | { type: 'SET_ANIMATION_SPEED'; payload: number };
+  | { type: 'SET_ANIMATION_SPEED'; payload: number }
+  | { type: 'SET_MARKER_SIZE'; payload: number }
+  | { type: 'SET_DATE_RANGE_START'; payload: string | null }
+  | { type: 'SET_DATE_RANGE_END'; payload: string | null }
+  | { type: 'SET_VIEW_BOUNDS'; payload: [number, number, number, number] | null }
+  | { type: 'TOGGLE_COLORBAR' }
+  | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }
+  | { type: 'REMOVE_CHART_WINDOW'; payload: string }
+  | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };

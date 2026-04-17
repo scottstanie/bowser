@@ -77,6 +77,21 @@ def cli_app():
     default="",
     help="Title to display on the map.",
 )
+@click.option(
+    "--ssl-certfile",
+    default=None,
+    help="Path to TLS certificate file (PEM). Enables HTTPS when set.",
+)
+@click.option(
+    "--ssl-keyfile",
+    default=None,
+    help="Path to TLS private key file (PEM). Required when --ssl-certfile is set.",
+)
+@click.option(
+    "--htpasswd-file",
+    default=None,
+    help="Path to htpasswd file for HTTP Basic Auth. No auth when omitted.",
+)
 def run(
     stack_file,
     rasters_file,
@@ -88,6 +103,9 @@ def run(
     no_spatial_reference,
     no_recommended_mask,
     title,
+    ssl_certfile,
+    ssl_keyfile,
+    htpasswd_file,
 ):
     """Run the web server."""
     import uvicorn
@@ -105,14 +123,19 @@ def run(
     os.environ["BOWSER_USE_RECOMMENDED_MASK"] = "NO" if no_recommended_mask else "YES"
     if title:
         os.environ["BOWSER_TITLE"] = title
+    if htpasswd_file:
+        os.environ["BOWSER_HTPASSWD_FILE"] = htpasswd_file
 
-    print(f"Setting up on http://localhost:{port}")
+    protocol = "https" if ssl_certfile else "http"
+    print(f"Setting up on {protocol}://localhost:{port}")
     uvicorn.run(
         "bowser.main:app",
         port=port,
         reload=reload,
         workers=workers,
         log_level=log_level,
+        ssl_certfile=ssl_certfile,
+        ssl_keyfile=ssl_keyfile,
     )
 
 

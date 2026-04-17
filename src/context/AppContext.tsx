@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
-import { AppState, AppAction, LegacyAppAction, TimeSeriesPoint } from '../types';
+import { AppState, AppAction, LegacyAppAction, TimeSeriesPoint, ChartWindow } from '../types';
 
 // Color palette for different points
 const POINT_COLORS = [
@@ -32,6 +32,7 @@ const initialState: AppState = {
   vmax: 1,
   opacity: 1,
   showChart: false,
+  chartWindows: [],
   selectedPointId: null,
   showTrends: false,
   showResiduals: false,
@@ -47,6 +48,11 @@ const initialState: AppState = {
   showRefChart: false,
   isPlaying: false,
   animationSpeed: 500,
+  markerSize: 4,
+  dateRangeStart: null,
+  dateRangeEnd: null,
+  viewBounds: null,
+  showColorbar: false,
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -223,8 +229,36 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, isPlaying: action.payload };
     case 'SET_ANIMATION_SPEED':
       return { ...state, animationSpeed: action.payload };
-    case 'TOGGLE_CHART':
-      return { ...state, showChart: !state.showChart };
+    case 'SET_MARKER_SIZE':
+      return { ...state, markerSize: action.payload };
+    case 'SET_DATE_RANGE_START':
+      return { ...state, dateRangeStart: action.payload };
+    case 'SET_DATE_RANGE_END':
+      return { ...state, dateRangeEnd: action.payload };
+    case 'SET_VIEW_BOUNDS':
+      return { ...state, viewBounds: action.payload };
+    case 'TOGGLE_COLORBAR':
+      return { ...state, showColorbar: !state.showColorbar };
+    case 'ADD_CHART_WINDOW':
+      return { ...state, chartWindows: [...state.chartWindows, action.payload] };
+    case 'REMOVE_CHART_WINDOW':
+      return { ...state, chartWindows: state.chartWindows.filter(w => w.id !== action.payload) };
+    case 'SET_CHART_WINDOW_DS':
+      return {
+        ...state,
+        chartWindows: state.chartWindows.map(w =>
+          w.id === action.payload.id ? { ...w, dsNames: action.payload.dsNames } : w
+        ),
+      };
+    case 'TOGGLE_CHART': {
+      const opening = !state.showChart;
+      const firstWindow: ChartWindow = { id: `chart_${Date.now()}`, dsNames: [] };
+      return {
+        ...state,
+        showChart: opening,
+        chartWindows: opening && state.chartWindows.length === 0 ? [firstWindow] : state.chartWindows,
+      };
+    }
     default:
       return state;
   }

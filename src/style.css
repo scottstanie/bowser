@@ -414,13 +414,9 @@ img.huechange { filter: hue-rotate(120deg); }
 
 /* ── Time Series Chart ──────────────────────────────────────── */
 #chart-container {
-  width: 38vw;
-  max-width: 560px;
-  min-width: 320px;
-  height: 420px;
   position: fixed;
-  bottom: 20px;
-  right: 20px;
+  min-width: 320px;
+  min-height: 260px;
   padding: 14px;
   background: var(--sb-surface);
   backdrop-filter: blur(8px);
@@ -431,6 +427,7 @@ img.huechange { filter: hue-rotate(120deg); }
   display: flex;
   flex-direction: column;
   color: var(--sb-text);
+  user-select: none;
 }
 
 .chart-header {
@@ -473,6 +470,40 @@ img.huechange { filter: hue-rotate(120deg); }
   background: var(--sb-accent);
   color: white;
   border-color: var(--sb-accent);
+}
+
+.chart-sliders {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--sb-border);
+}
+
+.chart-slider-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78em;
+  color: var(--sb-muted);
+}
+
+.chart-slider-label input[type="range"] {
+  width: 80px;
+  accent-color: var(--sb-accent);
+  cursor: pointer;
+}
+
+.chart-slider-label input[type="date"] {
+  background: var(--sb-surface2);
+  color: var(--sb-text);
+  border: 1px solid var(--sb-border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  font-size: 0.85em;
+  cursor: pointer;
 }
 
 .chart-content {
@@ -776,15 +807,15 @@ img.huechange { filter: hue-rotate(120deg); }
 /* ── Profile panel ──────────────────────────────────────────── */
 .profile-panel {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 540px;
-  max-width: 92vw;
+  min-width: 320px;
+  min-height: 160px;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 14px;
   background: var(--sb-surface);
   border: 1px solid var(--sb-border);
   border-radius: 12px;
-  padding: 12px 14px;
   z-index: 3500;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   backdrop-filter: blur(8px);

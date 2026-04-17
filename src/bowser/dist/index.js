@@ -7041,6 +7041,7 @@ const initialState = {
   vmax: 1,
   opacity: 1,
   showChart: false,
+  chartWindows: [],
   selectedPointId: null,
   showTrends: false,
   showResiduals: false,
@@ -7055,7 +7056,12 @@ const initialState = {
   refBufferRadius: 500,
   showRefChart: false,
   isPlaying: false,
-  animationSpeed: 500
+  animationSpeed: 500,
+  markerSize: 4,
+  dateRangeStart: null,
+  dateRangeEnd: null,
+  viewBounds: null,
+  showColorbar: false
 };
 function appReducer(state, action) {
   switch (action.type) {
@@ -7214,8 +7220,36 @@ function appReducer(state, action) {
       return { ...state, isPlaying: action.payload };
     case "SET_ANIMATION_SPEED":
       return { ...state, animationSpeed: action.payload };
-    case "TOGGLE_CHART":
-      return { ...state, showChart: !state.showChart };
+    case "SET_MARKER_SIZE":
+      return { ...state, markerSize: action.payload };
+    case "SET_DATE_RANGE_START":
+      return { ...state, dateRangeStart: action.payload };
+    case "SET_DATE_RANGE_END":
+      return { ...state, dateRangeEnd: action.payload };
+    case "SET_VIEW_BOUNDS":
+      return { ...state, viewBounds: action.payload };
+    case "TOGGLE_COLORBAR":
+      return { ...state, showColorbar: !state.showColorbar };
+    case "ADD_CHART_WINDOW":
+      return { ...state, chartWindows: [...state.chartWindows, action.payload] };
+    case "REMOVE_CHART_WINDOW":
+      return { ...state, chartWindows: state.chartWindows.filter((w2) => w2.id !== action.payload) };
+    case "SET_CHART_WINDOW_DS":
+      return {
+        ...state,
+        chartWindows: state.chartWindows.map(
+          (w2) => w2.id === action.payload.id ? { ...w2, dsNames: action.payload.dsNames } : w2
+        )
+      };
+    case "TOGGLE_CHART": {
+      const opening = !state.showChart;
+      const firstWindow = { id: `chart_${Date.now()}`, dsNames: [] };
+      return {
+        ...state,
+        showChart: opening,
+        chartWindows: opening && state.chartWindows.length === 0 ? [firstWindow] : state.chartWindows
+      };
+    }
     default:
       return state;
   }
@@ -29025,6 +29059,94 @@ function createTypedChart(type, registerables) {
 }
 const Line = /* @__PURE__ */ createTypedChart("line", LineController);
 const Bar = /* @__PURE__ */ createTypedChart("bar", BarController);
+function useDraggableResizable({ defaultWidth, defaultHeight, initialRight = 20, initialBottom = 20, minWidth = 320, minHeight = 180 }) {
+  const [pos, setPos] = reactExports.useState(null);
+  const [size, setSize] = reactExports.useState({ width: defaultWidth, height: defaultHeight });
+  const panelRef = reactExports.useRef(null);
+  const dragState = reactExports.useRef(null);
+  const resizeState = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    setPos((p2) => p2 ?? {
+      left: window.innerWidth - defaultWidth - initialRight,
+      top: window.innerHeight - defaultHeight - initialBottom
+    });
+  }, []);
+  const onDragMouseDown = (e) => {
+    if (e.target.closest("button, input, select")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cur = pos ?? { left: window.innerWidth - defaultWidth - initialRight, top: window.innerHeight - defaultHeight - initialBottom };
+    dragState.current = { startX: e.clientX, startY: e.clientY, startLeft: cur.left, startTop: cur.top };
+    const onMove = (me2) => {
+      if (!dragState.current) return;
+      setPos({
+        left: Math.max(0, Math.min(window.innerWidth - size.width, dragState.current.startLeft + me2.clientX - dragState.current.startX)),
+        top: Math.max(0, Math.min(window.innerHeight - 60, dragState.current.startTop + me2.clientY - dragState.current.startY))
+      });
+    };
+    const onUp = () => {
+      dragState.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const onResizeMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeState.current = { startX: e.clientX, startY: e.clientY, startW: size.width, startH: size.height };
+    const onMove = (me2) => {
+      if (!resizeState.current) return;
+      setSize({
+        width: Math.max(minWidth, resizeState.current.startW + me2.clientX - resizeState.current.startX),
+        height: Math.max(minHeight, resizeState.current.startH + me2.clientY - resizeState.current.startY)
+      });
+    };
+    const onUp = () => {
+      resizeState.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+  const resolvedPos = pos ?? { left: window.innerWidth - defaultWidth - initialRight, top: window.innerHeight - defaultHeight - initialBottom };
+  const panelStyle = {
+    left: resolvedPos.left,
+    top: resolvedPos.top,
+    width: size.width,
+    height: size.height,
+    bottom: "auto",
+    right: "auto",
+    transform: "none"
+  };
+  const resizeGrip = /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      onMouseDown: onResizeMouseDown,
+      style: {
+        position: "absolute",
+        right: 0,
+        bottom: 0,
+        width: 18,
+        height: 18,
+        cursor: "nwse-resize",
+        zIndex: 10,
+        display: "flex",
+        alignItems: "flex-end",
+        justifyContent: "flex-end",
+        padding: 3,
+        color: "var(--sb-muted)",
+        fontSize: 11,
+        userSelect: "none"
+      },
+      title: "Resize",
+      children: "⤡"
+    }
+  );
+  return { panelRef, panelStyle, size, onDragMouseDown, resizeGrip };
+}
 const VERTEX_ICON = L$1.divIcon({
   className: "",
   html: '<div style="width:12px;height:12px;border-radius:50%;background:#f0a500;border:2px solid white;box-sizing:border-box;margin-left:-6px;margin-top:-6px;cursor:grab"></div>',
@@ -29036,6 +29158,12 @@ function cssVar$1(name, fallback) {
 function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   const map2 = useMap();
   const { state } = useAppContext();
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 540,
+    defaultHeight: 280,
+    initialRight: 20,
+    initialBottom: 20
+  });
   const polyRef = reactExports.useRef(null);
   const previewRef = reactExports.useRef(null);
   const markersRef = reactExports.useRef([]);
@@ -29044,7 +29172,8 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   const [profileData, setProfileData] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(false);
   const [radius, setRadius] = reactExports.useState(0);
-  const fetchFn = reactExports.useCallback(async (pts, r2) => {
+  const [samplingInterval, setSamplingInterval] = reactExports.useState(0);
+  const fetchFn = reactExports.useCallback(async (pts, r2, si2) => {
     if (pts.length < 2 || !state.currentDataset) return;
     setLoading(true);
     try {
@@ -29057,18 +29186,21 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
           time_index: state.currentTimeIndex,
           n_samples: 200,
           radius: r2,
-          n_random: 5
+          n_random: 5,
+          sampling_interval: si2
         })
       });
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json)) {
-        setProfileData({ centre: json, median: null, samples: [] });
+        setProfileData({ centre: json, median: null, samples: [], binned: false });
       } else {
         setProfileData({
           centre: json.centre ?? [],
           median: json.median ?? null,
-          samples: json.samples ?? []
+          samples: json.samples ?? [],
+          binned: json.binned ?? false,
+          bin_width: json.bin_width
         });
       }
     } finally {
@@ -29083,6 +29215,10 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   reactExports.useEffect(() => {
     radiusRef.current = radius;
   }, [radius]);
+  const samplingIntervalRef = reactExports.useRef(samplingInterval);
+  reactExports.useEffect(() => {
+    samplingIntervalRef.current = samplingInterval;
+  }, [samplingInterval]);
   const updatePoly = (pts) => {
     if (polyRef.current) {
       polyRef.current.setLatLngs(pts);
@@ -29100,7 +29236,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       });
       m2.on("dragend", () => {
         ptsRef.current[idx] = m2.getLatLng();
-        fetchRef.current(ptsRef.current, radiusRef.current);
+        fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
       });
       return m2;
     });
@@ -29119,14 +29255,19 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   }, []);
   reactExports.useEffect(() => {
     if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
     }
   }, [state.currentTimeIndex, active]);
   reactExports.useEffect(() => {
     if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radius);
+      fetchRef.current(ptsRef.current, radius, samplingIntervalRef.current);
     }
   }, [radius, active]);
+  reactExports.useEffect(() => {
+    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingInterval);
+    }
+  }, [samplingInterval, active]);
   reactExports.useEffect(() => {
     if (!active || radius <= 0 || ptsRef.current.length < 2) return;
     const pts = ptsRef.current;
@@ -29209,7 +29350,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       modeRef.current = "ready";
       map2.getContainer().style.cursor = "default";
       rebuildMarkers(ptsRef.current);
-      fetchRef.current(ptsRef.current, radiusRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
     };
     map2.on("click", onClick);
     map2.on("mousemove", onMouseMove);
@@ -29225,55 +29366,98 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   }, [active, map2, clearAll]);
   if (!active) return null;
   if (loading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "profile-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Extracting profile…" }) }) });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Extracting profile…" }) }) });
   }
   const textColor = cssVar$1("--sb-text", "#dde0f0");
   const mutedColor = cssVar$1("--sb-muted", "#7880a8");
   const gridColor = cssVar$1("--sb-border", "#2c2f4a");
   const hasData = profileData && (profileData.centre.length > 0 || profileData.median && profileData.median.length > 0);
+  const isBinned = !!((profileData == null ? void 0 : profileData.binned) && samplingInterval > 0);
   const datasets = [];
   if (hasData) {
     const useBuffer = radius > 0 && profileData.median && profileData.median.length > 0;
-    if (useBuffer) {
+    if (isBinned) {
       profileData.samples.forEach((s, i) => {
         datasets.push({
           label: `sample ${i}`,
           data: s.map((p2) => p2.value),
-          labels: s.map((p2) => p2.dist.toFixed(0)),
           borderColor: "#4d9de028",
           backgroundColor: "transparent",
           borderWidth: 1,
           pointRadius: 0,
           fill: false,
-          tension: 0.2
+          tension: 0.3
         });
       });
-    }
-    const centre = profileData.centre;
-    datasets.push({
-      label: useBuffer ? "centre" : state.currentDataset,
-      data: centre.map((p2) => p2.value),
-      borderColor: useBuffer ? "#4d9de088" : "#4d9de0",
-      backgroundColor: useBuffer ? "transparent" : "rgba(77,157,224,0.15)",
-      borderWidth: useBuffer ? 1 : 1.5,
-      pointRadius: 0,
-      fill: !useBuffer,
-      tension: 0.2
-    });
-    if (useBuffer && profileData.median) {
+      if (profileData.centre.length > 0) {
+        datasets.push({
+          label: "centre",
+          data: profileData.centre.map((p2) => p2.value),
+          borderColor: "#4d9de066",
+          backgroundColor: "transparent",
+          borderWidth: 1,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          tension: 0
+        });
+      }
+      if (profileData.median) {
+        datasets.push({
+          label: "median",
+          data: profileData.median.map((p2) => p2.value),
+          borderColor: "#4d9de0",
+          backgroundColor: "#4d9de0",
+          borderWidth: 0,
+          showLine: false,
+          pointStyle: "circle",
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          fill: false
+        });
+      }
+    } else {
+      if (useBuffer) {
+        profileData.samples.forEach((s, i) => {
+          datasets.push({
+            label: `sample ${i}`,
+            data: s.map((p2) => p2.value),
+            borderColor: "#4d9de028",
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.2
+          });
+        });
+      }
+      const centre = profileData.centre;
       datasets.push({
-        label: "median",
-        data: profileData.median.map((p2) => p2.value),
-        borderColor: "#4d9de0",
-        backgroundColor: "transparent",
-        borderWidth: 2.5,
+        label: useBuffer ? "centre" : state.currentDataset,
+        data: centre.map((p2) => p2.value),
+        borderColor: useBuffer ? "#4d9de088" : "#4d9de0",
+        backgroundColor: useBuffer ? "transparent" : "rgba(77,157,224,0.15)",
+        borderWidth: useBuffer ? 1 : 1.5,
         pointRadius: 0,
-        fill: false,
+        fill: !useBuffer,
         tension: 0.2
       });
+      if (useBuffer && profileData.median) {
+        datasets.push({
+          label: "median",
+          data: profileData.median.map((p2) => p2.value),
+          borderColor: "#4d9de0",
+          backgroundColor: "transparent",
+          borderWidth: 2.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2
+        });
+      }
     }
   }
-  const xLabels = profileData ? (profileData.centre.length > 0 ? profileData.centre : profileData.median ?? []).map((p2) => p2.dist.toFixed(0)) : [];
+  const xSourcePts = profileData ? isBinned && profileData.median ? profileData.median : profileData.centre.length > 0 ? profileData.centre : profileData.median ?? [] : [];
+  const xLabels = xSourcePts.map((p2) => p2.dist.toFixed(0));
   const chartData = { labels: xLabels, datasets };
   const options = {
     responsive: true,
@@ -29281,10 +29465,18 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
     animation: { duration: 0 },
     plugins: {
       legend: {
-        display: radius > 0,
+        display: radius > 0 || isBinned,
         labels: {
           color: textColor,
           filter: (item) => !item.text.startsWith("sample")
+        }
+      },
+      tooltip: {
+        callbacks: {
+          title: (ctx) => {
+            var _a2;
+            return `${((_a2 = ctx[0]) == null ? void 0 : _a2.label) ?? ""} m`;
+          }
         }
       }
     },
@@ -29301,14 +29493,28 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       }
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-panel", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", onMouseDown: onDragMouseDown, style: { cursor: "grab" }, children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
         "Profile — ",
         state.currentDataset
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-radius-control", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-radius", style: { color: mutedColor, fontSize: "0.8em", marginRight: 4 }, children: "Radius (m):" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-sampling", style: { color: mutedColor, fontSize: "0.8em", marginRight: 4 }, children: "Sampling (m):" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            id: "profile-sampling",
+            type: "number",
+            min: 0,
+            step: 50,
+            value: samplingInterval,
+            onChange: (e) => setSamplingInterval(Math.max(0, Number(e.target.value))),
+            className: "profile-radius-input",
+            title: "Bin spacing along profile (0 = continuous dense line)"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-radius", style: { color: mutedColor, fontSize: "0.8em", marginLeft: 8, marginRight: 4 }, children: "Radius (m):" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "input",
           {
@@ -29318,179 +29524,15 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
             step: 100,
             value: radius,
             onChange: (e) => setRadius(Math.max(0, Number(e.target.value))),
-            className: "profile-radius-input"
+            className: "profile-radius-input",
+            title: "Perpendicular buffer width (0 = centre line only)"
           }
         )
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: clearAll, title: "Clear profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" }) })
     ] }),
-    hasData && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 180, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) })
-  ] });
-}
-function RefPointChart() {
-  var _a2;
-  const { state } = useAppContext();
-  const { fetchBufferTimeSeries } = useApi();
-  const [bufferData, setBufferData] = reactExports.useState(null);
-  const [loading, setLoading] = reactExports.useState(false);
-  const abortRef = reactExports.useRef(null);
-  reactExports.useEffect(() => {
-    var _a3;
-    if (!state.refBufferEnabled || !state.showRefChart || !state.currentDataset) {
-      setBufferData(null);
-      return;
-    }
-    (_a3 = abortRef.current) == null ? void 0 : _a3.abort();
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-    const [lat, lng] = state.refMarkerPosition;
-    setLoading(true);
-    fetchBufferTimeSeries(lng, lat, state.currentDataset, state.refBufferRadius, 20).then((data) => {
-      if (!ctrl.signal.aborted && data) setBufferData(data);
-    }).finally(() => {
-      if (!ctrl.signal.aborted) setLoading(false);
-    });
-    return () => ctrl.abort();
-  }, [
-    state.refBufferEnabled,
-    state.showRefChart,
-    state.currentDataset,
-    state.refMarkerPosition,
-    state.refBufferRadius
-  ]);
-  if (!state.refBufferEnabled || !state.showRefChart) return null;
-  if (loading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "profile-panel", style: { left: "50%", transform: "translateX(-50%)", bottom: 0, right: "auto", width: 500 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading reference buffer…" }) }) });
-  }
-  if (!bufferData || bufferData.labels.length === 0) return null;
-  const { median, samples } = bufferData;
-  const rawLabels = (((_a2 = state.datasetInfo[state.currentDataset]) == null ? void 0 : _a2.x_values) ?? bufferData.labels).map(String);
-  const n2 = rawLabels.length;
-  const toDisplay = (l2) => {
-    const parts = l2.split("_");
-    if (parts.length === 2 && /^\d{8}$/.test(parts[1])) {
-      const d = parts[1];
-      return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
-    }
-    return l2.slice(0, 10);
-  };
-  const displayLabels = rawLabels.map(toDisplay);
-  const mean = Array(n2).fill(0);
-  const std = Array(n2).fill(0);
-  if (samples.length > 0) {
-    for (let t2 = 0; t2 < n2; t2++) {
-      const vals = samples.map((s) => s[t2]).filter((v2) => isFinite(v2));
-      if (vals.length === 0) {
-        mean[t2] = NaN;
-        std[t2] = NaN;
-        continue;
-      }
-      const m2 = vals.reduce((a, b) => a + b, 0) / vals.length;
-      mean[t2] = m2;
-      std[t2] = Math.sqrt(vals.reduce((a, b) => a + (b - m2) ** 2, 0) / vals.length);
-    }
-  }
-  const meanPlusStd = mean.map((m2, i) => isFinite(m2) ? m2 + std[i] : NaN);
-  const meanMinusStd = mean.map((m2, i) => isFinite(m2) ? m2 - std[i] : NaN);
-  const sampleDatasets = samples.slice(0, 8).map((s, i) => ({
-    label: `sample ${i + 1}`,
-    data: s,
-    borderColor: "rgba(150,180,220,0.18)",
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    pointRadius: 0,
-    tension: 0.15
-  }));
-  const chartData = {
-    labels: displayLabels,
-    datasets: [
-      // +1σ bound — fills toward -1σ (dataset index 1)
-      {
-        label: "+1σ",
-        data: meanPlusStd,
-        borderColor: "rgba(77,157,224,0.4)",
-        backgroundColor: "rgba(77,157,224,0.12)",
-        borderWidth: 1,
-        borderDash: [3, 3],
-        pointRadius: 0,
-        fill: { target: 1, above: "rgba(77,157,224,0.12)" },
-        tension: 0.2
-      },
-      // -1σ bound
-      {
-        label: "-1σ",
-        data: meanMinusStd,
-        borderColor: "rgba(77,157,224,0.4)",
-        backgroundColor: "transparent",
-        borderWidth: 1,
-        borderDash: [3, 3],
-        pointRadius: 0,
-        fill: false,
-        tension: 0.2
-      },
-      // Mean
-      {
-        label: "Mean",
-        data: mean,
-        borderColor: "#4d9de0",
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.2
-      },
-      // Median
-      {
-        label: "Median",
-        data: median,
-        borderColor: "#3ec97a",
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        borderDash: [6, 4],
-        pointRadius: 0,
-        fill: false,
-        tension: 0.2
-      },
-      // Individual samples (faint, behind main lines)
-      ...sampleDatasets
-    ]
-  };
-  const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 0 },
-    plugins: {
-      legend: {
-        display: true,
-        labels: {
-          color: "#aaa",
-          filter: (item) => ["Mean", "Median", "+1σ"].includes(item.text),
-          boxWidth: 20,
-          font: { size: 11 }
-        }
-      },
-      tooltip: { mode: "index", intersect: false }
-    },
-    scales: {
-      x: {
-        ticks: { color: "#aaa", maxTicksLimit: 8, maxRotation: 45 },
-        grid: { color: "rgba(255,255,255,0.08)" }
-      },
-      y: {
-        title: { display: true, text: state.currentDataset, color: "#aaa" },
-        ticks: { color: "#aaa" },
-        grid: { color: "rgba(255,255,255,0.08)" }
-      }
-    }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-panel", style: { right: 16, left: "auto", width: 520 }, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-header", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-      "Ref Buffer — ",
-      bufferData.n_pixels,
-      " px, r=",
-      state.refBufferRadius,
-      " m"
-    ] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { height: 200, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) })
+    hasData && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, minHeight: 120, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) }),
+    resizeGrip
   ] });
 }
 delete L$1.Icon.Default.prototype._getIconUrl;
@@ -29515,6 +29557,43 @@ function MapEvents() {
           position: [e.latlng.lat, e.latlng.lng],
           name: `Point ${Date.now().toString().slice(-4)}`
         }
+      });
+    }
+  });
+  return null;
+}
+function MapViewController() {
+  const { state, dispatch } = useAppContext();
+  const map2 = useMap();
+  const flyingRef = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    if (!state.viewBounds) return;
+    const [s, w2, n2, e] = state.viewBounds;
+    flyingRef.current = true;
+    const bounds = L$1.latLngBounds([[s, w2], [n2, e]]);
+    const center = bounds.getCenter();
+    const zoom2 = map2.getBoundsZoom(bounds, true);
+    map2.setView(center, zoom2, { animate: true });
+    const onEnd = () => {
+      flyingRef.current = false;
+    };
+    map2.once("moveend", onEnd);
+    return () => {
+      map2.off("moveend", onEnd);
+    };
+  }, [state.viewBounds]);
+  useMapEvents({
+    moveend: () => {
+      if (flyingRef.current) return;
+      const b = map2.getBounds();
+      dispatch({
+        type: "SET_VIEW_BOUNDS",
+        payload: [
+          parseFloat(b.getSouth().toFixed(6)),
+          parseFloat(b.getWest().toFixed(6)),
+          parseFloat(b.getNorth().toFixed(6)),
+          parseFloat(b.getEast().toFixed(6))
+        ]
       });
     }
   });
@@ -29860,7 +29939,7 @@ function MapContainer() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(ScaleBar, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MeasureTool, { active: measureActive, onDeactivate: () => setMeasureActive(false) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileTool, { active: profileActive, onDeactivate: () => setProfileActive(false) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(RefPointChart, {})
+          /* @__PURE__ */ jsxRuntimeExports.jsx(MapViewController, {})
         ]
       },
       hasDatasets ? "with-data" : "no-data"
@@ -29986,6 +30065,14 @@ function ControlPanel({ title }) {
   const [lightTheme, setLightTheme] = reactExports.useState(false);
   const [draftRefLat, setDraftRefLat] = reactExports.useState(String(state.refMarkerPosition[0]));
   const [draftRefLon, setDraftRefLon] = reactExports.useState(String(state.refMarkerPosition[1]));
+  const [draftBounds, setDraftBounds] = reactExports.useState({ s: "", w: "", n: "", e: "" });
+  const boundsEditingRef = reactExports.useRef(false);
+  const [collapsed, setCollapsed] = reactExports.useState({
+    distribution: true,
+    masking: true,
+    buffer: true
+  });
+  const toggleSection = (key) => setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   const [datasetRanges, setDatasetRanges] = reactExports.useState({});
   reactExports.useEffect(() => {
     const missing = state.layerMasks.map((m2) => m2.dataset).filter((ds) => ds && !(ds in datasetRanges));
@@ -30012,6 +30099,19 @@ function ControlPanel({ title }) {
     setDraftRefLat(state.refMarkerPosition[0].toFixed(6));
     setDraftRefLon(state.refMarkerPosition[1].toFixed(6));
   }, [state.refMarkerPosition]);
+  reactExports.useEffect(() => {
+    if (!state.viewBounds || boundsEditingRef.current) return;
+    const [s, w2, n2, e] = state.viewBounds;
+    setDraftBounds({ s: String(s), w: String(w2), n: String(n2), e: String(e) });
+  }, [state.viewBounds]);
+  const applyViewBounds = () => {
+    const s = parseFloat(draftBounds.s);
+    const w2 = parseFloat(draftBounds.w);
+    const n2 = parseFloat(draftBounds.n);
+    const e = parseFloat(draftBounds.e);
+    if ([s, w2, n2, e].some(isNaN)) return;
+    dispatch({ type: "SET_VIEW_BOUNDS", payload: [s, w2, n2, e] });
+  };
   reactExports.useEffect(() => {
     const datasetName = state.currentDataset;
     if (!datasetName) return;
@@ -30106,23 +30206,34 @@ function ControlPanel({ title }) {
     }, state.animationSpeed);
     return () => clearInterval(id2);
   }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
+  const SectionHeader = ({ icon, label, collapseKey }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "sidebar-section-label",
+      style: collapseKey ? { cursor: "pointer", userSelect: "none" } : void 0,
+      onClick: collapseKey ? () => toggleSection(collapseKey) : void 0,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${icon}` }),
+          " ",
+          label
+        ] }),
+        collapseKey && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "i",
+          {
+            className: `fa-solid fa-chevron-${collapsed[collapseKey] ? "down" : "up"}`,
+            style: { fontSize: "0.75em", color: "var(--sb-muted)" }
+          }
+        )
+      ]
+    }
+  );
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "menu", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-theme-toggle", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "theme-toggle-btn", onClick: toggleTheme, title: lightTheme ? "Switch to dark theme" : "Switch to light theme", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${lightTheme ? "fa-moon" : "fa-sun"}` }) }) }),
     title && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sidebar-title", children: title }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-layer-group" }),
-        " Layers"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "select",
-        {
-          className: "sidebar-select",
-          value: state.currentDataset,
-          onChange: (e) => handleDatasetChange(e.target.value),
-          children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
-        }
-      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-layer-group", label: "Layers" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("select", { className: "sidebar-select", value: state.currentDataset, onChange: (e) => handleDatasetChange(e.target.value), children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name)) }),
       currentDatasetInfo && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Time step" }),
@@ -30169,18 +30280,14 @@ function ControlPanel({ title }) {
               max: "2000",
               step: "100",
               value: 2100 - state.animationSpeed,
-              onChange: (e) => dispatch({ type: "SET_ANIMATION_SPEED", payload: 2100 - parseInt(e.target.value) }),
-              title: "Animation speed"
+              onChange: (e) => dispatch({ type: "SET_ANIMATION_SPEED", payload: 2100 - parseInt(e.target.value) })
             }
           )
         ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-palette" }),
-        " Colormap"
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-palette", label: "Visualization" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "colormap-row", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "select",
@@ -30208,14 +30315,7 @@ function ControlPanel({ title }) {
           }
         )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "img",
-        {
-          src: `/colorbar/${state.colormap}`,
-          className: "colorbar-img",
-          alt: "Colormap"
-        }
-      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: `/colorbar/${state.colormap}`, className: "colorbar-img", alt: "Colormap" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "Min" }),
@@ -30268,13 +30368,25 @@ function ControlPanel({ title }) {
             onChange: (e) => dispatch({ type: "SET_OPACITY", payload: parseFloat(e.target.value) })
           }
         )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", style: { marginTop: 4 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "Colorbar on map" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: `toggle-pill${state.showColorbar ? " active" : ""}`,
+            onClick: () => dispatch({ type: "TOGGLE_COLORBAR" }),
+            children: state.showColorbar ? "ON" : "OFF"
+          }
+        )
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-map" }),
-        " Basemap"
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-chart-bar", label: "Distribution" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Histogram, {})
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-map", label: "Basemap" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "select",
         {
@@ -30286,228 +30398,107 @@ function ControlPanel({ title }) {
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-chart-bar" }),
-        " Value Distribution"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Histogram, {})
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-mask" }),
-        " Masking"
-      ] }),
-      state.layerMasks.map((mask) => {
-        const range = datasetRanges[mask.dataset];
-        const rMin = (range == null ? void 0 : range.p2) ?? (range == null ? void 0 : range.min) ?? 0;
-        const rMax = (range == null ? void 0 : range.p98) ?? (range == null ? void 0 : range.max) ?? 1;
-        const step = rMax - rMin > 0 ? parseFloat(((rMax - rMin) / 200).toPrecision(2)) : 0.01;
-        return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "layer-mask-row", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "select",
-              {
-                className: "sidebar-select",
-                style: { flex: 1, fontSize: "0.78em" },
-                value: mask.dataset,
-                onChange: (e) => {
-                  const ds = e.target.value;
-                  const newRange = datasetRanges[ds];
-                  const defaultThreshold = newRange ? (mask.mode === "max" ? newRange.p98 ?? newRange.max : newRange.p2 ?? newRange.min) ?? 0.5 : 0.5;
-                  dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
-                },
-                children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "select",
-              {
-                className: "sidebar-select",
-                style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
-                value: mask.mode,
-                onChange: (e) => {
-                  const newMode = e.target.value;
-                  const r2 = datasetRanges[mask.dataset];
-                  const newThreshold = r2 ? (newMode === "max" ? r2.p98 ?? r2.max : r2.p2 ?? r2.min) ?? mask.threshold : mask.threshold;
-                  dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: newMode, threshold: newThreshold } } });
-                },
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                className: "hist-btn",
-                style: { color: "var(--sb-red)", padding: "2px 6px", flexShrink: 0 },
-                onClick: () => dispatch({ type: "REMOVE_LAYER_MASK", payload: mask.id }),
-                title: "Remove mask",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: [
-              "Threshold",
-              range ? ` [${rMin.toPrecision(3)}, ${rMax.toPrecision(3)}]` : ""
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                type: "number",
-                style: { width: 72, fontSize: "0.75em", background: "var(--sb-surface2)", border: "1px solid var(--sb-border)", borderRadius: 4, color: "var(--sb-text)", padding: "1px 4px", textAlign: "right" },
-                step,
-                value: parseFloat(mask.threshold.toPrecision(4)),
-                onChange: (e) => {
-                  const v2 = parseFloat(e.target.value);
-                  if (!isNaN(v2)) dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: v2 } } });
-                }
-              }
-            )
-          ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-expand", label: "View Extent" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "N" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
-              type: "range",
-              className: "sidebar-range",
-              min: rMin,
-              max: rMax,
-              step,
-              value: mask.threshold,
-              onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })
-            }
-          )
-        ] }, mask.id);
-      }),
-      Object.keys(state.datasetInfo).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: "hist-btn",
-          style: { width: "100%", marginTop: 4 },
-          onClick: () => {
-            const firstDataset = Object.keys(state.datasetInfo)[0];
-            const range = datasetRanges[firstDataset];
-            const defaultThreshold = range ? range.p2 ?? range.min : 0.5;
-            dispatch({
-              type: "ADD_LAYER_MASK",
-              payload: {
-                id: `mask_${Date.now()}`,
-                dataset: firstDataset,
-                threshold: defaultThreshold,
-                mode: "min"
-              }
-            });
-          },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-plus", style: { marginRight: 5 } }),
-            "Add layer mask"
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-row", style: { marginTop: 8 }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", style: { marginBottom: 4 }, children: "Custom mask (GeoTIFF)" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-controls", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "hist-btn", style: { cursor: "pointer", textAlign: "center" }, children: [
-            "Upload",
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                type: "file",
-                accept: ".tif,.tiff",
-                style: { display: "none" },
-                onChange: async (e) => {
-                  var _a3;
-                  const f2 = (_a3 = e.target.files) == null ? void 0 : _a3[0];
-                  if (!f2) return;
-                  const form = new FormData();
-                  form.append("file", f2);
-                  const res = await fetch("/upload_mask", { method: "POST", body: form });
-                  if (res.ok) {
-                    const data = await res.json();
-                    dispatch({ type: "SET_CUSTOM_MASK_PATH", payload: data.path });
-                  }
-                }
-              }
-            )
-          ] }),
-          state.customMaskPath && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              className: "hist-btn",
-              style: { color: "var(--sb-red)" },
-              onClick: () => dispatch({ type: "SET_CUSTOM_MASK_PATH", payload: null }),
-              children: "Clear"
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftBounds.n,
+              onFocus: () => {
+                boundsEditingRef.current = true;
+              },
+              onChange: (e) => setDraftBounds((b) => ({ ...b, n: e.target.value })),
+              onBlur: () => {
+                boundsEditingRef.current = false;
+              },
+              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
             }
           )
         ] }),
-        state.customMaskPath && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "0.72em", color: "var(--sb-muted)", wordBreak: "break-all", marginTop: 2 }, children: state.customMaskPath.split("/").pop() })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-circle-dot" }),
-        " Point Buffer Sampling"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "Enable buffer mode" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `toggle-pill${state.bufferEnabled ? " active" : ""}`,
-            onClick: () => dispatch({ type: "TOGGLE_BUFFER" }),
-            children: state.bufferEnabled ? "ON" : "OFF"
-          }
-        )
-      ] }),
-      state.bufferEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Radius" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
-              state.bufferRadius,
-              " m"
-            ] })
-          ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "S" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
-              type: "range",
-              className: "sidebar-range",
-              min: "50",
-              max: "5000",
-              step: "50",
-              value: state.bufferRadius,
-              onChange: (e) => dispatch({ type: "SET_BUFFER_RADIUS", payload: parseInt(e.target.value) })
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftBounds.s,
+              onFocus: () => {
+                boundsEditingRef.current = true;
+              },
+              onChange: (e) => setDraftBounds((b) => ({ ...b, s: e.target.value })),
+              onBlur: () => {
+                boundsEditingRef.current = false;
+              },
+              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
+            }
+          )
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", style: { marginTop: 4 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "W" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftBounds.w,
+              onFocus: () => {
+                boundsEditingRef.current = true;
+              },
+              onChange: (e) => setDraftBounds((b) => ({ ...b, w: e.target.value })),
+              onBlur: () => {
+                boundsEditingRef.current = false;
+              },
+              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Samples shown" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: state.bufferSamples })
-          ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "E" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
-              type: "range",
-              className: "sidebar-range",
-              min: "0",
-              max: "50",
-              step: "1",
-              value: state.bufferSamples,
-              onChange: (e) => dispatch({ type: "SET_BUFFER_SAMPLES", payload: parseInt(e.target.value) })
+              className: "sidebar-input",
+              type: "text",
+              inputMode: "decimal",
+              value: draftBounds.e,
+              onFocus: () => {
+                boundsEditingRef.current = true;
+              },
+              onChange: (e) => setDraftBounds((b) => ({ ...b, e: e.target.value })),
+              onBlur: () => {
+                boundsEditingRef.current = false;
+              },
+              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
             }
           )
+        ] })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", style: { flex: 1 }, onClick: applyViewBounds, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-location-crosshairs" }),
+          " Apply"
+        ] }),
+        state.currentDataset && state.datasetInfo[state.currentDataset] && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", style: { flex: 1 }, onClick: () => {
+          const b = state.datasetInfo[state.currentDataset].latlon_bounds;
+          dispatch({ type: "SET_VIEW_BOUNDS", payload: [b[1], b[0], b[3], b[2]] });
+        }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-arrows-to-circle" }),
+          " Dataset"
         ] })
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section-label", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-crosshairs" }),
-        " Reference Point"
-      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-crosshairs", label: "Reference Point" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "Lat" }),
@@ -30551,7 +30542,7 @@ function ControlPanel({ title }) {
           }
         )
       ] }),
-      state.refBufferEnabled && /* @__PURE__ */ jsxRuntimeExports.jsx(jsxRuntimeExports.Fragment, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
+      state.refBufferEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Radius" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
@@ -30564,14 +30555,218 @@ function ControlPanel({ title }) {
           {
             type: "range",
             className: "sidebar-range",
-            min: "50",
+            min: "5",
             max: "5000",
-            step: "50",
+            step: "5",
             value: state.refBufferRadius,
             onChange: (e) => dispatch({ type: "SET_REF_BUFFER_RADIUS", payload: parseInt(e.target.value) })
           }
         )
-      ] }) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-mask", label: "Masking", collapseKey: "masking" }),
+      !collapsed.masking && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        state.layerMasks.map((mask) => {
+          const range = datasetRanges[mask.dataset];
+          const rMin = (range == null ? void 0 : range.p2) ?? (range == null ? void 0 : range.min) ?? 0;
+          const rMax = (range == null ? void 0 : range.p98) ?? (range == null ? void 0 : range.max) ?? 1;
+          const step = rMax - rMin > 0 ? parseFloat(((rMax - rMin) / 200).toPrecision(2)) : 0.01;
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "layer-mask-row", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, marginBottom: 4 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "select",
+                {
+                  className: "sidebar-select",
+                  style: { flex: 1, fontSize: "0.78em" },
+                  value: mask.dataset,
+                  onChange: (e) => {
+                    const ds = e.target.value;
+                    const newRange = datasetRanges[ds];
+                    const defaultThreshold = newRange ? (mask.mode === "max" ? newRange.p98 ?? newRange.max : newRange.p2 ?? newRange.min) ?? 0.5 : 0.5;
+                    dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { dataset: ds, threshold: defaultThreshold } } });
+                  },
+                  children: Object.keys(state.datasetInfo).map((name) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: name, children: name }, name))
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "select",
+                {
+                  className: "sidebar-select",
+                  style: { width: 56, fontSize: "0.78em", padding: "2px 4px" },
+                  value: mask.mode,
+                  onChange: (e) => {
+                    const newMode = e.target.value;
+                    const r2 = datasetRanges[mask.dataset];
+                    const newThreshold = r2 ? (newMode === "max" ? r2.p98 ?? r2.max : r2.p2 ?? r2.min) ?? mask.threshold : mask.threshold;
+                    dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { mode: newMode, threshold: newThreshold } } });
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "min", children: "≥" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "max", children: "≤" })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: "hist-btn",
+                  style: { color: "var(--sb-red)", padding: "2px 6px", flexShrink: 0 },
+                  onClick: () => dispatch({ type: "REMOVE_LAYER_MASK", payload: mask.id }),
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: [
+                "Threshold",
+                range ? ` [${rMin.toPrecision(3)}, ${rMax.toPrecision(3)}]` : ""
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "number",
+                  style: { width: 72, fontSize: "0.75em", background: "var(--sb-surface2)", border: "1px solid var(--sb-border)", borderRadius: 4, color: "var(--sb-text)", padding: "1px 4px", textAlign: "right" },
+                  step,
+                  value: parseFloat(mask.threshold.toPrecision(4)),
+                  onChange: (e) => {
+                    const v2 = parseFloat(e.target.value);
+                    if (!isNaN(v2)) dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: v2 } } });
+                  }
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "range",
+                className: "sidebar-range",
+                min: rMin,
+                max: rMax,
+                step,
+                value: mask.threshold,
+                onChange: (e) => dispatch({ type: "UPDATE_LAYER_MASK", payload: { id: mask.id, updates: { threshold: parseFloat(e.target.value) } } })
+              }
+            )
+          ] }, mask.id);
+        }),
+        Object.keys(state.datasetInfo).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            className: "hist-btn",
+            style: { width: "100%", marginTop: 4 },
+            onClick: () => {
+              const firstDataset = Object.keys(state.datasetInfo)[0];
+              const range = datasetRanges[firstDataset];
+              dispatch({ type: "ADD_LAYER_MASK", payload: {
+                id: `mask_${Date.now()}`,
+                dataset: firstDataset,
+                threshold: range ? range.p2 ?? range.min : 0.5,
+                mode: "min"
+              } });
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-plus", style: { marginRight: 5 } }),
+              "Add layer mask"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-row", style: { marginTop: 8 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", style: { marginBottom: 4 }, children: "Custom mask (GeoTIFF)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "custom-mask-controls", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "hist-btn", style: { cursor: "pointer", textAlign: "center" }, children: [
+              "Upload",
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "file",
+                  accept: ".tif,.tiff",
+                  style: { display: "none" },
+                  onChange: async (e) => {
+                    var _a3;
+                    const f2 = (_a3 = e.target.files) == null ? void 0 : _a3[0];
+                    if (!f2) return;
+                    const form = new FormData();
+                    form.append("file", f2);
+                    const res = await fetch("/upload_mask", { method: "POST", body: form });
+                    if (res.ok) {
+                      const data = await res.json();
+                      dispatch({ type: "SET_CUSTOM_MASK_PATH", payload: data.path });
+                    }
+                  }
+                }
+              )
+            ] }),
+            state.customMaskPath && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                className: "hist-btn",
+                style: { color: "var(--sb-red)" },
+                onClick: () => dispatch({ type: "SET_CUSTOM_MASK_PATH", payload: null }),
+                children: "Clear"
+              }
+            )
+          ] }),
+          state.customMaskPath && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "0.72em", color: "var(--sb-muted)", wordBreak: "break-all", marginTop: 2 }, children: state.customMaskPath.split("/").pop() })
+        ] })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-circle-dot", label: "Point Buffer", collapseKey: "buffer" }),
+      !collapsed.buffer && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "Enable buffer mode" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: `toggle-pill${state.bufferEnabled ? " active" : ""}`,
+              onClick: () => dispatch({ type: "TOGGLE_BUFFER" }),
+              children: state.bufferEnabled ? "ON" : "OFF"
+            }
+          )
+        ] }),
+        state.bufferEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Radius" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
+                state.bufferRadius,
+                " m"
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "range",
+                className: "sidebar-range",
+                min: "5",
+                max: "5000",
+                step: "5",
+                value: state.bufferRadius,
+                onChange: (e) => dispatch({ type: "SET_BUFFER_RADIUS", payload: parseInt(e.target.value) })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-group", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Samples shown" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "slider-value", children: state.bufferSamples })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "range",
+                className: "sidebar-range",
+                min: "0",
+                max: "50",
+                step: "1",
+                value: state.bufferSamples,
+                onChange: (e) => dispatch({ type: "SET_BUFFER_SAMPLES", payload: parseInt(e.target.value) })
+              }
+            )
+          ] })
+        ] })
+      ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-footer", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -30602,18 +30797,11 @@ function ControlPanel({ title }) {
           ]
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: "chart-toggle-btn",
-          onClick: () => dispatch({ type: "TOGGLE_CHART" }),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showChart ? "fa-chart-line" : "fa-wave-square"}` }),
-            state.showChart ? "Hide" : "Show",
-            " Time Series"
-          ]
-        }
-      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-toggle-btn", onClick: () => dispatch({ type: "TOGGLE_CHART" }), children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showChart ? "fa-chart-line" : "fa-wave-square"}` }),
+        state.showChart ? "Hide" : "Show",
+        " Time Series"
+      ] }),
       state.refBufferEnabled && /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
@@ -37073,6 +37261,33 @@ var plugin = {
   zoomFunctions,
   zoomRectFunctions
 };
+const linkedLegendPlugin = {
+  id: "linkedLegend",
+  afterInit(chart) {
+    var _a2, _b2;
+    if (chart._linkedLegendPatched) return;
+    chart._linkedLegendPatched = true;
+    const origClick = (_b2 = (_a2 = chart.options.plugins) == null ? void 0 : _a2.legend) == null ? void 0 : _b2.onClick;
+    chart.options.plugins.legend.onClick = function(e, legendItem, legend) {
+      if (origClick) origClick.call(this, e, legendItem, legend);
+      else Chart$1.defaults.plugins.legend.onClick.call(this, e, legendItem, legend);
+      const clickedDs = chart.data.datasets[legendItem.datasetIndex];
+      if (!clickedDs) return;
+      const baseLabel = clickedDs._baseLabel;
+      if (!baseLabel) return;
+      const hidden = !chart.isDatasetVisible(legendItem.datasetIndex);
+      chart.data.datasets.forEach((ds, i) => {
+        if (i === legendItem.datasetIndex) return;
+        if (ds._baseLabel === baseLabel) {
+          const meta = chart.getDatasetMeta(i);
+          meta.hidden = hidden;
+        }
+      });
+      chart.update();
+    };
+  }
+};
+Chart$1.register(linkedLegendPlugin);
 Chart$1.register(TimeScale, LinearScale, PointElement, LineElement, plugin_title, plugin_tooltip, plugin_legend, plugin);
 function cssVar(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -37093,73 +37308,96 @@ function toIsoDate(xVal) {
   }
   return xVal;
 }
-function TimeSeriesChart() {
+function TimeSeriesChart({ windowId }) {
   const { state, dispatch } = useAppContext();
+  const window_ = state.chartWindows.find((w2) => w2.id === windowId);
   const { fetchMultiPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const themeVersion = useThemeVersion();
-  const [chartData, setChartData] = reactExports.useState(null);
+  const [chartDataMap, setChartDataMap] = reactExports.useState({});
   const [bufferData, setBufferData] = reactExports.useState({});
   const [isLoading, setIsLoading] = reactExports.useState(false);
   const [isZoomed, setIsZoomed] = reactExports.useState(false);
+  const [dsOffsets, setDsOffsets] = reactExports.useState({});
+  const [dsColorOverrides, setDsColorOverrides] = reactExports.useState({});
+  const [dsYLimits, setDsYLimits] = reactExports.useState({});
   const chartRef = reactExports.useRef(null);
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: Math.min(560, window.innerWidth * 0.38),
+    defaultHeight: 420
+  });
+  const winDsNames = (window_ == null ? void 0 : window_.dsNames) ?? [];
+  const activeDatasetsForChart = winDsNames.length > 0 ? winDsNames : state.currentDataset ? [state.currentDataset] : [];
   const updateChart = reactExports.useCallback(async () => {
     if (!state.showChart || !state.currentDataset || state.timeSeriesPoints.length === 0) {
-      setChartData(null);
+      setChartDataMap({});
       return;
     }
     setIsLoading(true);
-    const currentDatasetInfo = state.datasetInfo[state.currentDataset];
     const visiblePoints = state.timeSeriesPoints.filter((p2) => p2.visible);
     if (visiblePoints.length === 0) {
-      setChartData(null);
+      setChartDataMap({});
       setIsLoading(false);
       return;
     }
+    const timeDatasets = activeDatasetsForChart.filter((ds) => {
+      const info = state.datasetInfo[ds];
+      return info && Array.isArray(info.x_values) && info.x_values.length > 0;
+    });
+    if (timeDatasets.length === 0) {
+      setChartDataMap({});
+      setIsLoading(false);
+      return;
+    }
+    const apiPoints = visiblePoints.map((point) => ({
+      id: point.id,
+      lat: point.position[0],
+      lon: point.position[1],
+      color: point.color,
+      name: point.name
+    }));
     try {
-      const apiPoints = visiblePoints.map((point) => ({
-        id: point.id,
-        lat: point.position[0],
-        lon: point.position[1],
-        color: point.color,
-        name: point.name
-      }));
-      let refLon, refLat;
-      if ((currentDatasetInfo == null ? void 0 : currentDatasetInfo.uses_spatial_ref) && state.refEnabled) {
-        [refLat, refLon] = state.refMarkerPosition;
-      }
-      const tsData = await fetchMultiPointTimeSeries(
-        apiPoints,
-        state.currentDataset,
-        refLon,
-        refLat,
-        state.showTrends,
-        state.layerMasks,
-        state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
+      const results = await Promise.all(
+        timeDatasets.map(async (dsName) => {
+          const dsInfo = state.datasetInfo[dsName];
+          let refLon, refLat;
+          if ((dsInfo == null ? void 0 : dsInfo.uses_spatial_ref) && state.refEnabled) {
+            [refLat, refLon] = state.refMarkerPosition;
+          }
+          const tsData = await fetchMultiPointTimeSeries(
+            apiPoints,
+            dsName,
+            refLon,
+            refLat,
+            state.showTrends,
+            state.layerMasks,
+            state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
+          );
+          return { dsName, tsData };
+        })
       );
-      if (tsData) {
-        setChartData(tsData);
-        if (state.showTrends && tsData.datasets) {
-          setTimeout(() => {
-            tsData.datasets.forEach((dataset) => {
-              if (dataset.trend) {
-                dispatch({
-                  type: "SET_POINT_TREND_DATA",
-                  payload: {
-                    pointId: dataset.pointId,
-                    dataset: state.currentDataset,
-                    trend: {
-                      slope: dataset.trend.slope,
-                      intercept: dataset.trend.intercept,
-                      rSquared: dataset.trend.rSquared,
-                      mmPerYear: dataset.trend.mmPerYear
+      const newMap = {};
+      results.forEach(({ dsName, tsData }) => {
+        if (tsData) {
+          newMap[dsName] = tsData;
+          if (state.showTrends) {
+            setTimeout(() => {
+              tsData.datasets.forEach((dataset) => {
+                if (dataset.trend) {
+                  dispatch({
+                    type: "SET_POINT_TREND_DATA",
+                    payload: {
+                      pointId: dataset.pointId,
+                      dataset: dsName,
+                      trend: dataset.trend
                     }
-                  }
-                });
-              }
-            });
-          }, 0);
+                  });
+                }
+              });
+            }, 0);
+          }
         }
-      }
+      });
+      setChartDataMap(newMap);
     } catch (error) {
       console.error("Error updating chart:", error);
     } finally {
@@ -37168,6 +37406,7 @@ function TimeSeriesChart() {
   }, [
     state.showChart,
     state.currentDataset,
+    JSON.stringify(activeDatasetsForChart),
     JSON.stringify(state.timeSeriesPoints.map((p2) => ({ id: p2.id, position: p2.position, visible: p2.visible }))),
     state.refMarkerPosition,
     state.refEnabled,
@@ -37189,30 +37428,40 @@ function TimeSeriesChart() {
       setBufferData({});
       return;
     }
-    const currentDatasetInfo = state.datasetInfo[state.currentDataset];
-    let refLon, refLat;
-    if ((currentDatasetInfo == null ? void 0 : currentDatasetInfo.uses_spatial_ref) && state.refEnabled) {
-      [refLat, refLon] = state.refMarkerPosition;
+    const timeDatasets = activeDatasetsForChart.filter((ds) => {
+      const info = state.datasetInfo[ds];
+      return info && Array.isArray(info.x_values) && info.x_values.length > 0;
+    });
+    if (timeDatasets.length === 0) {
+      setBufferData({});
+      return;
     }
     Promise.all(
-      visiblePoints.map(async (p2) => {
-        const result = await fetchBufferTimeSeries(
-          p2.position[1],
-          p2.position[0],
-          state.currentDataset,
-          state.bufferRadius,
-          state.bufferSamples,
-          refLon,
-          refLat,
-          state.layerMasks,
-          state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
-        );
-        return { id: p2.id, result };
+      timeDatasets.flatMap((dsName) => {
+        const dsInfo = state.datasetInfo[dsName];
+        let refLon, refLat;
+        if ((dsInfo == null ? void 0 : dsInfo.uses_spatial_ref) && state.refEnabled) {
+          [refLat, refLon] = state.refMarkerPosition;
+        }
+        return visiblePoints.map(async (p2) => {
+          const result = await fetchBufferTimeSeries(
+            p2.position[1],
+            p2.position[0],
+            dsName,
+            state.bufferRadius,
+            state.bufferSamples,
+            refLon,
+            refLat,
+            state.layerMasks,
+            state.refEnabled && state.refBufferEnabled ? state.refBufferRadius : 0
+          );
+          return { key: `${dsName}::${p2.id}`, result };
+        });
       })
     ).then((results) => {
       const newData = {};
-      results.forEach(({ id: id2, result }) => {
-        if (result) newData[id2] = result;
+      results.forEach(({ key, result }) => {
+        if (result) newData[key] = result;
       });
       setBufferData(newData);
     });
@@ -37220,6 +37469,7 @@ function TimeSeriesChart() {
     state.bufferEnabled,
     state.showChart,
     state.currentDataset,
+    JSON.stringify(activeDatasetsForChart),
     state.bufferRadius,
     state.bufferSamples,
     state.refEnabled,
@@ -37230,59 +37480,84 @@ function TimeSeriesChart() {
     state.refMarkerPosition,
     fetchBufferTimeSeries
   ]);
+  const firstDs = Object.values(chartDataMap)[0] ?? null;
   const handleChartClick = reactExports.useCallback((_event, elements) => {
-    if (elements.length === 0 || !chartData) return;
+    if (elements.length === 0 || !firstDs) return;
     const dataIndex = elements[0].index;
-    if (dataIndex !== void 0 && dataIndex < chartData.labels.length) {
+    if (dataIndex !== void 0 && dataIndex < firstDs.labels.length) {
       dispatch({ type: "SET_TIME_INDEX", payload: dataIndex });
     }
-  }, [chartData, dispatch]);
+  }, [firstDs, dispatch]);
   const handleExportToCSV = reactExports.useCallback(() => {
-    if (!chartData || !chartData.datasets || chartData.datasets.length === 0) return;
-    const headers = ["Time", ...chartData.datasets.map((d) => d.label)];
-    const rows = [];
-    chartData.labels.forEach((label, idx) => {
-      const row = [label];
-      chartData.datasets.forEach((dataset) => {
-        const dataPoint = dataset.data[idx];
-        row.push(dataPoint ? dataPoint.y.toString() : "");
+    if (!firstDs) return;
+    const allDatasets = Object.entries(chartDataMap).flatMap(
+      ([dsName, cd2]) => cd2.datasets.map((d) => ({ ...d, _dsName: dsName }))
+    );
+    if (allDatasets.length === 0) return;
+    const multiDs2 = activeDatasetsForChart.length > 1;
+    const headers = ["Time", ...allDatasets.map((d) => multiDs2 ? `${d._dsName} — ${d.label}` : d.label)];
+    const byLabel = {};
+    allDatasets.forEach((d) => {
+      const key = multiDs2 ? `${d._dsName}::${d.label}` : d.label;
+      d.data.forEach((pt) => {
+        var _a2;
+        (byLabel[_a2 = pt.x] ?? (byLabel[_a2] = {}))[key] = pt.y;
       });
-      rows.push(row);
     });
-    const trendRows = [];
-    if (state.showTrends && chartData.datasets.some((d) => d.trend)) {
-      trendRows.push([""]);
-      trendRows.push(["Point", "Rate (mm/year)", "R²", "Slope", "Intercept"]);
-      chartData.datasets.forEach((dataset) => {
-        if (dataset.trend) {
-          trendRows.push([
-            dataset.label,
-            dataset.trend.mmPerYear.toFixed(6),
-            dataset.trend.rSquared.toFixed(6),
-            dataset.trend.slope.toFixed(6),
-            dataset.trend.intercept.toFixed(6)
-          ]);
-        }
+    const allTimes = [...new Set(allDatasets.flatMap((d) => d.data.map((pt) => pt.x)))].sort();
+    const rows = allTimes.map((t2) => {
+      const row = [t2];
+      allDatasets.forEach((d) => {
+        var _a2, _b2;
+        const key = multiDs2 ? `${d._dsName}::${d.label}` : d.label;
+        row.push(((_b2 = (_a2 = byLabel[t2]) == null ? void 0 : _a2[key]) == null ? void 0 : _b2.toString()) ?? "");
       });
-    }
-    const csvContent = [headers, ...rows, ...trendRows].map((r2) => r2.join(",")).join("\n");
+      return row;
+    });
+    const csvContent = [headers, ...rows].map((r2) => r2.join(",")).join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-").slice(0, -5);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `time-series-${state.currentDataset}-${timestamp}.csv`);
+    link.setAttribute("href", URL.createObjectURL(blob));
+    link.setAttribute("download", `time-series-${state.currentDataset}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 16).replace(/[:.]/g, "-")}.csv`);
     link.style.visibility = "hidden";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }, [chartData, state.showTrends, state.currentDataset]);
+  }, [chartDataMap, firstDs, activeDatasetsForChart, state.currentDataset]);
+  const activeChartDs = Object.keys(chartDataMap);
   const chartOptions = reactExports.useMemo(() => {
     const textColor = cssVar("--sb-text", "#dde0f0");
     const mutedColor = cssVar("--sb-muted", "#7880a8");
     const gridColor = cssVar("--sb-border", "#2c2f4a");
-    const dsInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
-    const yLabel = (dsInfo == null ? void 0 : dsInfo.label) && (dsInfo == null ? void 0 : dsInfo.unit) ? `${dsInfo.label} (${dsInfo.unit})` : (dsInfo == null ? void 0 : dsInfo.label) || (dsInfo == null ? void 0 : dsInfo.unit) || "Displacement (m)";
+    const scales = {
+      x: {
+        type: "time",
+        time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
+        title: { display: true, text: "Date", color: mutedColor },
+        grid: { color: gridColor },
+        ticks: { color: mutedColor }
+      }
+    };
+    activeChartDs.forEach((ds, i) => {
+      const info = state.datasetInfo[ds];
+      const yLabel = (info == null ? void 0 : info.label) && (info == null ? void 0 : info.unit) ? `${info.label} (${info.unit})` : (info == null ? void 0 : info.label) || (info == null ? void 0 : info.unit) || ds;
+      const axisColor = dsColorOverrides[ds] ?? (i === 0 ? mutedColor : mutedColor);
+      const offset = dsOffsets[ds] ?? 0;
+      const lim2 = dsYLimits[ds];
+      const userMin = (lim2 == null ? void 0 : lim2.min) !== "" && (lim2 == null ? void 0 : lim2.min) !== void 0 ? parseFloat(lim2.min) : NaN;
+      const userMax = (lim2 == null ? void 0 : lim2.max) !== "" && (lim2 == null ? void 0 : lim2.max) !== void 0 ? parseFloat(lim2.max) : NaN;
+      const axisScale = {
+        position: i === 0 ? "left" : "right",
+        title: { display: true, text: yLabel, color: axisColor, font: { size: 10 } },
+        grid: { color: i === 0 ? gridColor : "transparent" },
+        ticks: { color: axisColor, font: { size: 10 } }
+      };
+      if (!isNaN(userMin)) axisScale.min = userMin + offset;
+      if (!isNaN(userMax)) axisScale.max = userMax + offset;
+      if (isNaN(userMin) && offset !== 0) axisScale.suggestedMin = void 0;
+      if (isNaN(userMax) && offset !== 0) axisScale.suggestedMax = void 0;
+      scales[`y${i}`] = axisScale;
+    });
     return {
       responsive: true,
       maintainAspectRatio: false,
@@ -37297,19 +37572,29 @@ function TimeSeriesChart() {
             padding: 16,
             color: textColor,
             generateLabels: (chart) => {
-              if (!(chartData == null ? void 0 : chartData.datasets)) return [];
-              return chart.data.datasets.map((ds, index) => ({ ds, index })).filter(
-                ({ ds }) => !ds.label.endsWith(" trend") && !ds.label.endsWith(" residual") && !ds.label.includes(" sample ") && !ds.label.endsWith(" median")
-              ).map(({ ds, index }) => {
-                var _a2, _b2;
+              const isBuffer = chart.data.datasets.some((ds) => {
+                var _a2;
+                return (_a2 = ds.label) == null ? void 0 : _a2.endsWith(" median");
+              });
+              return chart.data.datasets.map((ds, index) => ({ ds, index })).filter(({ ds }) => {
+                if (ds.label.includes(" sample ")) return false;
+                if (ds.label.endsWith(" trend")) return false;
+                if (ds.label.endsWith(" residual")) return false;
+                if (isBuffer) return ds.label.endsWith(" median");
+                return !ds.label.endsWith(" median");
+              }).map(({ ds, index }) => {
+                const baseLabel = ds._baseLabel || ds.label;
+                const trendMmPerYear = ds._trendMmPerYear;
+                const displayText = baseLabel + (trendMmPerYear !== void 0 && state.showTrends ? ` (${trendMmPerYear.toFixed(1)} mm/yr)` : "");
                 return {
-                  text: ds.label + (ds.label && ((_b2 = (_a2 = chartData.datasets.find((d) => d.label === ds.label)) == null ? void 0 : _a2.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 ? ` (${chartData.datasets.find((d) => d.label === ds.label).trend.mmPerYear.toFixed(1)} mm/yr)` : ""),
+                  text: displayText,
                   pointStyle: "circle",
                   fillStyle: ds.borderColor,
                   strokeStyle: ds.borderColor,
                   fontColor: textColor,
                   lineWidth: 2,
-                  datasetIndex: index
+                  datasetIndex: index,
+                  hidden: !chart.isDatasetVisible(index)
                 };
               });
             }
@@ -37322,24 +37607,18 @@ function TimeSeriesChart() {
               return `${((_a2 = context[0]) == null ? void 0 : _a2.label) || ""}`;
             },
             label: (context) => {
-              var _a2, _b2;
-              const dataset = (_a2 = chartData == null ? void 0 : chartData.datasets) == null ? void 0 : _a2[context.datasetIndex];
-              if (!dataset) return "";
-              const unit = (dsInfo == null ? void 0 : dsInfo.unit) || "m";
-              let label = `${dataset.label}: ${context.parsed.y.toFixed(4)} ${unit}`;
-              if (((_b2 = dataset.trend) == null ? void 0 : _b2.mmPerYear) !== void 0 && state.showTrends) {
-                label += ` (${dataset.trend.mmPerYear.toFixed(1)} mm/yr)`;
-              }
+              const ds = context.chart.data.datasets[context.datasetIndex];
+              if (!ds) return "";
+              const unit = ds._unit || "m";
+              let label = `${ds._baseLabel || ds.label}: ${context.parsed.y.toFixed(4)} ${unit}`;
+              const mmPy = ds._trendMmPerYear;
+              if (mmPy !== void 0 && state.showTrends) label += ` (${mmPy.toFixed(1)} mm/yr)`;
               return label;
             }
           }
         },
         zoom: {
-          pan: {
-            enabled: true,
-            mode: "x",
-            onPanComplete: () => setIsZoomed(true)
-          },
+          pan: { enabled: true, mode: "x", onPanComplete: () => setIsZoomed(true) },
           zoom: {
             wheel: { enabled: true },
             pinch: { enabled: true },
@@ -37348,179 +37627,456 @@ function TimeSeriesChart() {
           }
         }
       },
-      scales: {
-        x: {
-          type: "time",
-          time: { displayFormats: { month: "MMM yyyy", day: "MMM d", year: "yyyy" } },
-          title: { display: true, text: "Date", color: mutedColor },
-          grid: { color: gridColor },
-          ticks: { color: mutedColor }
-        },
-        y: {
-          title: { display: true, text: yLabel, color: mutedColor },
-          suggestedMin: state.vmin,
-          suggestedMax: state.vmax,
-          grid: { color: gridColor },
-          ticks: { color: mutedColor }
-        }
-      },
+      scales,
       onClick: handleChartClick
     };
-  }, [themeVersion, chartData, state.showTrends, state.vmin, state.vmax, state.currentDataset, state.datasetInfo, handleChartClick]);
+  }, [themeVersion, state.showTrends, state.vmin, state.vmax, state.datasetInfo, state.bufferEnabled, handleChartClick, JSON.stringify(activeChartDs), JSON.stringify(dsOffsets), JSON.stringify(dsColorOverrides), JSON.stringify(dsYLimits), JSON.stringify(Object.fromEntries(Object.entries(chartDataMap).map(([k2, v2]) => [k2, v2.datasets.flatMap((d) => d.data.map((pt) => pt.y))])))]);
   if (!state.showChart) return null;
+  const allDsNames = Object.keys(state.datasetInfo);
+  const setWinDs = (dsNames) => dispatch({ type: "SET_CHART_WINDOW_DS", payload: { id: windowId, dsNames } });
+  const addWinDs = (ds) => {
+    if (!winDsNames.includes(ds)) setWinDs([...winDsNames, ds]);
+  };
+  const removeWinDs = (ds) => setWinDs(winDsNames.filter((d) => d !== ds));
+  const spawnNewChart = () => dispatch({
+    type: "ADD_CHART_WINDOW",
+    payload: { id: `chart_${Date.now()}`, dsNames: [] }
+  });
+  const closeThis = () => dispatch({ type: "REMOVE_CHART_WINDOW", payload: windowId });
+  const headerContent = /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", onMouseDown: onDragMouseDown, style: { cursor: "grab" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { style: { margin: 0, fontSize: "0.9em" }, children: "Time Series" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-controls", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", onClick: () => dispatch({ type: "TOGGLE_TRENDS" }), title: "Toggle trend analysis", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-chart-line" : "fa-chart-simple"}` }),
+          state.showTrends ? "Trends ✓" : "Trends"
+        ] }),
+        state.showTrends && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", onClick: () => dispatch({ type: "TOGGLE_RESIDUALS" }), title: "Show residuals", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-wave-square" }),
+          state.showResiduals ? "Resid ✓" : "Resid"
+        ] }),
+        isZoomed && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: () => {
+          var _a2;
+          (_a2 = chartRef.current) == null ? void 0 : _a2.resetZoom();
+          setIsZoomed(false);
+        }, title: "Reset zoom", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-magnifying-glass-minus" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: handleExportToCSV, title: "Export CSV", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-download" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", title: "New chart window", onClick: spawnNewChart, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-plus" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", style: { color: "var(--sb-red)" }, title: "Close this chart", onClick: closeThis, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" }) })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-sliders", style: { marginBottom: 4, paddingBottom: 4, flexWrap: "wrap" }, children: [
+      winDsNames.length === 0 ? state.currentDataset ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "1px 6px",
+        background: "var(--sb-surface2)",
+        border: "1px solid var(--sb-border)",
+        borderRadius: 10,
+        fontSize: "0.72em",
+        color: "var(--sb-text)",
+        flexShrink: 0
+      }, children: [
+        state.currentDataset,
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setWinDs(allDsNames.filter((d) => d !== state.currentDataset)), style: {
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          color: "var(--sb-muted)",
+          fontSize: "0.9em",
+          lineHeight: 1
+        }, title: `Remove ${state.currentDataset}`, children: "✕" })
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.75em", color: "var(--sb-muted)" }, children: "No layer selected" }) : winDsNames.map((ds) => /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: {
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        padding: "1px 6px",
+        background: "var(--sb-surface2)",
+        border: "1px solid var(--sb-border)",
+        borderRadius: 10,
+        fontSize: "0.72em",
+        color: "var(--sb-text)",
+        flexShrink: 0
+      }, children: [
+        ds,
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => removeWinDs(ds), style: {
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: 0,
+          color: "var(--sb-muted)",
+          fontSize: "0.9em",
+          lineHeight: 1
+        }, title: `Remove ${ds}`, children: "✕" })
+      ] }, ds)),
+      (() => {
+        const excluded = winDsNames.length === 0 ? [...winDsNames, state.currentDataset].filter(Boolean) : winDsNames;
+        const available = allDsNames.filter((ds) => !excluded.includes(ds));
+        return available.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "select",
+          {
+            className: "sidebar-select",
+            style: { fontSize: "0.72em", padding: "1px 4px", height: 22, flex: "0 0 auto", maxWidth: 130 },
+            value: "",
+            onChange: (e) => {
+              if (e.target.value) {
+                addWinDs(e.target.value);
+                e.currentTarget.value = "";
+              }
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "＋ layer…" }),
+              available.map((ds) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: ds, children: ds }, ds))
+            ]
+          }
+        ) : null;
+      })(),
+      winDsNames.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "chart-btn",
+          style: { fontSize: "0.7em", padding: "1px 5px" },
+          onClick: () => setWinDs([]),
+          title: "Reset to map layer",
+          children: "↺ reset"
+        }
+      )
+    ] })
+  ] });
   if (state.timeSeriesPoints.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-placeholder", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No points selected." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on the map to add points." }) })
-    ] }) });
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", ref: panelRef, style: panelStyle, children: [
+      headerContent,
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-placeholder", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No points selected." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Click on the map to add points." }) })
+      ] }),
+      resizeGrip
+    ] });
   }
   if (isLoading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading…" }) }) });
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", ref: panelRef, style: panelStyle, children: [
+      headerContent,
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading…" }) }),
+      resizeGrip
+    ] });
   }
-  if (!chartData || !chartData.datasets || chartData.datasets.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { id: "chart-container", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No data for selected points." }) }) });
-  }
-  const isoLabels = chartData.labels.map(toIsoDate);
-  const day0 = isoLabels.length > 0 ? new Date(isoLabels[0]).getTime() / 864e5 : 0;
-  const isoToDay = (iso) => new Date(iso).getTime() / 864e5 - day0;
-  const datasetList = [];
-  chartData.datasets.forEach((dataset) => {
-    const isoData = dataset.data.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y }));
-    datasetList.push({
-      label: dataset.label,
-      data: isoData,
-      borderColor: dataset.borderColor,
-      backgroundColor: dataset.backgroundColor,
-      borderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6,
-      tension: 0.1,
-      fill: false
+  if (Object.keys(chartDataMap).length === 0) {
+    const allNoTime = activeDatasetsForChart.every((ds) => {
+      const info = state.datasetInfo[ds];
+      return info && Array.isArray(info.x_values) && info.x_values.length === 0;
     });
-    if (state.showTrends && dataset.trend && isoData.length > 1) {
-      const { slope, intercept } = dataset.trend;
-      const trendData = isoData.map((pt) => ({
-        x: pt.x,
-        y: slope * isoToDay(pt.x) + intercept
-      }));
-      datasetList.push({
-        label: `${dataset.label} trend`,
-        data: trendData,
-        borderColor: dataset.borderColor,
-        backgroundColor: "transparent",
-        borderWidth: 1.5,
-        borderDash: [6, 4],
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        tension: 0,
-        fill: false
-      });
-      if (state.showResiduals) {
-        const residualData = isoData.map((pt) => ({
-          x: pt.x,
-          y: pt.y - (slope * isoToDay(pt.x) + intercept)
-        }));
-        datasetList.push({
-          label: `${dataset.label} residual`,
-          data: residualData,
-          borderColor: dataset.borderColor,
-          backgroundColor: dataset.backgroundColor,
-          borderWidth: 1,
-          borderDash: [2, 3],
-          pointRadius: 2,
-          pointHoverRadius: 4,
-          tension: 0,
-          fill: false,
-          borderDashOffset: 0
-        });
-      }
-    }
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", ref: panelRef, style: panelStyle, children: [
+      headerContent,
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: allNoTime ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Selected layer has no time dimension." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: /* @__PURE__ */ jsxRuntimeExports.jsx("small", { children: "Switch to a time-series dataset to view the chart." }) })
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "No data for selected points." }) }),
+      resizeGrip
+    ] });
+  }
+  const multiDs = activeDatasetsForChart.length > 1;
+  const dateStart = state.dateRangeStart ? new Date(state.dateRangeStart).getTime() : -Infinity;
+  const dateEnd = state.dateRangeEnd ? new Date(state.dateRangeEnd).getTime() : Infinity;
+  const allIsoLabels = [...new Set(
+    Object.values(chartDataMap).flatMap((cd2) => cd2.labels.map(toIsoDate))
+  )].sort();
+  const isoLabels = allIsoLabels.filter((d) => {
+    const t2 = new Date(d).getTime();
+    return t2 >= dateStart && t2 <= dateEnd;
   });
-  if (state.bufferEnabled) {
-    chartData.datasets.forEach((dataset) => {
-      const buf = bufferData[dataset.pointId];
-      if (!buf) return;
-      const color2 = dataset.borderColor;
-      buf.samples.forEach((sample2, i) => {
+  const day0 = allIsoLabels.length > 0 ? new Date(allIsoLabels[0]).getTime() / 864e5 : 0;
+  const isoToDay = (iso) => new Date(iso).getTime() / 864e5 - day0;
+  const ms = state.markerSize;
+  const datasetList = [];
+  Object.entries(chartDataMap).forEach(([dsName, cd2]) => {
+    const dsInfo = state.datasetInfo[dsName];
+    const unit = dsInfo == null ? void 0 : dsInfo.unit;
+    const colorOverride = dsColorOverrides[dsName] ?? null;
+    const axisIdx = activeChartDs.indexOf(dsName);
+    const yAxisID = `y${axisIdx}`;
+    cd2.datasets.forEach((dataset) => {
+      var _a2;
+      const baseLabel = multiDs ? `${dataset.label} [${dsName}]` : dataset.label;
+      const borderColor = colorOverride ?? dataset.borderColor;
+      const backgroundColor = colorOverride ? colorOverride + "20" : dataset.backgroundColor;
+      if (state.bufferEnabled) {
+        const buf = bufferData[`${dsName}::${dataset.pointId}`];
+        if (!buf) return;
+        buf.samples.forEach((sample2, i) => {
+          datasetList.push({
+            label: `${baseLabel} sample ${i}`,
+            _baseLabel: baseLabel,
+            _unit: unit,
+            yAxisID,
+            data: sample2.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y })).filter((pt) => {
+              const t2 = new Date(pt.x).getTime();
+              return t2 >= dateStart && t2 <= dateEnd;
+            }),
+            borderColor: borderColor + "28",
+            backgroundColor: "transparent",
+            borderWidth: 1,
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0.1,
+            fill: false
+          });
+        });
+        const medianData = buf.median.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y })).filter((pt) => {
+          const t2 = new Date(pt.x).getTime();
+          return t2 >= dateStart && t2 <= dateEnd;
+        });
         datasetList.push({
-          label: `${dataset.label} sample ${i}`,
-          data: sample2.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y })),
-          borderColor: color2 + "28",
-          backgroundColor: "transparent",
-          borderWidth: 1,
-          pointRadius: 0,
-          pointHoverRadius: 0,
+          label: `${baseLabel} median`,
+          _baseLabel: baseLabel,
+          _unit: unit,
+          yAxisID,
+          data: medianData,
+          borderColor,
+          backgroundColor: borderColor,
+          borderWidth: 0,
+          showLine: false,
+          pointStyle: "circle",
+          pointRadius: ms,
+          pointHoverRadius: ms + 2,
+          fill: false
+        });
+      } else {
+        const isoData = dataset.data.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y })).filter((pt) => {
+          const t2 = new Date(pt.x).getTime();
+          return t2 >= dateStart && t2 <= dateEnd;
+        });
+        datasetList.push({
+          label: baseLabel,
+          _baseLabel: baseLabel,
+          _unit: unit,
+          _trendMmPerYear: (_a2 = dataset.trend) == null ? void 0 : _a2.mmPerYear,
+          yAxisID,
+          data: isoData,
+          borderColor,
+          backgroundColor,
+          borderWidth: 2,
+          pointRadius: ms,
+          pointHoverRadius: ms + 2,
           tension: 0.1,
           fill: false
         });
-      });
-      datasetList.push({
-        label: `${dataset.label} median`,
-        data: buf.median.map((pt) => ({ x: toIsoDate(pt.x), y: pt.y })),
-        borderColor: color2,
-        backgroundColor: "transparent",
-        borderWidth: 3,
-        borderDash: [4, 3],
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        tension: 0.1,
-        fill: false
-      });
+        if (state.showTrends && dataset.trend && isoData.length > 1) {
+          const { slope, intercept, mmPerYear } = dataset.trend;
+          datasetList.push({
+            label: `${baseLabel} trend`,
+            _baseLabel: baseLabel,
+            _unit: unit,
+            _trendMmPerYear: mmPerYear,
+            yAxisID,
+            data: isoData.map((pt) => ({ x: pt.x, y: slope * isoToDay(pt.x) + intercept })),
+            borderColor,
+            backgroundColor: "transparent",
+            borderWidth: 1.5,
+            borderDash: [6, 4],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            tension: 0,
+            fill: false
+          });
+          if (state.showResiduals) {
+            datasetList.push({
+              label: `${baseLabel} residual`,
+              _baseLabel: baseLabel,
+              _unit: unit,
+              yAxisID,
+              data: isoData.map((pt) => ({ x: pt.x, y: pt.y - (slope * isoToDay(pt.x) + intercept) })),
+              borderColor,
+              backgroundColor,
+              borderWidth: 1,
+              borderDash: [2, 3],
+              pointRadius: ms > 2 ? ms - 1 : 2,
+              pointHoverRadius: ms + 1,
+              tension: 0,
+              fill: false
+            });
+          }
+        }
+      }
     });
-  }
+  });
   const formattedChartData = { labels: isoLabels, datasets: datasetList };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { children: "Time Series" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-controls", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
+  const minDate = allIsoLabels[0] ?? "";
+  const maxDate = allIsoLabels[allIsoLabels.length - 1] ?? "";
+  const sliderStart = state.dateRangeStart ?? minDate;
+  const sliderEnd = state.dateRangeEnd ?? maxDate;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { id: "chart-container", ref: panelRef, style: panelStyle, children: [
+    headerContent,
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-sliders", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "chart-slider-label", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Marker" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
           {
-            className: "chart-btn",
-            onClick: () => dispatch({ type: "TOGGLE_TRENDS" }),
-            title: "Toggle trend analysis",
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showTrends ? "fa-chart-line" : "fa-chart-simple"}` }),
-              state.showTrends ? "Hide" : "Show",
-              " Trends"
-            ]
+            type: "range",
+            min: 1,
+            max: 12,
+            step: 1,
+            value: state.markerSize,
+            onChange: (e) => dispatch({ type: "SET_MARKER_SIZE", payload: Number(e.target.value) })
           }
         ),
-        state.showTrends && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            className: "chart-btn",
-            onClick: () => dispatch({ type: "TOGGLE_RESIDUALS" }),
-            title: "Show residuals (data minus trend)",
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showResiduals ? "fa-wave-square" : "fa-chart-scatter"}` }),
-              state.showResiduals ? "Hide" : "Show",
-              " Residuals"
-            ]
-          }
-        ),
-        isZoomed && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            className: "chart-btn",
-            onClick: () => {
-              var _a2;
-              (_a2 = chartRef.current) == null ? void 0 : _a2.resetZoom();
-              setIsZoomed(false);
-            },
-            title: "Reset zoom",
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-magnifying-glass-minus" }),
-              " Reset"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", onClick: handleExportToCSV, title: "Export data to CSV", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-download" }),
-          " CSV"
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          state.markerSize,
+          "px"
         ] })
+      ] }),
+      allIsoLabels.length > 1 && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "chart-slider-label", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "From" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "date",
+              min: minDate,
+              max: sliderEnd || maxDate,
+              value: sliderStart,
+              onChange: (e) => dispatch({ type: "SET_DATE_RANGE_START", payload: e.target.value || null })
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "chart-slider-label", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "To" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "date",
+              min: sliderStart || minDate,
+              max: maxDate,
+              value: sliderEnd,
+              onChange: (e) => dispatch({ type: "SET_DATE_RANGE_END", payload: e.target.value || null })
+            }
+          )
+        ] }),
+        (state.dateRangeStart || state.dateRangeEnd) && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "chart-btn",
+            title: "Reset date range",
+            onClick: () => {
+              dispatch({ type: "SET_DATE_RANGE_START", payload: null });
+              dispatch({ type: "SET_DATE_RANGE_END", payload: null });
+            },
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" })
+          }
+        )
       ] })
     ] }),
+    activeChartDs.map((ds, i) => {
+      var _a2, _b2, _c;
+      const off = dsOffsets[ds] ?? 0;
+      const baseColor = ((_b2 = (_a2 = chartDataMap[ds]) == null ? void 0 : _a2.datasets[0]) == null ? void 0 : _b2.borderColor) ?? "#7880a8";
+      const color2 = dsColorOverrides[ds] ?? baseColor;
+      const info = state.datasetInfo[ds];
+      const unit = (info == null ? void 0 : info.unit) || "";
+      const allY = ((_c = chartDataMap[ds]) == null ? void 0 : _c.datasets.flatMap((d) => d.data.map((pt) => pt.y))) ?? [];
+      const dataSpan = allY.length > 1 ? Math.max(...allY) - Math.min(...allY) : 1;
+      const sliderRange = Math.max(dataSpan * 2, 1e-3);
+      const step = parseFloat((sliderRange / 500).toPrecision(2));
+      const lim2 = dsYLimits[ds] ?? { min: "", max: "" };
+      const hasLimit = lim2.min !== "" || lim2.max !== "";
+      const inputStyle = { width: 58, fontSize: "0.72em", background: "var(--sb-surface2)", border: "1px solid var(--sb-border)", borderRadius: 4, color: "var(--sb-text)", padding: "1px 4px", textAlign: "right", flexShrink: 0 };
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-sliders", style: { borderTop: i === 0 ? void 0 : "none", paddingTop: i === 0 ? void 0 : 0, flexWrap: "wrap", rowGap: 2 }, children: [
+        multiDs && /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "chart-slider-label", style: { flex: "1 1 100%" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "color",
+              value: color2.length === 7 ? color2 : baseColor,
+              style: { width: 20, height: 20, padding: 0, border: "none", background: "none", cursor: "pointer", flexShrink: 0 },
+              title: "Change layer color",
+              onChange: (e) => setDsColorOverrides((prev) => ({ ...prev, [ds]: e.target.value }))
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: color2, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 80 }, title: ds, children: ds }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.72em", color: "var(--sb-muted)", flexShrink: 0 }, children: [
+            "y",
+            i,
+            " off"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "range",
+              min: -sliderRange,
+              max: sliderRange,
+              step,
+              value: off,
+              style: { flex: 1 },
+              onChange: (e) => setDsOffsets((prev) => ({ ...prev, [ds]: Number(e.target.value) }))
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "number",
+              step,
+              value: parseFloat(off.toPrecision(4)),
+              style: { ...inputStyle },
+              onChange: (e) => {
+                const v2 = parseFloat(e.target.value);
+                if (!isNaN(v2)) setDsOffsets((prev) => ({ ...prev, [ds]: v2 }));
+              }
+            }
+          ),
+          off !== 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "chart-btn",
+              style: { padding: "1px 6px", flexShrink: 0 },
+              onClick: () => setDsOffsets((prev) => ({ ...prev, [ds]: 0 })),
+              title: "Reset offset",
+              children: "✕"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "chart-slider-label", style: { flex: "1 1 100%", gap: 4 }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { fontSize: "0.72em", color: "var(--sb-muted)", flexShrink: 0 }, children: [
+            "y",
+            i,
+            " min"
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "number",
+              placeholder: "auto",
+              value: lim2.min,
+              style: { ...inputStyle, flex: 1 },
+              onChange: (e) => setDsYLimits((prev) => ({ ...prev, [ds]: { ...lim2, min: e.target.value } }))
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.72em", color: "var(--sb-muted)", flexShrink: 0 }, children: "max" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              type: "number",
+              placeholder: "auto",
+              value: lim2.max,
+              style: { ...inputStyle, flex: 1 },
+              onChange: (e) => setDsYLimits((prev) => ({ ...prev, [ds]: { ...lim2, max: e.target.value } }))
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.7em", color: "var(--sb-muted)", flexShrink: 0 }, children: unit }),
+          hasLimit && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              className: "chart-btn",
+              style: { padding: "1px 6px", flexShrink: 0 },
+              onClick: () => setDsYLimits((prev) => ({ ...prev, [ds]: { min: "", max: "" } })),
+              title: "Reset y limits",
+              children: "✕"
+            }
+          )
+        ] })
+      ] }, ds);
+    }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-content", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { ref: chartRef, data: formattedChartData, options: chartOptions }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-help", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("small", { children: [
       "Scroll to zoom · Drag to pan · Click points to sync map time",
@@ -37529,7 +38085,8 @@ function TimeSeriesChart() {
         Object.values(bufferData).map((b) => b.n_pixels).join(", "),
         " px"
       ] })
-    ] }) })
+    ] }) }),
+    resizeGrip
   ] });
 }
 function PointManagerPanel() {
@@ -37716,6 +38273,486 @@ function PointManagerPanel() {
     ] }) })
   ] });
 }
+function RefPointChart() {
+  var _a2;
+  const { state } = useAppContext();
+  const { fetchBufferTimeSeries } = useApi();
+  const [bufferData, setBufferData] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(false);
+  const abortRef = reactExports.useRef(null);
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 520,
+    defaultHeight: 280,
+    initialRight: 16,
+    initialBottom: 20
+  });
+  reactExports.useEffect(() => {
+    var _a3;
+    if (!state.refBufferEnabled || !state.showRefChart || !state.currentDataset) {
+      setBufferData(null);
+      return;
+    }
+    (_a3 = abortRef.current) == null ? void 0 : _a3.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    const [lat, lng] = state.refMarkerPosition;
+    setLoading(true);
+    fetchBufferTimeSeries(lng, lat, state.currentDataset, state.refBufferRadius, 20).then((data) => {
+      if (!ctrl.signal.aborted && data) setBufferData(data);
+    }).finally(() => {
+      if (!ctrl.signal.aborted) setLoading(false);
+    });
+    return () => ctrl.abort();
+  }, [
+    state.refBufferEnabled,
+    state.showRefChart,
+    state.currentDataset,
+    state.refMarkerPosition,
+    state.refBufferRadius
+  ]);
+  if (!state.refBufferEnabled || !state.showRefChart) return null;
+  if (loading) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Loading reference buffer…" }) }) });
+  }
+  if (!bufferData || bufferData.labels.length === 0) return null;
+  const { median, samples } = bufferData;
+  const rawLabels = (((_a2 = state.datasetInfo[state.currentDataset]) == null ? void 0 : _a2.x_values) ?? bufferData.labels).map(String);
+  const n2 = rawLabels.length;
+  const toDisplay = (l2) => {
+    const parts = l2.split("_");
+    if (parts.length === 2 && /^\d{8}$/.test(parts[1])) {
+      const d = parts[1];
+      return `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`;
+    }
+    return l2.slice(0, 10);
+  };
+  const displayLabels = rawLabels.map(toDisplay);
+  const mean = Array(n2).fill(0);
+  const std = Array(n2).fill(0);
+  if (samples.length > 0) {
+    for (let t2 = 0; t2 < n2; t2++) {
+      const vals = samples.map((s) => s[t2]).filter((v2) => isFinite(v2));
+      if (vals.length === 0) {
+        mean[t2] = NaN;
+        std[t2] = NaN;
+        continue;
+      }
+      const m2 = vals.reduce((a, b) => a + b, 0) / vals.length;
+      mean[t2] = m2;
+      std[t2] = Math.sqrt(vals.reduce((a, b) => a + (b - m2) ** 2, 0) / vals.length);
+    }
+  }
+  const meanPlusStd = mean.map((m2, i) => isFinite(m2) ? m2 + std[i] : NaN);
+  const meanMinusStd = mean.map((m2, i) => isFinite(m2) ? m2 - std[i] : NaN);
+  const sampleDatasets = samples.slice(0, 8).map((s, i) => ({
+    label: `sample ${i + 1}`,
+    data: s,
+    borderColor: "rgba(150,180,220,0.18)",
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    pointRadius: 0,
+    tension: 0.15
+  }));
+  const chartData = {
+    labels: displayLabels,
+    datasets: [
+      // +1σ bound — fills toward -1σ (dataset index 1)
+      {
+        label: "+1σ",
+        data: meanPlusStd,
+        borderColor: "rgba(77,157,224,0.4)",
+        backgroundColor: "rgba(77,157,224,0.12)",
+        borderWidth: 1,
+        borderDash: [3, 3],
+        pointRadius: 0,
+        fill: { target: 1, above: "rgba(77,157,224,0.12)" },
+        tension: 0.2
+      },
+      // -1σ bound
+      {
+        label: "-1σ",
+        data: meanMinusStd,
+        borderColor: "rgba(77,157,224,0.4)",
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        borderDash: [3, 3],
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2
+      },
+      // Mean
+      {
+        label: "Mean",
+        data: mean,
+        borderColor: "#4d9de0",
+        backgroundColor: "transparent",
+        borderWidth: 2,
+        pointRadius: 0,
+        tension: 0.2
+      },
+      // Median
+      {
+        label: "Median",
+        data: median,
+        borderColor: "#3ec97a",
+        backgroundColor: "transparent",
+        borderWidth: 2,
+        borderDash: [6, 4],
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2
+      },
+      // Individual samples (faint, behind main lines)
+      ...sampleDatasets
+    ]
+  };
+  const options = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 0 },
+    plugins: {
+      legend: {
+        display: true,
+        labels: {
+          color: "#aaa",
+          filter: (item) => ["Mean", "Median", "+1σ"].includes(item.text),
+          boxWidth: 20,
+          font: { size: 11 }
+        }
+      },
+      tooltip: { mode: "index", intersect: false }
+    },
+    scales: {
+      x: {
+        ticks: { color: "#aaa", maxTicksLimit: 8, maxRotation: 45 },
+        grid: { color: "rgba(255,255,255,0.08)" }
+      },
+      y: {
+        title: { display: true, text: state.currentDataset, color: "#aaa" },
+        ticks: { color: "#aaa" },
+        grid: { color: "rgba(255,255,255,0.08)" }
+      }
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-header", onMouseDown: onDragMouseDown, style: { cursor: "grab" }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
+      "Ref Buffer — ",
+      bufferData.n_pixels,
+      " px, r=",
+      state.refBufferRadius,
+      " m"
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, minHeight: 120, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) }),
+    resizeGrip
+  ] });
+}
+function ColormapBar() {
+  const { state, dispatch } = useAppContext();
+  const [horizontal, setHorizontal] = reactExports.useState(false);
+  const [barFrac, setBarFrac] = reactExports.useState(0.4);
+  const [showBarSlider, setShowBarSlider] = reactExports.useState(false);
+  const [customLabel, setCustomLabel] = reactExports.useState(null);
+  const [customUnit, setCustomUnit] = reactExports.useState(null);
+  const { panelRef, panelStyle, size, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 300,
+    defaultHeight: 160,
+    initialRight: 70,
+    initialBottom: 40,
+    minWidth: 100,
+    minHeight: 80
+  });
+  if (!state.showColorbar) return null;
+  const dsInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+  const autoUnit = (dsInfo == null ? void 0 : dsInfo.unit) ?? "";
+  const unit = customUnit ?? autoUnit;
+  const autoLabel = (dsInfo == null ? void 0 : dsInfo.label) ?? state.currentDataset ?? "";
+  const label = customLabel ?? autoLabel;
+  const fmt = (v2) => {
+    const abs = Math.abs(v2);
+    if (abs === 0) return "0";
+    if (abs >= 1e4 || abs < 0.01 && abs > 0) return v2.toExponential(2);
+    return parseFloat(v2.toPrecision(4)).toString();
+  };
+  const mid = (state.vmin + state.vmax) / 2;
+  const HEADER_H = 26;
+  const PAD = Math.max(4, Math.min(10, Math.round(Math.min(size.width, size.height) * 0.04)));
+  const bodyW = size.width - PAD * 2;
+  const bodyH = size.height - HEADER_H - PAD * 2;
+  const baseFontPx = Math.max(9, Math.min(14, Math.round(Math.min(bodyW, bodyH) * 0.09)));
+  const numStyle = {
+    fontSize: baseFontPx,
+    color: "var(--sb-text)",
+    fontVariantNumeric: "tabular-nums",
+    whiteSpace: "nowrap",
+    flexShrink: 0,
+    lineHeight: 1.3
+  };
+  const midStyle = {
+    ...numStyle,
+    fontSize: baseFontPx * 0.88
+  };
+  const unitStyle = {
+    ...numStyle,
+    fontSize: baseFontPx * 0.8,
+    color: "var(--sb-muted)"
+  };
+  const barThickH = Math.max(8, Math.round(bodyH * barFrac));
+  const barThickV = Math.max(8, Math.round(bodyW * barFrac));
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      ref: panelRef,
+      style: {
+        ...panelStyle,
+        position: "fixed",
+        background: "var(--sb-surface)",
+        border: "1px solid var(--sb-border)",
+        borderRadius: 10,
+        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+        backdropFilter: "blur(8px)",
+        zIndex: 3200,
+        display: "flex",
+        flexDirection: "column",
+        userSelect: "none",
+        minWidth: 100,
+        minHeight: 80
+      },
+      onMouseDown: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            onMouseDown: onDragMouseDown,
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 8px",
+              height: HEADER_H,
+              cursor: "grab",
+              borderBottom: "1px solid var(--sb-border)",
+              flexShrink: 0,
+              gap: 4,
+              boxSizing: "border-box"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { flex: 1, minWidth: 0, fontSize: "0.7em", color: "var(--sb-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: "colorbar" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 3, alignItems: "center", flexShrink: 0 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onMouseDown: (e) => e.stopPropagation(),
+                    onClick: () => setHorizontal((h) => !h),
+                    title: horizontal ? "Switch to vertical" : "Switch to horizontal",
+                    style: { background: "none", border: "1px solid var(--sb-border)", borderRadius: 4, color: "var(--sb-text)", cursor: "pointer", padding: "1px 6px", fontSize: "0.75em", lineHeight: 1.4 },
+                    children: horizontal ? "⇕" : "⇔"
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    onMouseDown: (e) => e.stopPropagation(),
+                    onClick: () => dispatch({ type: "TOGGLE_COLORBAR" }),
+                    title: "Close colorbar",
+                    style: { background: "none", border: "none", color: "var(--sb-muted)", cursor: "pointer", padding: "1px 5px", fontSize: "0.85em", lineHeight: 1 },
+                    children: "✕"
+                  }
+                )
+              ] })
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, padding: PAD, boxSizing: "border-box", display: "flex", flexDirection: "column", gap: PAD * 0.5, overflow: "hidden" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: label,
+                onMouseDown: (e) => e.stopPropagation(),
+                onChange: (e) => setCustomLabel(e.target.value),
+                onBlur: (e) => {
+                  if (!e.target.value.trim()) setCustomLabel(null);
+                },
+                title: "Click to edit label",
+                style: {
+                  flex: 1,
+                  minWidth: 0,
+                  background: "none",
+                  border: "none",
+                  outline: "none",
+                  fontSize: baseFontPx * 0.85,
+                  color: "var(--sb-muted)",
+                  cursor: "text",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap"
+                }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: unit,
+                onMouseDown: (e) => e.stopPropagation(),
+                onChange: (e) => setCustomUnit(e.target.value),
+                onBlur: (e) => {
+                  if (e.target.value === autoUnit) setCustomUnit(null);
+                },
+                placeholder: "unit",
+                title: "Click to edit unit",
+                style: {
+                  width: 32,
+                  flexShrink: 0,
+                  background: "none",
+                  border: "none",
+                  outline: "none",
+                  fontSize: baseFontPx * 0.85,
+                  color: "var(--sb-muted)",
+                  cursor: "text",
+                  textAlign: "right"
+                }
+              }
+            )
+          ] }),
+          horizontal ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "img",
+              {
+                src: `/colorbar/${state.colormap}`,
+                alt: "colorbar",
+                style: {
+                  width: "100%",
+                  height: barThickH,
+                  objectFit: "fill",
+                  borderRadius: 3,
+                  imageRendering: "pixelated",
+                  display: "block",
+                  flexShrink: 0
+                }
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: numStyle, children: fmt(state.vmin) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: midStyle, children: fmt(mid) }),
+                unit && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: unitStyle, children: unit })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: numStyle, children: fmt(state.vmax) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { marginTop: "auto", flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onClick: () => setShowBarSlider((s) => !s),
+                  style: { background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--sb-muted)", fontSize: baseFontPx * 0.8, display: "flex", alignItems: "center", gap: 3 },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid fa-chevron-${showBarSlider ? "up" : "down"}`, style: { fontSize: "0.7em" } }),
+                    "bar height"
+                  ]
+                }
+              ),
+              showBarSlider && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "range",
+                  min: 0.1,
+                  max: 0.9,
+                  step: 0.02,
+                  value: barFrac,
+                  style: { width: "100%", marginTop: 2 },
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onChange: (e) => setBarFrac(Number(e.target.value))
+                }
+              )
+            ] })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flex: 1, display: "flex", flexDirection: "row", gap: PAD, minHeight: 0 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: {
+                position: "relative",
+                width: barThickV,
+                flexShrink: 0,
+                alignSelf: "stretch",
+                overflow: "hidden",
+                borderRadius: 3
+              }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "img",
+                {
+                  src: `/colorbar/${state.colormap}`,
+                  alt: "colorbar",
+                  style: {
+                    position: "absolute",
+                    width: bodyH - 30,
+                    height: barThickV,
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%) rotate(-90deg)",
+                    objectFit: "fill",
+                    imageRendering: "pixelated"
+                  }
+                }
+              ) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+                position: "relative",
+                alignSelf: "stretch",
+                minWidth: 0,
+                flex: 1
+              }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { ...numStyle, position: "absolute", top: 0, left: 0 }, children: fmt(state.vmax) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                  ...midStyle,
+                  position: "absolute",
+                  top: "50%",
+                  left: 0,
+                  transform: "translateY(-50%)",
+                  whiteSpace: "nowrap"
+                }, children: fmt(mid) }),
+                unit && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: {
+                  ...unitStyle,
+                  position: "absolute",
+                  top: "50%",
+                  right: 0,
+                  transform: "translateY(-50%) rotate(-90deg)",
+                  whiteSpace: "nowrap",
+                  display: "inline-block"
+                }, children: unit }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { ...numStyle, position: "absolute", bottom: 0, left: 0 }, children: fmt(state.vmin) })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { flexShrink: 0 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onClick: () => setShowBarSlider((s) => !s),
+                  style: { background: "none", border: "none", cursor: "pointer", padding: 0, color: "var(--sb-muted)", fontSize: baseFontPx * 0.8, display: "flex", alignItems: "center", gap: 3 },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid fa-chevron-${showBarSlider ? "up" : "down"}`, style: { fontSize: "0.7em" } }),
+                    "bar width"
+                  ]
+                }
+              ),
+              showBarSlider && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "range",
+                  min: 0.1,
+                  max: 0.9,
+                  step: 0.02,
+                  value: barFrac,
+                  style: { width: "100%", marginTop: 2 },
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onChange: (e) => setBarFrac(Number(e.target.value))
+                }
+              )
+            ] })
+          ] })
+        ] }),
+        resizeGrip
+      ]
+    }
+  );
+}
 function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
@@ -37750,7 +38787,9 @@ function AppContent() {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-container", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(MapContainer, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PointManagerPanel, {}),
-      state.showChart && /* @__PURE__ */ jsxRuntimeExports.jsx(TimeSeriesChart, {})
+      /* @__PURE__ */ jsxRuntimeExports.jsx(RefPointChart, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ColormapBar, {}),
+      state.showChart && state.chartWindows.map((w2) => /* @__PURE__ */ jsxRuntimeExports.jsx(TimeSeriesChart, { windowId: w2.id }, w2.id))
     ] })
   ] });
 }

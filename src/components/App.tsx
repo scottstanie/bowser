@@ -5,6 +5,8 @@ import MapContainer from './MapContainer';
 import ControlPanel from './ControlPanel';
 import TimeSeriesChart from './TimeSeriesChart';
 import PointManagerPanel from './PointManagerPanel';
+import RefPointChart from './RefPointChart';
+import ColormapBar from './ColormapBar';
 import '../style.css';
 
 function AppContent() {
@@ -52,7 +54,11 @@ function AppContent() {
       <div className="map-container">
         <MapContainer />
         <PointManagerPanel />
-        {state.showChart && <TimeSeriesChart />}
+        <RefPointChart />
+        <ColormapBar />
+        {state.showChart && state.chartWindows.map(w => (
+          <TimeSeriesChart key={w.id} windowId={w.id} />
+        ))}
       </div>
     </div>
   );

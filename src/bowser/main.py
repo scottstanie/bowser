@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -17,8 +20,10 @@ import matplotlib
 import numpy as np
 import rasterio
 import xarray as xr
-from fastapi import Body, FastAPI, HTTPException, Query, Response, UploadFile
+from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 from pyproj import CRS, Transformer
 from rio_tiler.io.xarray import XarrayReader
 from starlette.staticfiles import StaticFiles
@@ -64,6 +69,71 @@ app = FastAPI(
     openapi_url="/api",
     docs_url="/api.html",
 )
+
+
+def _load_htpasswd(path: str) -> dict[str, str]:
+    """Parse an htpasswd file into {username: hashed_password}."""
+    users: dict[str, str] = {}
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(":", 1)
+        if len(parts) == 2:
+            users[parts[0]] = parts[1]
+    return users
+
+
+def _check_password(stored: str, provided: str) -> bool:
+    """Verify a plaintext password against an htpasswd entry (SHA1 or bcrypt)."""
+    if stored.startswith("{SHA}"):
+        digest = base64.b64encode(hashlib.sha1(provided.encode()).digest()).decode()
+        return hmac.compare_digest(stored[5:], digest)
+    try:
+        import bcrypt  # optional — only needed for bcrypt hashes
+        return bcrypt.checkpw(provided.encode(), stored.encode())
+    except ImportError:
+        pass
+    # apr1/md5 not implemented — tell user to use SHA or bcrypt
+    return False
+
+
+class BasicAuthMiddleware(BaseHTTPMiddleware):
+    """HTTP Basic Auth gate — only active when BOWSER_HTPASSWD_FILE is set."""
+
+    def __init__(self, app, htpasswd_file: str) -> None:
+        super().__init__(app)
+        self.htpasswd_file = Path(htpasswd_file)
+
+    def _users(self) -> dict[str, str]:
+        return _load_htpasswd(str(self.htpasswd_file)) if self.htpasswd_file.exists() else {}
+
+    async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+        users = self._users()
+        if not users:
+            return await call_next(request)
+
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Basic "):
+            try:
+                decoded = base64.b64decode(auth[6:]).decode("utf-8", errors="replace")
+                username, _, password = decoded.partition(":")
+                stored = users.get(username)
+                if stored and _check_password(stored, password):
+                    return await call_next(request)
+            except Exception:
+                pass
+
+        return StarletteResponse(
+            content="Unauthorized",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="Bowser"'},
+        )
+
+
+if settings.BOWSER_HTPASSWD_FILE:
+    app.add_middleware(BasicAuthMiddleware, htpasswd_file=settings.BOWSER_HTPASSWD_FILE)
+    logger.info(f"Basic auth enabled from {settings.BOWSER_HTPASSWD_FILE}")
 
 
 def load_data_sources():
@@ -825,14 +895,22 @@ async def extract_profile(
     coords: list[list[float]] = Body(..., description="List of [lon, lat] pairs"),
     dataset_name: str = Body(..., description="Dataset name"),
     time_index: int = Body(0, description="Time index"),
-    n_samples: int = Body(200, description="Number of samples along line"),
+    n_samples: int = Body(200, description="Number of samples along line (used when sampling_interval=0)"),
     radius: float = Body(0.0, description="Buffer radius in metres (0 = single line)"),
-    n_random: int = Body(5, description="Number of random sample lines within buffer"),
+    n_random: int = Body(5, description="Number of random sample lines within buffer (legacy)"),
+    sampling_interval: float = Body(0.0, description="Bin spacing in metres along profile (0 = use n_samples). When > 0, each bin collects all pixels within ±(sampling_interval/2) of the bin centre along the profile direction and within ±radius perpendicular, then returns their median."),
 ):
     """Sample raster values along a polyline.
 
-    When ``radius`` > 0, returns median and random sample profiles within the
-    buffer; otherwise returns the single centre-line profile.
+    When ``radius`` > 0 and ``sampling_interval`` > 0, the profile is divided
+    into non-overlapping bins of width ``sampling_interval``.  Each bin
+    collects a dense grid of pixels within that along-track window and within
+    ``radius`` perpendicular to the line; the bin value is the nanmedian of
+    those pixels.  The centre-line profile uses the same bins sampled only
+    along the line centre.
+
+    When ``sampling_interval`` = 0 the legacy behaviour is used: ``n_samples``
+    evenly-spaced points with random perpendicular lines.
     """
     from pyproj import Geod  # noqa: PLC0415
 
@@ -851,8 +929,6 @@ async def extract_profile(
     total_dist = seg_dists[-1]
     if total_dist == 0:
         raise HTTPException(status_code=422, detail="Zero-length line")
-
-    sample_dists = np.linspace(0, total_dist, n_samples)
 
     def _read_lonlat(slon: float, slat: float) -> float | None:
         """Read a single value at (slon, slat); return None on failure."""
@@ -875,21 +951,103 @@ async def extract_profile(
         except Exception:
             return None
 
-    # ── Compute sample point positions along the line ──────────────────────────
-    # For each distance d along line, compute (slon, slat) and the perpendicular
-    # unit vector in lon/lat degrees (approximated from the local bearing).
-    sample_positions: list[tuple[float, float, float, float]] = []  # (dist, slon, slat, bearing_deg)
-    for sd in sample_dists:
+    def _pos_at_dist(sd: float) -> tuple[float, float, float]:
+        """Return (lon, lat, bearing_deg) at distance sd along the polyline."""
         seg_idx = int(np.clip(np.searchsorted(seg_dists, sd, side="right") - 1, 0, len(lons) - 2))
         frac = (sd - seg_dists[seg_idx]) / max(seg_dists[seg_idx + 1] - seg_dists[seg_idx], 1e-9)
         slon = lons[seg_idx] + frac * (lons[seg_idx + 1] - lons[seg_idx])
         slat = lats[seg_idx] + frac * (lats[seg_idx + 1] - lats[seg_idx])
-        # Forward bearing of this segment (degrees)
         az, _, _ = geod.inv(lons[seg_idx], lats[seg_idx], lons[seg_idx + 1], lats[seg_idx + 1])
-        sample_positions.append((float(sd), slon, slat, float(az)))
+        return float(slon), float(slat), float(az)
+
+    # ── Binned-median sampling (new mode) ─────────────────────────────────────
+    if sampling_interval > 0:
+        half = sampling_interval / 2.0
+        bin_centres = np.arange(half, total_dist, sampling_interval)
+        if len(bin_centres) == 0:
+            bin_centres = np.array([total_dist / 2.0])
+
+        # Along-track step: cap at sampling_interval so we never oversample.
+        # 5 steps per bin is enough for a smooth median; minimum 1 m.
+        along_step = max(min(sampling_interval / 5.0, sampling_interval), 1.0)
+
+        # Perpendicular: 5 steps across the full width (radius > 0 only).
+        # Minimum 1 m; 0 offset (centre line) is always included.
+        if radius > 0:
+            perp_step = max(radius / 5.0, 1.0)
+            perp_offsets_dense = np.arange(-radius, radius + perp_step * 0.5, perp_step)
+            # Remove duplicate 0 if it lands on a grid point exactly
+            perp_offsets_dense = perp_offsets_dense[np.abs(perp_offsets_dense) > 1e-3]
+        else:
+            perp_offsets_dense = np.empty(0)
+
+        # Display sample lines (for chart decoration), evenly spaced, max n_random
+        n_display = max(1, min(n_random, 5)) if radius > 0 else 0
+        perp_offsets_display = np.linspace(-radius, radius, n_display) if n_display > 0 else np.empty(0)
+
+        centre_profile: list[dict] = []
+        median_profile: list[dict] = []
+        sample_profiles_acc: list[list[dict]] = [[] for _ in range(n_display)]
+
+        for bc in bin_centres:
+            along_dists = np.arange(bc - half, bc + half + along_step * 0.5, along_step)
+            along_dists = along_dists[(along_dists >= 0) & (along_dists <= total_dist)]
+
+            # Compute centre positions once per along-track step
+            positions = [_pos_at_dist(ad) for ad in along_dists]  # (lon, lat, bearing)
+
+            # --- Centre values (no perpendicular offset) ---
+            centre_vals = [v for clon, clat, _ in positions
+                           if (v := _read_lonlat(clon, clat)) is not None]
+
+            # --- Full 2-D window (centre + perpendicular strip) ---
+            all_vals = list(centre_vals)
+            if radius > 0:
+                for clon, clat, bearing in positions:
+                    perp_az = bearing + 90.0
+                    for off in perp_offsets_dense:
+                        o_lon, o_lat, _ = geod.fwd(clon, clat, perp_az, off)
+                        v = _read_lonlat(o_lon, o_lat)
+                        if v is not None:
+                            all_vals.append(v)
+
+            if centre_vals:
+                centre_profile.append({"dist": float(bc), "value": float(np.nanmedian(centre_vals))})
+            if all_vals:
+                median_profile.append({"dist": float(bc), "value": float(np.nanmedian(all_vals))})
+
+            # --- Display sample lines (reuse cached positions) ---
+            for k, off in enumerate(perp_offsets_display):
+                svals: list[float] = []
+                for clon, clat, bearing in positions:
+                    if abs(off) < 1e-3:
+                        v = _read_lonlat(clon, clat)
+                    else:
+                        o_lon, o_lat, _ = geod.fwd(clon, clat, bearing + 90.0, off)
+                        v = _read_lonlat(o_lon, o_lat)
+                    if v is not None:
+                        svals.append(v)
+                if svals:
+                    sample_profiles_acc[k].append({"dist": float(bc), "value": float(np.nanmedian(svals))})
+
+        return JSONResponse({
+            "centre": centre_profile,
+            "median": median_profile,
+            "samples": sample_profiles_acc,
+            "binned": True,
+            "bin_width": float(sampling_interval),
+        })
+
+    # ── Legacy mode: evenly-spaced points ─────────────────────────────────────
+    sample_dists = np.linspace(0, total_dist, n_samples)
+
+    # Compute sample point positions
+    sample_positions: list[tuple[float, float, float, float]] = []
+    for sd in sample_dists:
+        slon, slat, az = _pos_at_dist(sd)
+        sample_positions.append((float(sd), slon, slat, az))
 
     if radius <= 0:
-        # ── Simple centre-line profile ─────────────────────────────────────────
         results: list[dict] = []
         for sd, slon, slat, _ in sample_positions:
             v = _read_lonlat(slon, slat)
@@ -897,18 +1055,13 @@ async def extract_profile(
                 results.append({"dist": sd, "value": v})
         return JSONResponse(results)
 
-    # ── Buffer profile: median + random samples ────────────────────────────────
+    # Legacy buffer: random perpendicular sample lines
     rng = np.random.default_rng(42)
-    # Random perpendicular offsets for sample lines: shape (n_random,)
     offsets = rng.uniform(-radius, radius, size=n_random)
 
-    # centre + random lines → shape (1+n_random, n_samples)
     all_lines: list[list[float | None]] = [[] for _ in range(1 + n_random)]
-
     for i, (sd, slon, slat, bearing) in enumerate(sample_positions):
-        # Centre line
         all_lines[0].append(_read_lonlat(slon, slat))
-        # Perpendicular direction = bearing + 90°
         perp_az = bearing + 90.0
         for j, off in enumerate(offsets):
             if off == 0:
@@ -917,7 +1070,6 @@ async def extract_profile(
                 o_lon, o_lat, _ = geod.fwd(slon, slat, perp_az, off)
             all_lines[j + 1].append(_read_lonlat(o_lon, o_lat))
 
-    # Build finite-only arrays for median computation
     arr = np.array([[v if v is not None else np.nan for v in line] for line in all_lines])
     median_vals = np.nanmedian(arr, axis=0)
 

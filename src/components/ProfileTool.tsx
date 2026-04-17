@@ -3,8 +3,16 @@ import { useMap } from 'react-leaflet';
 import { Line } from 'react-chartjs-2';
 import L from 'leaflet';
 import { useAppContext } from '../context/AppContext';
+import { useDraggableResizable } from '../hooks/useDraggableResizable';
 
 interface CentrePoint { dist: number; value: number }
+interface ProfileResponse {
+  centre: CentrePoint[];
+  median: CentrePoint[] | null;
+  samples: CentrePoint[][];
+  binned?: boolean;
+  bin_width?: number;
+}
 
 // Vertex handle — defined once at module level, not recreated on each render
 const VERTEX_ICON = L.divIcon({
@@ -21,6 +29,12 @@ function cssVar(name: string, fallback: string): string {
 export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { active: boolean; onDeactivate: () => void }) {
   const map = useMap();
   const { state } = useAppContext();
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 540,
+    defaultHeight: 280,
+    initialRight: 20,
+    initialBottom: 20,
+  });
 
   // All mutable map state kept in refs to avoid stale closures in Leaflet handlers
   const polyRef    = useRef<L.Polyline | null>(null);
@@ -29,12 +43,13 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
   const ptsRef     = useRef<L.LatLng[]>([]);
   const modeRef    = useRef<'idle' | 'drawing' | 'ready'>('idle');
 
-  const [profileData, setProfileData] = useState<{ centre: CentrePoint[]; median: CentrePoint[] | null; samples: CentrePoint[][] } | null>(null);
+  const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
   const [loading, setLoading]         = useState(false);
   const [radius, setRadius]           = useState(0);
+  const [samplingInterval, setSamplingInterval] = useState(0);
 
   // Always-current reference to fetchProfile so drag handlers never go stale
-  const fetchFn = useCallback(async (pts: L.LatLng[], r: number) => {
+  const fetchFn = useCallback(async (pts: L.LatLng[], r: number, si: number) => {
     if (pts.length < 2 || !state.currentDataset) return;
     setLoading(true);
     try {
@@ -48,18 +63,20 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
           n_samples: 200,
           radius: r,
           n_random: 5,
+          sampling_interval: si,
         }),
       });
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json)) {
-        // Legacy centre-line response
-        setProfileData({ centre: json, median: null, samples: [] });
+        setProfileData({ centre: json, median: null, samples: [], binned: false });
       } else {
         setProfileData({
           centre: json.centre ?? [],
           median: json.median ?? null,
           samples: json.samples ?? [],
+          binned: json.binned ?? false,
+          bin_width: json.bin_width,
         });
       }
     } finally {
@@ -72,6 +89,9 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
 
   const radiusRef = useRef(radius);
   useEffect(() => { radiusRef.current = radius; }, [radius]);
+
+  const samplingIntervalRef = useRef(samplingInterval);
+  useEffect(() => { samplingIntervalRef.current = samplingInterval; }, [samplingInterval]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -93,7 +113,7 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
       });
       m.on('dragend', () => {
         ptsRef.current[idx] = m.getLatLng();
-        fetchRef.current(ptsRef.current, radiusRef.current);
+        fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
       });
       return m;
     });
@@ -112,16 +132,23 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
   // Re-fetch when time index changes while a profile is drawn
   useEffect(() => {
     if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
     }
   }, [state.currentTimeIndex, active]);
 
   // Re-fetch when radius changes while a profile is ready
   useEffect(() => {
     if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radius);
+      fetchRef.current(ptsRef.current, radius, samplingIntervalRef.current);
     }
   }, [radius, active]);
+
+  // Re-fetch when samplingInterval changes while a profile is ready
+  useEffect(() => {
+    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingInterval);
+    }
+  }, [samplingInterval, active]);
 
   // ── Buffer corridor visualization ──────────────────────────────────────────
   useEffect(() => {
@@ -216,7 +243,7 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
       modeRef.current = 'ready';
       map.getContainer().style.cursor = 'default';
       rebuildMarkers(ptsRef.current);
-      fetchRef.current(ptsRef.current, radiusRef.current);
+      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
     };
 
     map.on('click', onClick);
@@ -238,7 +265,7 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
 
   if (loading) {
     return (
-      <div className="profile-panel">
+      <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
         <div className="chart-placeholder"><p>Extracting profile…</p></div>
       </div>
     );
@@ -249,61 +276,105 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
   const gridColor  = cssVar('--sb-border', '#2c2f4a');
 
   const hasData = profileData && (profileData.centre.length > 0 || (profileData.median && profileData.median.length > 0));
+  const isBinned = !!(profileData?.binned && samplingInterval > 0);
 
   const datasets: any[] = [];
 
   if (hasData) {
     const useBuffer = radius > 0 && profileData!.median && profileData!.median.length > 0;
 
-    // Random sample lines — thin, semi-transparent, behind everything
-    if (useBuffer) {
+    if (isBinned) {
+      // Binned mode: show faint sample lines + median as circles (no connecting line)
       profileData!.samples.forEach((s, i) => {
         datasets.push({
           label: `sample ${i}`,
           data: s.map(p => p.value),
-          labels: s.map(p => p.dist.toFixed(0)),
           borderColor: '#4d9de028',
           backgroundColor: 'transparent',
           borderWidth: 1,
           pointRadius: 0,
           fill: false,
-          tension: 0.2,
+          tension: 0.3,
         });
       });
-    }
-
-    // Centre line
-    const centre = profileData!.centre;
-    datasets.push({
-      label: useBuffer ? 'centre' : state.currentDataset,
-      data: centre.map(p => p.value),
-      borderColor: useBuffer ? '#4d9de088' : '#4d9de0',
-      backgroundColor: useBuffer ? 'transparent' : 'rgba(77,157,224,0.15)',
-      borderWidth: useBuffer ? 1 : 1.5,
-      pointRadius: 0,
-      fill: !useBuffer,
-      tension: 0.2,
-    });
-
-    // Median line — prominent
-    if (useBuffer && profileData!.median) {
+      // Centre (along-track median) — thin dashed line
+      if (profileData!.centre.length > 0) {
+        datasets.push({
+          label: 'centre',
+          data: profileData!.centre.map(p => p.value),
+          borderColor: '#4d9de066',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [4, 3],
+          pointRadius: 0,
+          fill: false,
+          tension: 0,
+        });
+      }
+      // Full-window median — circle markers, no line
+      if (profileData!.median) {
+        datasets.push({
+          label: 'median',
+          data: profileData!.median.map(p => p.value),
+          borderColor: '#4d9de0',
+          backgroundColor: '#4d9de0',
+          borderWidth: 0,
+          showLine: false,
+          pointStyle: 'circle',
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          fill: false,
+        });
+      }
+    } else {
+      // Legacy / plain buffer mode
+      if (useBuffer) {
+        profileData!.samples.forEach((s, i) => {
+          datasets.push({
+            label: `sample ${i}`,
+            data: s.map(p => p.value),
+            borderColor: '#4d9de028',
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            pointRadius: 0,
+            fill: false,
+            tension: 0.2,
+          });
+        });
+      }
+      const centre = profileData!.centre;
       datasets.push({
-        label: 'median',
-        data: profileData!.median.map(p => p.value),
-        borderColor: '#4d9de0',
-        backgroundColor: 'transparent',
-        borderWidth: 2.5,
+        label: useBuffer ? 'centre' : state.currentDataset,
+        data: centre.map(p => p.value),
+        borderColor: useBuffer ? '#4d9de088' : '#4d9de0',
+        backgroundColor: useBuffer ? 'transparent' : 'rgba(77,157,224,0.15)',
+        borderWidth: useBuffer ? 1 : 1.5,
         pointRadius: 0,
-        fill: false,
+        fill: !useBuffer,
         tension: 0.2,
       });
+      if (useBuffer && profileData!.median) {
+        datasets.push({
+          label: 'median',
+          data: profileData!.median.map(p => p.value),
+          borderColor: '#4d9de0',
+          backgroundColor: 'transparent',
+          borderWidth: 2.5,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2,
+        });
+      }
     }
   }
 
-  // Use centre (or median) for x-axis labels
-  const xLabels = profileData
-    ? (profileData.centre.length > 0 ? profileData.centre : profileData.median ?? []).map(p => p.dist.toFixed(0))
+  // x-axis labels from whichever series has the bin positions
+  const xSourcePts = profileData
+    ? (isBinned && profileData.median ? profileData.median
+      : profileData.centre.length > 0 ? profileData.centre
+      : profileData.median ?? [])
     : [];
+  const xLabels = xSourcePts.map(p => p.dist.toFixed(0));
 
   const chartData = { labels: xLabels, datasets };
 
@@ -313,10 +384,15 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
     animation: { duration: 0 },
     plugins: {
       legend: {
-        display: radius > 0,
+        display: radius > 0 || isBinned,
         labels: {
           color: textColor,
           filter: (item: any) => !item.text.startsWith('sample'),
+        },
+      },
+      tooltip: {
+        callbacks: {
+          title: (ctx: any) => `${ctx[0]?.label ?? ''} m`,
         },
       },
     },
@@ -335,11 +411,24 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
   };
 
   return (
-    <div className="profile-panel">
-      <div className="chart-header">
+    <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
+      <div className="chart-header" onMouseDown={onDragMouseDown} style={{ cursor: 'grab' }}>
         <h4>Profile — {state.currentDataset}</h4>
         <div className="profile-radius-control">
-          <label htmlFor="profile-radius" style={{ color: mutedColor, fontSize: '0.8em', marginRight: 4 }}>
+          <label htmlFor="profile-sampling" style={{ color: mutedColor, fontSize: '0.8em', marginRight: 4 }}>
+            Sampling (m):
+          </label>
+          <input
+            id="profile-sampling"
+            type="number"
+            min={0}
+            step={50}
+            value={samplingInterval}
+            onChange={e => setSamplingInterval(Math.max(0, Number(e.target.value)))}
+            className="profile-radius-input"
+            title="Bin spacing along profile (0 = continuous dense line)"
+          />
+          <label htmlFor="profile-radius" style={{ color: mutedColor, fontSize: '0.8em', marginLeft: 8, marginRight: 4 }}>
             Radius (m):
           </label>
           <input
@@ -350,6 +439,7 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
             value={radius}
             onChange={e => setRadius(Math.max(0, Number(e.target.value)))}
             className="profile-radius-input"
+            title="Perpendicular buffer width (0 = centre line only)"
           />
         </div>
         <button className="chart-btn" onClick={clearAll} title="Clear profile">
@@ -357,10 +447,11 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
         </button>
       </div>
       {hasData && (
-        <div style={{ height: 180, position: 'relative' }}>
+        <div style={{ flex: 1, minHeight: 120, position: 'relative' }}>
           <Line data={chartData} options={options as any} />
         </div>
       )}
+      {resizeGrip}
     </div>
   );
 }
