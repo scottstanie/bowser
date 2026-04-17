@@ -7,12 +7,14 @@ import TimeSeriesChart from './TimeSeriesChart';
 import PointManagerPanel from './PointManagerPanel';
 import RefPointChart from './RefPointChart';
 import ColormapBar from './ColormapBar';
+import { ProfileProvider, ProfileChart } from './ProfileTool';
 import '../style.css';
 
 function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
   const [appTitle, setAppTitle] = useState('');
+  const [sidebarHidden, setSidebarHidden] = useState(false);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -49,13 +51,21 @@ function AppContent() {
   }, [fetchDatasets, fetchDataMode, fetchConfig, dispatch]);
 
   return (
-    <div className="app-container">
+    <div className={`app-container${sidebarHidden ? ' sidebar-hidden' : ''}`}>
       <ControlPanel title={appTitle} />
       <div className="map-container">
+        <button
+          className="sidebar-toggle-btn"
+          onClick={() => setSidebarHidden(h => !h)}
+          title={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+        >
+          <i className={`fa-solid fa-chevron-${sidebarHidden ? 'right' : 'left'}`} />
+        </button>
         <MapContainer />
         <PointManagerPanel />
         <RefPointChart />
         <ColormapBar />
+        <ProfileChart />
         {state.showChart && state.chartWindows.map(w => (
           <TimeSeriesChart key={w.id} windowId={w.id} />
         ))}
@@ -67,7 +77,9 @@ function AppContent() {
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <ProfileProvider>
+        <AppContent />
+      </ProfileProvider>
     </AppProvider>
   );
 }

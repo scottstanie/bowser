@@ -867,7 +867,10 @@ async def buffer_timeseries(
     if flat.shape[1] == 0:
         raise HTTPException(status_code=404, detail="No valid pixels in buffer")
 
-    median_ts = np.nanmedian(flat, axis=1).tolist()
+    import warnings as _w  # noqa: PLC0415
+    with _w.catch_warnings():
+        _w.simplefilter("ignore", RuntimeWarning)
+        median_ts = np.nanmedian(flat, axis=1).tolist()
 
     # Random sample (up to n_samples)
     rng = np.random.default_rng(42)

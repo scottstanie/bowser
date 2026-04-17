@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, createContext, useContext } from 'react';
 import { useMap } from 'react-leaflet';
 import { Line } from 'react-chartjs-2';
 import L from 'leaflet';
@@ -14,44 +14,83 @@ interface ProfileResponse {
   bin_width?: number;
 }
 
-// Vertex handle — defined once at module level, not recreated on each render
+interface ProfileState {
+  data: ProfileResponse | null;
+  loading: boolean;
+  radius: number;
+  samplingInterval: number;
+  active: boolean;
+  setActive: (a: boolean) => void;
+  setRadius: (r: number) => void;
+  setSamplingInterval: (s: number) => void;
+  clearAll: () => void;
+  // private setters for ProfileToolMap
+  _setData: (d: ProfileResponse | null) => void;
+  _setLoading: (l: boolean) => void;
+}
+
+export const ProfileContext = createContext<ProfileState>({
+  data: null, loading: false, radius: 0, samplingInterval: 0, active: false,
+  setActive: () => {}, setRadius: () => {}, setSamplingInterval: () => {}, clearAll: () => {},
+  _setData: () => {}, _setLoading: () => {},
+});
+
+export function useProfileContext() { return useContext(ProfileContext); }
+
 const VERTEX_ICON = L.divIcon({
   className: '',
   html: '<div style="width:12px;height:12px;border-radius:50%;background:#f0a500;border:2px solid white;box-sizing:border-box;margin-left:-6px;margin-top:-6px;cursor:grab"></div>',
   iconSize: [0, 0],
 });
 
-/** Read a CSS variable from the document root. */
 function cssVar(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
 
-export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { active: boolean; onDeactivate: () => void }) {
+// ── Provider ──────────────────────────────────────────────────────────────────
+export function ProfileProvider({ children }: { children: React.ReactNode }) {
+  const [data, setData] = useState<ProfileResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [radius, setRadius] = useState(0);
+  const [samplingInterval, setSamplingInterval] = useState(0);
+  const [active, setActive] = useState(false);
+  const clearAll = useCallback(() => setData(null), []);
+
+  return (
+    <ProfileContext.Provider value={{
+      data, loading, radius, samplingInterval, active,
+      setActive, setRadius, setSamplingInterval, clearAll,
+      _setData: setData, _setLoading: setLoading,
+    }}>
+      {children}
+    </ProfileContext.Provider>
+  );
+}
+
+// ── Map-only component (inside Leaflet MapContainer, renders null) ─────────────
+export function ProfileToolMap() {
   const map = useMap();
   const { state } = useAppContext();
-  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
-    defaultWidth: 540,
-    defaultHeight: 280,
-    initialRight: 20,
-    initialBottom: 20,
-  });
+  const ctx = useContext(ProfileContext);
+  const { active, radius, samplingInterval, _setData, _setLoading, clearAll: ctxClearAll } = ctx;
 
-  // All mutable map state kept in refs to avoid stale closures in Leaflet handlers
   const polyRef    = useRef<L.Polyline | null>(null);
   const previewRef = useRef<L.Polyline | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const ptsRef     = useRef<L.LatLng[]>([]);
   const modeRef    = useRef<'idle' | 'drawing' | 'ready'>('idle');
 
-  const [profileData, setProfileData] = useState<ProfileResponse | null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [radius, setRadius]           = useState(0);
-  const [samplingInterval, setSamplingInterval] = useState(0);
+  // Always-current refs so Leaflet handlers don't close over stale values
+  const radiusRef = useRef(radius);
+  const siRef     = useRef(samplingInterval);
+  useEffect(() => { radiusRef.current = radius; }, [radius]);
+  useEffect(() => { siRef.current = samplingInterval; }, [samplingInterval]);
 
-  // Always-current reference to fetchProfile so drag handlers never go stale
-  const fetchFn = useCallback(async (pts: L.LatLng[], r: number, si: number) => {
+  const fetchFnRef = useRef<(pts: L.LatLng[], r: number, si: number) => Promise<void>>();
+
+  const fetchProfile = useCallback(async (pts: L.LatLng[], r: number, si: number) => {
     if (pts.length < 2 || !state.currentDataset) return;
-    setLoading(true);
+    _setLoading(true);
     try {
       const res = await fetch('/profile', {
         method: 'POST',
@@ -69,9 +108,9 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json)) {
-        setProfileData({ centre: json, median: null, samples: [], binned: false });
+        _setData({ centre: json, median: null, samples: [], binned: false });
       } else {
-        setProfileData({
+        _setData({
           centre: json.centre ?? [],
           median: json.median ?? null,
           samples: json.samples ?? [],
@@ -80,40 +119,25 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
         });
       }
     } finally {
-      setLoading(false);
+      _setLoading(false);
     }
-  }, [state.currentDataset, state.currentTimeIndex]);
+  }, [state.currentDataset, state.currentTimeIndex, _setData, _setLoading]);
 
-  const fetchRef = useRef(fetchFn);
-  useEffect(() => { fetchRef.current = fetchFn; }, [fetchFn]);
-
-  const radiusRef = useRef(radius);
-  useEffect(() => { radiusRef.current = radius; }, [radius]);
-
-  const samplingIntervalRef = useRef(samplingInterval);
-  useEffect(() => { samplingIntervalRef.current = samplingInterval; }, [samplingInterval]);
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  fetchFnRef.current = fetchProfile;
 
   const updatePoly = (pts: L.LatLng[]) => {
-    if (polyRef.current) {
-      polyRef.current.setLatLngs(pts);
-    } else {
-      polyRef.current = L.polyline(pts, { color: '#f0a500', weight: 2.5 }).addTo(map);
-    }
+    if (polyRef.current) polyRef.current.setLatLngs(pts);
+    else polyRef.current = L.polyline(pts, { color: '#f0a500', weight: 2.5 }).addTo(map);
   };
 
   const rebuildMarkers = (pts: L.LatLng[]) => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = pts.map((pt, idx) => {
       const m = L.marker(pt, { icon: VERTEX_ICON, draggable: true }).addTo(map);
-      m.on('drag', () => {
-        ptsRef.current[idx] = m.getLatLng();
-        updatePoly(ptsRef.current);
-      });
+      m.on('drag', () => { ptsRef.current[idx] = m.getLatLng(); updatePoly(ptsRef.current); });
       m.on('dragend', () => {
         ptsRef.current[idx] = m.getLatLng();
-        fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
+        fetchFnRef.current?.(ptsRef.current, radiusRef.current, siRef.current);
       });
       return m;
     });
@@ -126,115 +150,69 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
     markersRef.current = [];
     ptsRef.current = [];
     modeRef.current = 'idle';
-    setProfileData(null);
-  }, []);
+    ctxClearAll();
+  }, [ctxClearAll]);
 
-  // Re-fetch when time index changes while a profile is drawn
+  // Re-fetch when time index changes
   useEffect(() => {
-    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
-    }
+    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2)
+      fetchFnRef.current?.(ptsRef.current, radiusRef.current, siRef.current);
   }, [state.currentTimeIndex, active]);
 
-  // Re-fetch when radius changes while a profile is ready
+  // Re-fetch when radius changes
   useEffect(() => {
-    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radius, samplingIntervalRef.current);
-    }
+    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2)
+      fetchFnRef.current?.(ptsRef.current, radius, siRef.current);
   }, [radius, active]);
 
-  // Re-fetch when samplingInterval changes while a profile is ready
+  // Re-fetch when samplingInterval changes
   useEffect(() => {
-    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingInterval);
-    }
+    if (active && modeRef.current === 'ready' && ptsRef.current.length >= 2)
+      fetchFnRef.current?.(ptsRef.current, radiusRef.current, samplingInterval);
   }, [samplingInterval, active]);
 
-  // ── Buffer corridor visualization ──────────────────────────────────────────
+  // Buffer corridor visualization
   useEffect(() => {
     if (!active || radius <= 0 || ptsRef.current.length < 2) return;
-
-    // Build a polygon corridor around the polyline using L.circle at each vertex
-    // as a simple approach: draw two offset polylines forming a band.
-    // We use L.geodesicPolygon-style by computing perpendicular offsets via
-    // Leaflet's CRS projection.
     const pts = ptsRef.current;
-    const offsetPoints: L.LatLng[][] = [[], []]; // [left side, right side]
-
+    const offsetPoints: L.LatLng[][] = [[], []];
     for (let i = 0; i < pts.length; i++) {
-      // Bearing from prev or next segment
-      let bearingRad: number;
-      if (i < pts.length - 1) {
-        const dx = pts[i + 1].lng - pts[i].lng;
-        const dy = pts[i + 1].lat - pts[i].lat;
-        bearingRad = Math.atan2(dx, dy);
-      } else {
-        const dx = pts[i].lng - pts[i - 1].lng;
-        const dy = pts[i].lat - pts[i - 1].lat;
-        bearingRad = Math.atan2(dx, dy);
-      }
-
-      // Approximate degrees offset for the given radius in metres at this latitude
+      const bearingRad = i < pts.length - 1
+        ? Math.atan2(pts[i+1].lng - pts[i].lng, pts[i+1].lat - pts[i].lat)
+        : Math.atan2(pts[i].lng - pts[i-1].lng, pts[i].lat - pts[i-1].lat);
       const lat = pts[i].lat;
-      const metersPerDegLat = 111320;
-      const metersPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
-      const perpBearing = bearingRad + Math.PI / 2;
-      const dLat = (radius / metersPerDegLat) * Math.cos(perpBearing);
-      const dLng = (radius / metersPerDegLng) * Math.sin(perpBearing);
-
+      const mPerDegLat = 111320;
+      const mPerDegLng = 111320 * Math.cos((lat * Math.PI) / 180);
+      const perp = bearingRad + Math.PI / 2;
+      const dLat = (radius / mPerDegLat) * Math.cos(perp);
+      const dLng = (radius / mPerDegLng) * Math.sin(perp);
       offsetPoints[0].push(L.latLng(pts[i].lat + dLat, pts[i].lng + dLng));
       offsetPoints[1].push(L.latLng(pts[i].lat - dLat, pts[i].lng - dLng));
     }
-
-    // Polygon: left side forward + right side reversed
     const poly = L.polygon([...offsetPoints[0], ...offsetPoints[1].reverse()], {
-      color: '#f0a500',
-      fillColor: '#f0a500',
-      fillOpacity: 0.12,
-      weight: 1,
-      dashArray: '4 3',
+      color: '#f0a500', fillColor: '#f0a500', fillOpacity: 0.12, weight: 1, dashArray: '4 3',
     }).addTo(map);
-
     return () => { poly.remove(); };
-  }, [active, radius, map,
-    // re-run when pts change (after drawing / dragging)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    profileData,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, radius, map, ctx.data]);
 
-  // ── Main map event effect ──────────────────────────────────────────────────
+  // Main map interaction
   useEffect(() => {
-    if (!active) {
-      clearAll();
-      map.getContainer().style.cursor = '';
-      return;
-    }
-
+    if (!active) { clearAll(); map.getContainer().style.cursor = ''; return; }
     map.getContainer().style.cursor = 'crosshair';
 
     const onClick = (e: L.LeafletMouseEvent) => {
-      if (modeRef.current === 'ready') {
-        clearAll();
-        modeRef.current = 'drawing';
-        map.getContainer().style.cursor = 'crosshair';
-      }
+      if (modeRef.current === 'ready') { clearAll(); modeRef.current = 'drawing'; map.getContainer().style.cursor = 'crosshair'; }
       modeRef.current = 'drawing';
       ptsRef.current = [...ptsRef.current, e.latlng];
       updatePoly(ptsRef.current);
     };
-
     const onMouseMove = (e: L.LeafletMouseEvent) => {
       if (modeRef.current !== 'drawing' || ptsRef.current.length === 0) return;
       const preview = [...ptsRef.current, e.latlng];
-      if (previewRef.current) {
-        previewRef.current.setLatLngs(preview);
-      } else {
-        previewRef.current = L.polyline(preview, {
-          color: '#f0a500', weight: 2, dashArray: '6 4',
-        }).addTo(map);
-      }
+      if (previewRef.current) previewRef.current.setLatLngs(preview);
+      else previewRef.current = L.polyline(preview, { color: '#f0a500', weight: 2, dashArray: '6 4' }).addTo(map);
     };
-
     const onDblClick = (e: L.LeafletMouseEvent) => {
       L.DomEvent.stop(e);
       if (modeRef.current !== 'drawing' || ptsRef.current.length < 2) return;
@@ -243,14 +221,13 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
       modeRef.current = 'ready';
       map.getContainer().style.cursor = 'default';
       rebuildMarkers(ptsRef.current);
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
+      fetchFnRef.current?.(ptsRef.current, radiusRef.current, siRef.current);
     };
 
     map.on('click', onClick);
     map.on('mousemove', onMouseMove);
     map.on('dblclick', onDblClick);
     map.doubleClickZoom.disable();
-
     return () => {
       map.off('click', onClick);
       map.off('mousemove', onMouseMove);
@@ -260,16 +237,27 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
     };
   }, [active, map, clearAll]);
 
-  // ── Chart panel ────────────────────────────────────────────────────────────
+  return null;
+}
+
+// ── Chart panel (outside MapContainer, no Leaflet DOM) ────────────────────────
+export function ProfileChart() {
+  const { state } = useAppContext();
+  const { active, data: profileData, loading, radius, samplingInterval, setRadius, setSamplingInterval, clearAll } =
+    useProfileContext();
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 540, defaultHeight: 280, initialRight: 20, initialBottom: 20,
+    minWidth: 200, minHeight: 150,
+  });
+
   if (!active) return null;
 
-  if (loading) {
-    return (
-      <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
-        <div className="chart-placeholder"><p>Extracting profile…</p></div>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div ref={panelRef} style={{ ...panelStyle, position: 'fixed' }} className="profile-panel"
+      onMouseDown={e => e.stopPropagation()}>
+      <div className="chart-placeholder"><p>Extracting profile…</p></div>
+    </div>
+  );
 
   const textColor  = cssVar('--sb-text',   '#dde0f0');
   const mutedColor = cssVar('--sb-muted',  '#7880a8');
@@ -277,170 +265,78 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
 
   const hasData = profileData && (profileData.centre.length > 0 || (profileData.median && profileData.median.length > 0));
   const isBinned = !!(profileData?.binned && samplingInterval > 0);
-
   const datasets: any[] = [];
 
   if (hasData) {
     const useBuffer = radius > 0 && profileData!.median && profileData!.median.length > 0;
-
     if (isBinned) {
-      // Binned mode: show faint sample lines + median as circles (no connecting line)
-      profileData!.samples.forEach((s, i) => {
-        datasets.push({
-          label: `sample ${i}`,
-          data: s.map(p => p.value),
-          borderColor: '#4d9de028',
-          backgroundColor: 'transparent',
-          borderWidth: 1,
-          pointRadius: 0,
-          fill: false,
-          tension: 0.3,
-        });
+      profileData!.samples.forEach((s, i) => datasets.push({
+        label: `sample ${i}`, data: s.map(p => p.value),
+        borderColor: '#4d9de028', backgroundColor: 'transparent', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.3,
+      }));
+      if (profileData!.centre.length > 0) datasets.push({
+        label: 'centre', data: profileData!.centre.map(p => p.value),
+        borderColor: '#4d9de066', backgroundColor: 'transparent', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false, tension: 0,
       });
-      // Centre (along-track median) — thin dashed line
-      if (profileData!.centre.length > 0) {
-        datasets.push({
-          label: 'centre',
-          data: profileData!.centre.map(p => p.value),
-          borderColor: '#4d9de066',
-          backgroundColor: 'transparent',
-          borderWidth: 1,
-          borderDash: [4, 3],
-          pointRadius: 0,
-          fill: false,
-          tension: 0,
-        });
-      }
-      // Full-window median — circle markers, no line
-      if (profileData!.median) {
-        datasets.push({
-          label: 'median',
-          data: profileData!.median.map(p => p.value),
-          borderColor: '#4d9de0',
-          backgroundColor: '#4d9de0',
-          borderWidth: 0,
-          showLine: false,
-          pointStyle: 'circle',
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          fill: false,
-        });
-      }
+      if (profileData!.median) datasets.push({
+        label: 'median', data: profileData!.median.map(p => p.value),
+        borderColor: '#4d9de0', backgroundColor: '#4d9de0', borderWidth: 0, showLine: false,
+        pointStyle: 'circle', pointRadius: 5, pointHoverRadius: 7, fill: false,
+      });
     } else {
-      // Legacy / plain buffer mode
-      if (useBuffer) {
-        profileData!.samples.forEach((s, i) => {
-          datasets.push({
-            label: `sample ${i}`,
-            data: s.map(p => p.value),
-            borderColor: '#4d9de028',
-            backgroundColor: 'transparent',
-            borderWidth: 1,
-            pointRadius: 0,
-            fill: false,
-            tension: 0.2,
-          });
-        });
-      }
+      if (useBuffer) profileData!.samples.forEach((s, i) => datasets.push({
+        label: `sample ${i}`, data: s.map(p => p.value),
+        borderColor: '#4d9de028', backgroundColor: 'transparent', borderWidth: 1, pointRadius: 0, fill: false, tension: 0.2,
+      }));
       const centre = profileData!.centre;
       datasets.push({
         label: useBuffer ? 'centre' : state.currentDataset,
         data: centre.map(p => p.value),
         borderColor: useBuffer ? '#4d9de088' : '#4d9de0',
         backgroundColor: useBuffer ? 'transparent' : 'rgba(77,157,224,0.15)',
-        borderWidth: useBuffer ? 1 : 1.5,
-        pointRadius: 0,
-        fill: !useBuffer,
-        tension: 0.2,
+        borderWidth: useBuffer ? 1 : 1.5, pointRadius: 0, fill: !useBuffer, tension: 0.2,
       });
-      if (useBuffer && profileData!.median) {
-        datasets.push({
-          label: 'median',
-          data: profileData!.median.map(p => p.value),
-          borderColor: '#4d9de0',
-          backgroundColor: 'transparent',
-          borderWidth: 2.5,
-          pointRadius: 0,
-          fill: false,
-          tension: 0.2,
-        });
-      }
+      if (useBuffer && profileData!.median) datasets.push({
+        label: 'median', data: profileData!.median.map(p => p.value),
+        borderColor: '#4d9de0', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2,
+      });
     }
   }
 
-  // x-axis labels from whichever series has the bin positions
   const xSourcePts = profileData
     ? (isBinned && profileData.median ? profileData.median
       : profileData.centre.length > 0 ? profileData.centre
       : profileData.median ?? [])
     : [];
   const xLabels = xSourcePts.map(p => p.dist.toFixed(0));
-
   const chartData = { labels: xLabels, datasets };
 
   const options = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 0 },
+    responsive: true, maintainAspectRatio: false, animation: { duration: 0 },
     plugins: {
-      legend: {
-        display: radius > 0 || isBinned,
-        labels: {
-          color: textColor,
-          filter: (item: any) => !item.text.startsWith('sample'),
-        },
-      },
-      tooltip: {
-        callbacks: {
-          title: (ctx: any) => `${ctx[0]?.label ?? ''} m`,
-        },
-      },
+      legend: { display: radius > 0 || isBinned, labels: { color: textColor, filter: (item: any) => !item.text.startsWith('sample') } },
+      tooltip: { callbacks: { title: (ctx: any) => `${ctx[0]?.label ?? ''} m` } },
     },
     scales: {
-      x: {
-        title: { display: true, text: 'Distance (m)', color: mutedColor },
-        ticks: { color: mutedColor, maxTicksLimit: 8 },
-        grid: { color: gridColor },
-      },
-      y: {
-        title: { display: true, text: state.currentDataset, color: mutedColor },
-        ticks: { color: mutedColor },
-        grid: { color: gridColor },
-      },
+      x: { title: { display: true, text: 'Distance (m)', color: mutedColor }, ticks: { color: mutedColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
+      y: { title: { display: true, text: state.currentDataset, color: mutedColor }, ticks: { color: mutedColor }, grid: { color: gridColor } },
     },
   };
 
   return (
-    <div ref={panelRef} className="profile-panel" style={panelStyle} onMouseDown={e => e.stopPropagation()}>
+    <div ref={panelRef} className="profile-panel" style={{ ...panelStyle, position: 'fixed' }}
+      onMouseDown={e => e.stopPropagation()}>
       <div className="chart-header" onMouseDown={onDragMouseDown} style={{ cursor: 'grab' }}>
         <h4>Profile — {state.currentDataset}</h4>
         <div className="profile-radius-control">
-          <label htmlFor="profile-sampling" style={{ color: mutedColor, fontSize: '0.8em', marginRight: 4 }}>
-            Sampling (m):
-          </label>
-          <input
-            id="profile-sampling"
-            type="number"
-            min={0}
-            step={50}
-            value={samplingInterval}
+          <label style={{ color: mutedColor, fontSize: '0.8em', marginRight: 4 }}>Sampling (m):</label>
+          <input type="number" min={0} step={50} value={samplingInterval}
             onChange={e => setSamplingInterval(Math.max(0, Number(e.target.value)))}
-            className="profile-radius-input"
-            title="Bin spacing along profile (0 = continuous dense line)"
-          />
-          <label htmlFor="profile-radius" style={{ color: mutedColor, fontSize: '0.8em', marginLeft: 8, marginRight: 4 }}>
-            Radius (m):
-          </label>
-          <input
-            id="profile-radius"
-            type="number"
-            min={0}
-            step={100}
-            value={radius}
+            className="profile-radius-input" onMouseDown={e => e.stopPropagation()} />
+          <label style={{ color: mutedColor, fontSize: '0.8em', marginLeft: 8, marginRight: 4 }}>Radius (m):</label>
+          <input type="number" min={0} step={100} value={radius}
             onChange={e => setRadius(Math.max(0, Number(e.target.value)))}
-            className="profile-radius-input"
-            title="Perpendicular buffer width (0 = centre line only)"
-          />
+            className="profile-radius-input" onMouseDown={e => e.stopPropagation()} />
         </div>
         <button className="chart-btn" onClick={clearAll} title="Clear profile">
           <i className="fa-solid fa-xmark"></i>
@@ -455,3 +351,5 @@ export default function ProfileTool({ active, onDeactivate: _onDeactivate }: { a
     </div>
   );
 }
+
+export default ProfileToolMap;

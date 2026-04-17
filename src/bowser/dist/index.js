@@ -29147,6 +29147,28 @@ function useDraggableResizable({ defaultWidth, defaultHeight, initialRight = 20,
   );
   return { panelRef, panelStyle, size, onDragMouseDown, resizeGrip };
 }
+const ProfileContext = reactExports.createContext({
+  data: null,
+  loading: false,
+  radius: 0,
+  samplingInterval: 0,
+  active: false,
+  setActive: () => {
+  },
+  setRadius: () => {
+  },
+  setSamplingInterval: () => {
+  },
+  clearAll: () => {
+  },
+  _setData: () => {
+  },
+  _setLoading: () => {
+  }
+});
+function useProfileContext() {
+  return reactExports.useContext(ProfileContext);
+}
 const VERTEX_ICON = L$1.divIcon({
   className: "",
   html: '<div style="width:12px;height:12px;border-radius:50%;background:#f0a500;border:2px solid white;box-sizing:border-box;margin-left:-6px;margin-top:-6px;cursor:grab"></div>',
@@ -29155,27 +29177,49 @@ const VERTEX_ICON = L$1.divIcon({
 function cssVar$1(name, fallback) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
 }
-function ProfileTool({ active, onDeactivate: _onDeactivate }) {
+function ProfileProvider({ children }) {
+  const [data, setData] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(false);
+  const [radius, setRadius] = reactExports.useState(0);
+  const [samplingInterval, setSamplingInterval] = reactExports.useState(0);
+  const [active, setActive] = reactExports.useState(false);
+  const clearAll = reactExports.useCallback(() => setData(null), []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileContext.Provider, { value: {
+    data,
+    loading,
+    radius,
+    samplingInterval,
+    active,
+    setActive,
+    setRadius,
+    setSamplingInterval,
+    clearAll,
+    _setData: setData,
+    _setLoading: setLoading
+  }, children });
+}
+function ProfileToolMap() {
   const map2 = useMap();
   const { state } = useAppContext();
-  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
-    defaultWidth: 540,
-    defaultHeight: 280,
-    initialRight: 20,
-    initialBottom: 20
-  });
+  const ctx = reactExports.useContext(ProfileContext);
+  const { active, radius, samplingInterval, _setData, _setLoading, clearAll: ctxClearAll } = ctx;
   const polyRef = reactExports.useRef(null);
   const previewRef = reactExports.useRef(null);
   const markersRef = reactExports.useRef([]);
   const ptsRef = reactExports.useRef([]);
   const modeRef = reactExports.useRef("idle");
-  const [profileData, setProfileData] = reactExports.useState(null);
-  const [loading, setLoading] = reactExports.useState(false);
-  const [radius, setRadius] = reactExports.useState(0);
-  const [samplingInterval, setSamplingInterval] = reactExports.useState(0);
-  const fetchFn = reactExports.useCallback(async (pts, r2, si2) => {
+  const radiusRef = reactExports.useRef(radius);
+  const siRef = reactExports.useRef(samplingInterval);
+  reactExports.useEffect(() => {
+    radiusRef.current = radius;
+  }, [radius]);
+  reactExports.useEffect(() => {
+    siRef.current = samplingInterval;
+  }, [samplingInterval]);
+  const fetchFnRef = reactExports.useRef();
+  const fetchProfile = reactExports.useCallback(async (pts, r2, si2) => {
     if (pts.length < 2 || !state.currentDataset) return;
-    setLoading(true);
+    _setLoading(true);
     try {
       const res = await fetch("/profile", {
         method: "POST",
@@ -29193,9 +29237,9 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       if (!res.ok) return;
       const json = await res.json();
       if (Array.isArray(json)) {
-        setProfileData({ centre: json, median: null, samples: [], binned: false });
+        _setData({ centre: json, median: null, samples: [], binned: false });
       } else {
-        setProfileData({
+        _setData({
           centre: json.centre ?? [],
           median: json.median ?? null,
           samples: json.samples ?? [],
@@ -29204,27 +29248,13 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
         });
       }
     } finally {
-      setLoading(false);
+      _setLoading(false);
     }
-  }, [state.currentDataset, state.currentTimeIndex]);
-  const fetchRef = reactExports.useRef(fetchFn);
-  reactExports.useEffect(() => {
-    fetchRef.current = fetchFn;
-  }, [fetchFn]);
-  const radiusRef = reactExports.useRef(radius);
-  reactExports.useEffect(() => {
-    radiusRef.current = radius;
-  }, [radius]);
-  const samplingIntervalRef = reactExports.useRef(samplingInterval);
-  reactExports.useEffect(() => {
-    samplingIntervalRef.current = samplingInterval;
-  }, [samplingInterval]);
+  }, [state.currentDataset, state.currentTimeIndex, _setData, _setLoading]);
+  fetchFnRef.current = fetchProfile;
   const updatePoly = (pts) => {
-    if (polyRef.current) {
-      polyRef.current.setLatLngs(pts);
-    } else {
-      polyRef.current = L$1.polyline(pts, { color: "#f0a500", weight: 2.5 }).addTo(map2);
-    }
+    if (polyRef.current) polyRef.current.setLatLngs(pts);
+    else polyRef.current = L$1.polyline(pts, { color: "#f0a500", weight: 2.5 }).addTo(map2);
   };
   const rebuildMarkers = (pts) => {
     markersRef.current.forEach((m2) => m2.remove());
@@ -29235,8 +29265,9 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
         updatePoly(ptsRef.current);
       });
       m2.on("dragend", () => {
+        var _a2;
         ptsRef.current[idx] = m2.getLatLng();
-        fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
+        (_a2 = fetchFnRef.current) == null ? void 0 : _a2.call(fetchFnRef, ptsRef.current, radiusRef.current, siRef.current);
       });
       return m2;
     });
@@ -29251,44 +29282,35 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
     markersRef.current = [];
     ptsRef.current = [];
     modeRef.current = "idle";
-    setProfileData(null);
-  }, []);
+    ctxClearAll();
+  }, [ctxClearAll]);
   reactExports.useEffect(() => {
-    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
-    }
+    var _a2;
+    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2)
+      (_a2 = fetchFnRef.current) == null ? void 0 : _a2.call(fetchFnRef, ptsRef.current, radiusRef.current, siRef.current);
   }, [state.currentTimeIndex, active]);
   reactExports.useEffect(() => {
-    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radius, samplingIntervalRef.current);
-    }
+    var _a2;
+    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2)
+      (_a2 = fetchFnRef.current) == null ? void 0 : _a2.call(fetchFnRef, ptsRef.current, radius, siRef.current);
   }, [radius, active]);
   reactExports.useEffect(() => {
-    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2) {
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingInterval);
-    }
+    var _a2;
+    if (active && modeRef.current === "ready" && ptsRef.current.length >= 2)
+      (_a2 = fetchFnRef.current) == null ? void 0 : _a2.call(fetchFnRef, ptsRef.current, radiusRef.current, samplingInterval);
   }, [samplingInterval, active]);
   reactExports.useEffect(() => {
     if (!active || radius <= 0 || ptsRef.current.length < 2) return;
     const pts = ptsRef.current;
     const offsetPoints = [[], []];
     for (let i = 0; i < pts.length; i++) {
-      let bearingRad;
-      if (i < pts.length - 1) {
-        const dx = pts[i + 1].lng - pts[i].lng;
-        const dy = pts[i + 1].lat - pts[i].lat;
-        bearingRad = Math.atan2(dx, dy);
-      } else {
-        const dx = pts[i].lng - pts[i - 1].lng;
-        const dy = pts[i].lat - pts[i - 1].lat;
-        bearingRad = Math.atan2(dx, dy);
-      }
+      const bearingRad = i < pts.length - 1 ? Math.atan2(pts[i + 1].lng - pts[i].lng, pts[i + 1].lat - pts[i].lat) : Math.atan2(pts[i].lng - pts[i - 1].lng, pts[i].lat - pts[i - 1].lat);
       const lat = pts[i].lat;
-      const metersPerDegLat = 111320;
-      const metersPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
-      const perpBearing = bearingRad + Math.PI / 2;
-      const dLat = radius / metersPerDegLat * Math.cos(perpBearing);
-      const dLng = radius / metersPerDegLng * Math.sin(perpBearing);
+      const mPerDegLat = 111320;
+      const mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+      const perp = bearingRad + Math.PI / 2;
+      const dLat = radius / mPerDegLat * Math.cos(perp);
+      const dLng = radius / mPerDegLng * Math.sin(perp);
       offsetPoints[0].push(L$1.latLng(pts[i].lat + dLat, pts[i].lng + dLng));
       offsetPoints[1].push(L$1.latLng(pts[i].lat - dLat, pts[i].lng - dLng));
     }
@@ -29302,14 +29324,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
     return () => {
       poly.remove();
     };
-  }, [
-    active,
-    radius,
-    map2,
-    // re-run when pts change (after drawing / dragging)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    profileData
-  ]);
+  }, [active, radius, map2, ctx.data]);
   reactExports.useEffect(() => {
     if (!active) {
       clearAll();
@@ -29330,18 +29345,11 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
     const onMouseMove = (e) => {
       if (modeRef.current !== "drawing" || ptsRef.current.length === 0) return;
       const preview = [...ptsRef.current, e.latlng];
-      if (previewRef.current) {
-        previewRef.current.setLatLngs(preview);
-      } else {
-        previewRef.current = L$1.polyline(preview, {
-          color: "#f0a500",
-          weight: 2,
-          dashArray: "6 4"
-        }).addTo(map2);
-      }
+      if (previewRef.current) previewRef.current.setLatLngs(preview);
+      else previewRef.current = L$1.polyline(preview, { color: "#f0a500", weight: 2, dashArray: "6 4" }).addTo(map2);
     };
     const onDblClick = (e) => {
-      var _a2;
+      var _a2, _b2;
       L$1.DomEvent.stop(e);
       if (modeRef.current !== "drawing" || ptsRef.current.length < 2) return;
       (_a2 = previewRef.current) == null ? void 0 : _a2.remove();
@@ -29350,7 +29358,7 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       modeRef.current = "ready";
       map2.getContainer().style.cursor = "default";
       rebuildMarkers(ptsRef.current);
-      fetchRef.current(ptsRef.current, radiusRef.current, samplingIntervalRef.current);
+      (_b2 = fetchFnRef.current) == null ? void 0 : _b2.call(fetchFnRef, ptsRef.current, radiusRef.current, siRef.current);
     };
     map2.on("click", onClick);
     map2.on("mousemove", onMouseMove);
@@ -29364,10 +29372,30 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
       map2.getContainer().style.cursor = "";
     };
   }, [active, map2, clearAll]);
+  return null;
+}
+function ProfileChart() {
+  const { state } = useAppContext();
+  const { active, data: profileData, loading, radius, samplingInterval, setRadius, setSamplingInterval, clearAll } = useProfileContext();
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 540,
+    defaultHeight: 280,
+    initialRight: 20,
+    initialBottom: 20,
+    minWidth: 200,
+    minHeight: 150
+  });
   if (!active) return null;
-  if (loading) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Extracting profile…" }) }) });
-  }
+  if (loading) return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: panelRef,
+      style: { ...panelStyle, position: "fixed" },
+      className: "profile-panel",
+      onMouseDown: (e) => e.stopPropagation(),
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chart-placeholder", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "Extracting profile…" }) })
+    }
+  );
   const textColor = cssVar$1("--sb-text", "#dde0f0");
   const mutedColor = cssVar$1("--sb-muted", "#7880a8");
   const gridColor = cssVar$1("--sb-border", "#2c2f4a");
@@ -29377,60 +29405,50 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
   if (hasData) {
     const useBuffer = radius > 0 && profileData.median && profileData.median.length > 0;
     if (isBinned) {
-      profileData.samples.forEach((s, i) => {
-        datasets.push({
-          label: `sample ${i}`,
-          data: s.map((p2) => p2.value),
-          borderColor: "#4d9de028",
-          backgroundColor: "transparent",
-          borderWidth: 1,
-          pointRadius: 0,
-          fill: false,
-          tension: 0.3
-        });
+      profileData.samples.forEach((s, i) => datasets.push({
+        label: `sample ${i}`,
+        data: s.map((p2) => p2.value),
+        borderColor: "#4d9de028",
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.3
+      }));
+      if (profileData.centre.length > 0) datasets.push({
+        label: "centre",
+        data: profileData.centre.map((p2) => p2.value),
+        borderColor: "#4d9de066",
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        borderDash: [4, 3],
+        pointRadius: 0,
+        fill: false,
+        tension: 0
       });
-      if (profileData.centre.length > 0) {
-        datasets.push({
-          label: "centre",
-          data: profileData.centre.map((p2) => p2.value),
-          borderColor: "#4d9de066",
-          backgroundColor: "transparent",
-          borderWidth: 1,
-          borderDash: [4, 3],
-          pointRadius: 0,
-          fill: false,
-          tension: 0
-        });
-      }
-      if (profileData.median) {
-        datasets.push({
-          label: "median",
-          data: profileData.median.map((p2) => p2.value),
-          borderColor: "#4d9de0",
-          backgroundColor: "#4d9de0",
-          borderWidth: 0,
-          showLine: false,
-          pointStyle: "circle",
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          fill: false
-        });
-      }
+      if (profileData.median) datasets.push({
+        label: "median",
+        data: profileData.median.map((p2) => p2.value),
+        borderColor: "#4d9de0",
+        backgroundColor: "#4d9de0",
+        borderWidth: 0,
+        showLine: false,
+        pointStyle: "circle",
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        fill: false
+      });
     } else {
-      if (useBuffer) {
-        profileData.samples.forEach((s, i) => {
-          datasets.push({
-            label: `sample ${i}`,
-            data: s.map((p2) => p2.value),
-            borderColor: "#4d9de028",
-            backgroundColor: "transparent",
-            borderWidth: 1,
-            pointRadius: 0,
-            fill: false,
-            tension: 0.2
-          });
-        });
-      }
+      if (useBuffer) profileData.samples.forEach((s, i) => datasets.push({
+        label: `sample ${i}`,
+        data: s.map((p2) => p2.value),
+        borderColor: "#4d9de028",
+        backgroundColor: "transparent",
+        borderWidth: 1,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2
+      }));
       const centre = profileData.centre;
       datasets.push({
         label: useBuffer ? "centre" : state.currentDataset,
@@ -29442,18 +29460,16 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
         fill: !useBuffer,
         tension: 0.2
       });
-      if (useBuffer && profileData.median) {
-        datasets.push({
-          label: "median",
-          data: profileData.median.map((p2) => p2.value),
-          borderColor: "#4d9de0",
-          backgroundColor: "transparent",
-          borderWidth: 2.5,
-          pointRadius: 0,
-          fill: false,
-          tension: 0.2
-        });
-      }
+      if (useBuffer && profileData.median) datasets.push({
+        label: "median",
+        data: profileData.median.map((p2) => p2.value),
+        borderColor: "#4d9de0",
+        backgroundColor: "transparent",
+        borderWidth: 2.5,
+        pointRadius: 0,
+        fill: false,
+        tension: 0.2
+      });
     }
   }
   const xSourcePts = profileData ? isBinned && profileData.median ? profileData.median : profileData.centre.length > 0 ? profileData.centre : profileData.median ?? [] : [];
@@ -29464,76 +29480,65 @@ function ProfileTool({ active, onDeactivate: _onDeactivate }) {
     maintainAspectRatio: false,
     animation: { duration: 0 },
     plugins: {
-      legend: {
-        display: radius > 0 || isBinned,
-        labels: {
-          color: textColor,
-          filter: (item) => !item.text.startsWith("sample")
-        }
-      },
-      tooltip: {
-        callbacks: {
-          title: (ctx) => {
-            var _a2;
-            return `${((_a2 = ctx[0]) == null ? void 0 : _a2.label) ?? ""} m`;
-          }
-        }
-      }
+      legend: { display: radius > 0 || isBinned, labels: { color: textColor, filter: (item) => !item.text.startsWith("sample") } },
+      tooltip: { callbacks: { title: (ctx) => {
+        var _a2;
+        return `${((_a2 = ctx[0]) == null ? void 0 : _a2.label) ?? ""} m`;
+      } } }
     },
     scales: {
-      x: {
-        title: { display: true, text: "Distance (m)", color: mutedColor },
-        ticks: { color: mutedColor, maxTicksLimit: 8 },
-        grid: { color: gridColor }
-      },
-      y: {
-        title: { display: true, text: state.currentDataset, color: mutedColor },
-        ticks: { color: mutedColor },
-        grid: { color: gridColor }
-      }
+      x: { title: { display: true, text: "Distance (m)", color: mutedColor }, ticks: { color: mutedColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
+      y: { title: { display: true, text: state.currentDataset, color: mutedColor }, ticks: { color: mutedColor }, grid: { color: gridColor } }
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: panelRef, className: "profile-panel", style: panelStyle, onMouseDown: (e) => e.stopPropagation(), children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", onMouseDown: onDragMouseDown, style: { cursor: "grab" }, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
-        "Profile — ",
-        state.currentDataset
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-radius-control", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-sampling", style: { color: mutedColor, fontSize: "0.8em", marginRight: 4 }, children: "Sampling (m):" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            id: "profile-sampling",
-            type: "number",
-            min: 0,
-            step: 50,
-            value: samplingInterval,
-            onChange: (e) => setSamplingInterval(Math.max(0, Number(e.target.value))),
-            className: "profile-radius-input",
-            title: "Bin spacing along profile (0 = continuous dense line)"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("label", { htmlFor: "profile-radius", style: { color: mutedColor, fontSize: "0.8em", marginLeft: 8, marginRight: 4 }, children: "Radius (m):" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "input",
-          {
-            id: "profile-radius",
-            type: "number",
-            min: 0,
-            step: 100,
-            value: radius,
-            onChange: (e) => setRadius(Math.max(0, Number(e.target.value))),
-            className: "profile-radius-input",
-            title: "Perpendicular buffer width (0 = centre line only)"
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: clearAll, title: "Clear profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" }) })
-    ] }),
-    hasData && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, minHeight: 120, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) }),
-    resizeGrip
-  ] });
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      ref: panelRef,
+      className: "profile-panel",
+      style: { ...panelStyle, position: "fixed" },
+      onMouseDown: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chart-header", onMouseDown: onDragMouseDown, style: { cursor: "grab" }, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { children: [
+            "Profile — ",
+            state.currentDataset
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "profile-radius-control", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { color: mutedColor, fontSize: "0.8em", marginRight: 4 }, children: "Sampling (m):" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "number",
+                min: 0,
+                step: 50,
+                value: samplingInterval,
+                onChange: (e) => setSamplingInterval(Math.max(0, Number(e.target.value))),
+                className: "profile-radius-input",
+                onMouseDown: (e) => e.stopPropagation()
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("label", { style: { color: mutedColor, fontSize: "0.8em", marginLeft: 8, marginRight: 4 }, children: "Radius (m):" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "number",
+                min: 0,
+                step: 100,
+                value: radius,
+                onChange: (e) => setRadius(Math.max(0, Number(e.target.value))),
+                className: "profile-radius-input",
+                onMouseDown: (e) => e.stopPropagation()
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "chart-btn", onClick: clearAll, title: "Clear profile", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-xmark" }) })
+        ] }),
+        hasData && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { flex: 1, minHeight: 120, position: "relative" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Line, { data: chartData, options }) }),
+        resizeGrip
+      ]
+    }
+  );
 }
 delete L$1.Icon.Default.prototype._getIconUrl;
 L$1.Icon.Default.mergeOptions({
@@ -29887,7 +29892,7 @@ function MapContainer() {
   const center = getInitialCenter();
   const hasDatasets = Object.keys(state.datasetInfo).length > 0;
   const [measureActive, setMeasureActive] = reactExports.useState(false);
-  const [profileActive, setProfileActive] = reactExports.useState(false);
+  const { active: profileActive, setActive: setProfileActive } = useProfileContext();
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-container", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-toolbar", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -29908,7 +29913,7 @@ function MapContainer() {
           className: `map-tool-btn${profileActive ? " active" : ""}`,
           title: "Draw profile line (click start, click end, double-click to extract)",
           onClick: () => {
-            setProfileActive((v2) => !v2);
+            setProfileActive(!profileActive);
             setMeasureActive(false);
           },
           children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-chart-area" })
@@ -29938,7 +29943,7 @@ function MapContainer() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(MousePosition, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ScaleBar, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MeasureTool, { active: measureActive, onDeactivate: () => setMeasureActive(false) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileTool, { active: profileActive, onDeactivate: () => setProfileActive(false) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileToolMap, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MapViewController, {})
         ]
       },
@@ -38757,6 +38762,7 @@ function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
   const [appTitle, setAppTitle] = reactExports.useState("");
+  const [sidebarHidden, setSidebarHidden] = reactExports.useState(false);
   reactExports.useEffect(() => {
     const initializeApp = async () => {
       try {
@@ -38782,19 +38788,29 @@ function AppContent() {
     };
     initializeApp();
   }, [fetchDatasets, fetchDataMode, fetchConfig, dispatch]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "app-container", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `app-container${sidebarHidden ? " sidebar-hidden" : ""}`, children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(ControlPanel, { title: appTitle }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-container", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "sidebar-toggle-btn",
+          onClick: () => setSidebarHidden((h) => !h),
+          title: sidebarHidden ? "Show sidebar" : "Hide sidebar",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid fa-chevron-${sidebarHidden ? "right" : "left"}` })
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(MapContainer, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(PointManagerPanel, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(RefPointChart, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(ColormapBar, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileChart, {}),
       state.showChart && state.chartWindows.map((w2) => /* @__PURE__ */ jsxRuntimeExports.jsx(TimeSeriesChart, { windowId: w2.id }, w2.id))
     ] })
   ] });
 }
 function App() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppContent, {}) });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileProvider, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppContent, {}) }) });
 }
 client.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })

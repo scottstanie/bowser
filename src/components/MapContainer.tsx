@@ -7,7 +7,7 @@ import { useAppContext } from '../context/AppContext';
 import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
 import MeasureTool from './MeasureTool';
-import ProfileTool from './ProfileTool';
+import { ProfileToolMap, useProfileContext } from './ProfileTool';
 
 // Fix for default markers in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -437,7 +437,7 @@ export default function MapContainer() {
   const center = getInitialCenter();
   const hasDatasets = Object.keys(state.datasetInfo).length > 0;
   const [measureActive, setMeasureActive] = useState(false);
-  const [profileActive, setProfileActive] = useState(false);
+  const { active: profileActive, setActive: setProfileActive } = useProfileContext();
 
   return (
     <div className="map-container">
@@ -452,7 +452,7 @@ export default function MapContainer() {
         <button
           className={`map-tool-btn${profileActive ? ' active' : ''}`}
           title="Draw profile line (click start, click end, double-click to extract)"
-          onClick={() => { setProfileActive(v => !v); setMeasureActive(false); }}
+          onClick={() => { setProfileActive(!profileActive); setMeasureActive(false); }}
         >
           <i className="fa-solid fa-chart-area"></i>
         </button>
@@ -476,7 +476,7 @@ export default function MapContainer() {
       <MousePosition />
       <ScaleBar />
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
-      <ProfileTool active={profileActive} onDeactivate={() => setProfileActive(false)} />
+      <ProfileToolMap />
       <MapViewController />
     </LeafletMapContainer>
     </div>

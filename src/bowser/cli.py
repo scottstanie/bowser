@@ -39,7 +39,7 @@ def cli_app():
 @click.option(
     "--workers",
     "-w",
-    default=1,
+    default=4,
     type=int,
     help="Number of uvicorn workers to spawn",
     show_default=True,
