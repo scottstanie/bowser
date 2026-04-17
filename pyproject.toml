@@ -24,6 +24,7 @@ dependencies = [
   "s3fs>=2024.1.0",
   "aiobotocore>=2.13.0",
   "python-multipart",
+  "starlette>=0.40.0,<1.0.0",
 ]
 
 classifiers = [
