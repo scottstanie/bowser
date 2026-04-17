@@ -92,6 +92,8 @@ rioxarray = "*"
 matplotlib = "*"
 pydantic-settings = "*"
 python-dateutil = ">=2.9.0.post0,<3"
+s3fs = ">=2024.1.0"
+aiobotocore = ">=2.13.0"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
