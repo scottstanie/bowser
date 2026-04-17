@@ -73,9 +73,9 @@ def test_bowser_cli_run_command(tmp_path):
     # Give it a moment to start up
     time.sleep(2)
 
-    # Kill the process
-    proc.terminate()
-    proc.wait(timeout=5)
+    # Kill the process (SIGKILL — SIGTERM alone may not exit within timeout on Linux)
+    proc.kill()
+    proc.wait(timeout=10)
 
-    # Check it didn't crash immediately
+    # Check it didn't crash immediately (returncode from kill is -9, not 1)
     assert proc.returncode != 1, "Server crashed on startup"
