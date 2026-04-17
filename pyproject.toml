@@ -21,6 +21,8 @@ dependencies = [
   "matplotlib",
   "pydantic-settings",
   "rich",
+  "s3fs>=2024.1.0",
+  "aiobotocore>=2.13.0",
 ]
 
 classifiers = [
