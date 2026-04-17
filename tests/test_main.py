@@ -1,4 +1,5 @@
 import os
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -68,13 +69,17 @@ def test_bowser_cli_run_command(tmp_path):
     proc = subprocess.Popen(
         ["bowser", "run", "-f", str(config_file), "--port", "8999"],
         cwd=Path(__file__).parent.parent,
+        start_new_session=True,  # put in its own process group
     )
 
     # Give it a moment to start up
     time.sleep(2)
 
-    # Kill the process (SIGKILL — SIGTERM alone may not exit within timeout on Linux)
-    proc.kill()
+    # Kill the entire process group (handles uvicorn worker children too)
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     proc.wait(timeout=10)
 
     # Check it didn't crash immediately (returncode from kill is -9, not 1)
