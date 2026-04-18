@@ -24,6 +24,15 @@ def cli_app():
     help="Name of JSON file from `bowser set-data`.",
 )
 @click.option(
+    "--host",
+    default="127.0.0.1",
+    help=(
+        "Interface to bind. Use 0.0.0.0 to expose on all interfaces "
+        "(containers, remote access)."
+    ),
+    show_default=True,
+)
+@click.option(
     "--port",
     "-p",
     default=None,
@@ -95,6 +104,7 @@ def cli_app():
 def run(
     stack_file,
     rasters_file,
+    host,
     port,
     reload,
     workers,
@@ -129,9 +139,11 @@ def run(
         os.environ["BOWSER_HTPASSWD_FILE"] = htpasswd_file
 
     protocol = "https" if ssl_certfile else "http"
-    print(f"Setting up on {protocol}://localhost:{port}")
+    display_host = "localhost" if host in ("127.0.0.1", "0.0.0.0") else host
+    print(f"Setting up on {protocol}://{display_host}:{port}")
     uvicorn.run(
         "bowser.main:app",
+        host=host,
         port=port,
         reload=reload,
         workers=workers,
