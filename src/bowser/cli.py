@@ -913,3 +913,92 @@ def setup_nisar_gunw(nisar_dir: str, output: str):
         raster_groups.append(rg)
 
     _dump_raster_groups(raster_groups, output=output)
+
+
+@cli_app.command()
+@click.argument("dataset_id")
+@click.option(
+    "--uri",
+    required=True,
+    help="fsspec URI to the zarr store (s3://, /abs/path, file://, http(s)://).",
+)
+@click.option("--name", default=None, help="Human-readable title; defaults to the id.")
+@click.option(
+    "--description", default="", help="Free-form text shown in the picker tooltip."
+)
+@click.option(
+    "--bbox",
+    nargs=4,
+    type=float,
+    default=None,
+    help="lon_min lat_min lon_max lat_max (WGS84). If omitted, read from the store.",
+)
+@click.option(
+    "--catalog",
+    "catalog_path",
+    type=click.Path(dir_okay=False, writable=True, path_type=Path),
+    default=Path("bowser_catalog.toml"),
+    show_default=True,
+    help="Path to the catalog TOML file; created if missing.",
+)
+def register(
+    dataset_id: str,
+    uri: str,
+    name: str | None,
+    description: str,
+    bbox: tuple[float, ...] | None,
+    catalog_path: Path,
+):
+    r"""Add a dataset entry to a catalog TOML file.
+
+    DATASET_ID is the routing key (lowercase, digits, _ or -). Example:
+
+        bowser register mexico-city \\
+            --uri s3://bowser-demo-data/mexico_city/cube.zarr \\
+            --name "Mexico City subsidence" \\
+            --bbox -99.063 19.331 -99.017 19.374
+    """
+    from .catalog import CatalogEntry, load_catalog, save_catalog
+
+    entries = load_catalog(catalog_path)
+    if any(e.id == dataset_id for e in entries):
+        raise click.ClickException(
+            f"dataset id {dataset_id!r} already in {catalog_path}"
+        )
+
+    if bbox is None:
+        bbox = _sniff_bbox(uri)
+        click.echo(f"Inferred bbox from store: {bbox}")
+
+    entries.append(
+        CatalogEntry(
+            id=dataset_id,
+            name=name or dataset_id,
+            uri=uri,
+            bbox=(bbox[0], bbox[1], bbox[2], bbox[3]),
+            description=description,
+        )
+    )
+    save_catalog(entries, catalog_path)
+    click.echo(f"Wrote {len(entries)} entries to {catalog_path}")
+
+
+def _sniff_bbox(uri: str) -> tuple[float, float, float, float]:
+    """Open a zarr just long enough to grab its WGS84 bbox."""
+    import rioxarray  # noqa: F401, PLC0415  (registers .rio accessor)
+    import xarray as xr  # noqa: PLC0415
+    from pyproj import Transformer  # noqa: PLC0415
+
+    from .geozarr import data_group_name, resolve_crs  # noqa: PLC0415
+
+    group = data_group_name(uri)
+    ds = xr.open_zarr(uri, group=group) if group else xr.open_zarr(uri)
+    crs = resolve_crs(ds)
+    ds = ds.rio.write_crs(crs)
+    minx, miny, maxx, maxy = ds.rio.bounds()
+    if ds.rio.crs.to_epsg() == 4326:
+        return (float(minx), float(miny), float(maxx), float(maxy))
+    tr = Transformer.from_crs(ds.rio.crs, 4326, always_xy=True)
+    lon_min, lat_min = tr.transform(minx, miny)
+    lon_max, lat_max = tr.transform(maxx, maxy)
+    return (float(lon_min), float(lat_min), float(lon_max), float(lat_max))

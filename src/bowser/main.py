@@ -319,6 +319,22 @@ async def get_config():
     return {"title": settings.BOWSER_TITLE}
 
 
+@app.get("/catalog")
+async def get_catalog():
+    """Return the registered dataset catalog as JSON for the picker UI.
+
+    Entries come from the TOML file at ``BOWSER_CATALOG_FILE`` (if set) —
+    each with ``{id, name, uri, bbox, description}``. Returns an empty list
+    when no catalog is configured or the file is missing.
+    """
+    from .catalog import load_catalog  # noqa: PLC0415
+
+    if not settings.BOWSER_CATALOG_FILE:
+        return {"datasets": []}
+    entries = load_catalog(settings.BOWSER_CATALOG_FILE)
+    return {"datasets": [e.to_dict() for e in entries]}
+
+
 @app.get("/variables")
 async def get_variables():
     """Get available variables (only for MD mode)."""
