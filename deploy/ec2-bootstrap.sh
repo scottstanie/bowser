@@ -59,6 +59,20 @@ REGION=$(curl -sS -H "$H" http://169.254.169.254/latest/meta-data/placement/regi
 # 4. Pull + run the image. Port 80 → 8080 in the container.
 docker pull "$IMAGE"
 docker rm -f bowser 2>/dev/null || true
+
+# Grab short-lived IAM role credentials from IMDSv2 and inject them into the
+# container. Reason: aiobotocore (pulled in by s3fs ← zarr) hits a ContextVar
+# conflict when it tries to refresh IMDS creds from zarr's sync-over-async
+# path inside pixi's default env. Passing creds as env vars bypasses the
+# async credential chain entirely. See TECH_DEBT.md for the upstream issue.
+TOKEN=$(curl -sS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+ROLE=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/)
+CREDS=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/"$ROLE")
+AK=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['AccessKeyId'])")
+SK=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['SecretAccessKey'])")
+ST=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['Token'])")
+REGION=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
+
 docker run -d --name bowser \
   --restart unless-stopped \
   -p 80:8080 \

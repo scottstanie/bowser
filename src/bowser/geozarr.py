@@ -67,11 +67,17 @@ def resolve_crs(ds: xr.Dataset) -> CRS:
 
 
 def _multiscales_layout(path: str | Path) -> list[dict] | None:
-    """Return the multiscales.layout list from the root, or None."""
-    import zarr
+    """Return the multiscales.layout list from the root group's attrs, or None.
 
-    root = zarr.open_group(str(path), mode="r")
-    ms = root.attrs.get("multiscales")
+    ``consolidated=False`` is important: pyramidal stores written by
+    ``build_pyramid`` only consolidate the root and per-level sub-groups,
+    so the parent root's consolidation may be absent, and more importantly
+    ``zarr.open_consolidated`` against an S3 URI triggers an aiobotocore
+    ContextVar conflict on our pixi runtime. Reading without consolidation
+    is a few extra HTTP HEADs and side-steps the issue.
+    """
+    ds = xr.open_zarr(str(path), consolidated=False)
+    ms = ds.attrs.get("multiscales")
     if not isinstance(ms, dict):
         return None
     layout = ms.get("layout")
@@ -90,7 +96,7 @@ def load_pyramid_levels(path: str | Path):
     out = []
     for level in layout:
         asset = str(level["asset"])
-        ds = xr.open_zarr(path, group=asset)
+        ds = xr.open_zarr(path, group=asset, consolidated=False)
         out.append(PyramidLevel.from_dataset(asset, ds))
     return out
 
