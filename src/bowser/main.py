@@ -9,13 +9,6 @@ import warnings
 from pathlib import Path
 from typing import Annotated, Any, Callable, Optional
 
-# Register custom colormaps in rio_tiler BEFORE titiler.core.dependencies is
-# imported.  titiler captures cmap.list() into a Literal type annotation at
-# import time, so reversed variants (cfastie_r, etc.) must be in the registry
-# before that happens.
-from .utils import calculate_trend, desensitize_mpl_case, generate_colorbar, register_custom_colormaps
-register_custom_colormaps()
-
 import matplotlib
 import numpy as np
 import rasterio
@@ -24,19 +17,36 @@ from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, Uplo
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
-from pyproj import CRS, Transformer
-from rio_tiler.io.xarray import XarrayReader
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 from starlette_cramjam.middleware import CompressionMiddleware
-from titiler.core.algorithm import algorithms as default_algorithms
-from titiler.core.dependencies import DefaultDependency
-from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
-from titiler.core.factory import TilerFactory
 
 from .config import settings
-from .readers import CustomReader
-from .titiler import Amplitude, JSONResponse, Phase, RasterGroup, Rewrap, Shift
+from .state import BowserState
+from .utils import (
+    calculate_trend,
+    desensitize_mpl_case,
+    generate_colorbar,
+    register_custom_colormaps,
+)
+
+# Register custom colormaps in rio_tiler BEFORE titiler.core.dependencies is
+# imported.  titiler captures cmap.list() into a Literal type annotation at
+# import time, so reversed variants (cfastie_r, etc.) must be in the registry
+# before that happens.
+register_custom_colormaps()
+
+from rio_tiler.io.xarray import XarrayReader  # noqa: E402
+from titiler.core.algorithm import algorithms as default_algorithms  # noqa: E402
+from titiler.core.dependencies import DefaultDependency  # noqa: E402
+from titiler.core.errors import (  # noqa: E402
+    DEFAULT_STATUS_CODES,
+    add_exception_handlers,
+)
+from titiler.core.factory import TilerFactory  # noqa: E402
+
+from .readers import CustomReader  # noqa: E402
+from .titiler import Amplitude, JSONResponse, Phase, Rewrap, Shift  # noqa: E402
 
 logger = logging.getLogger("bowser")
 warnings.filterwarnings(
@@ -91,6 +101,7 @@ def _check_password(stored: str, provided: str) -> bool:
         return hmac.compare_digest(stored[5:], digest)
     try:
         import bcrypt  # optional — only needed for bcrypt hashes
+
         return bcrypt.checkpw(provided.encode(), stored.encode())
     except ImportError:
         pass
@@ -102,13 +113,19 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
     """HTTP Basic Auth gate — only active when BOWSER_HTPASSWD_FILE is set."""
 
     def __init__(self, app, htpasswd_file: str) -> None:
+        """Initialise with the path to an htpasswd file."""
         super().__init__(app)
         self.htpasswd_file = Path(htpasswd_file)
 
     def _users(self) -> dict[str, str]:
-        return _load_htpasswd(str(self.htpasswd_file)) if self.htpasswd_file.exists() else {}
+        return (
+            _load_htpasswd(str(self.htpasswd_file))
+            if self.htpasswd_file.exists()
+            else {}
+        )
 
     async def dispatch(self, request: Request, call_next: Any) -> StarletteResponse:
+        """Enforce HTTP Basic Auth before delegating to downstream handlers."""
         users = self._users()
         if not users:
             return await call_next(request)
@@ -136,62 +153,76 @@ if settings.BOWSER_HTPASSWD_FILE:
     logger.info(f"Basic auth enabled from {settings.BOWSER_HTPASSWD_FILE}")
 
 
-def load_data_sources():
-    """Load data sources and determine which mode to use (MD or COG)."""
-    # Check for xarray stack file first (MD mode)
-    if settings.BOWSER_STACK_DATA_FILE:
-        stack_file = os.environ["BOWSER_STACK_DATA_FILE"]
-        logger.info(f"Loading xarray dataset from {stack_file} (MD mode)")
-        ds = (
-            xr.open_zarr(stack_file)
-            if stack_file.endswith(".zarr")
-            else xr.open_dataset(stack_file)
-        )
-        crs = CRS.from_wkt(ds.spatial_ref.crs_wkt)
-        # Collapse spatial_ref to scalar if it has a time dimension so that
-        # 2D variables (no time dim) still inherit the CRS coordinate.
-        if "time" in ds.spatial_ref.dims:
-            ds = ds.assign_coords(spatial_ref=ds.spatial_ref.isel(time=0).drop_vars("time"))
-        ds.rio.write_crs(crs, inplace=True)
-        transformer = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
-        return "md", ds, None, transformer
-
-    # Check for RasterGroup JSON config (COG mode)
-    elif Path(settings.BOWSER_DATASET_CONFIG_FILE).exists():
-        logger.info(
-            f"Loading RasterGroups from {settings.BOWSER_DATASET_CONFIG_FILE} (COG)"
-        )
-        data_js_list = json.loads(Path(settings.BOWSER_DATASET_CONFIG_FILE).read_text())
-        raster_groups = {}
-        for d in data_js_list:
-            rg = RasterGroup.model_validate(d)
-            raster_groups[rg.name] = rg
-        logger.info(
-            (
-                f"Found {len(raster_groups)} RasterGroup configs:"
-                " {list(raster_groups.keys())}"
-            )
-        )
-        return "cog", None, raster_groups, None
-
-    else:
-        raise ValueError(
-            "No data files specified - need either stack file or JSON config"
-        )
+state = BowserState.load(settings)
+print(f"Data loading complete in {time.time() - t0:.1f} sec. Mode: {state.mode}")
 
 
-# Global data sources - load once at startup
-DATA_MODE, XARRAY_DATASET, RASTER_GROUPS, transformer_from_lonlat = load_data_sources()
-print(f"Data loading complete in {time.time() - t0:.1f} sec. Mode: {DATA_MODE}")
+_SPATIAL_DIMS = ("x", "y")
+
+
+def _non_spatial_dim(da: xr.DataArray) -> str | None:
+    """Return the single non-spatial dim of a DataArray, or None if purely 2-D."""
+    non = [d for d in da.dims if d not in _SPATIAL_DIMS]
+    if not non:
+        return None
+    assert len(non) == 1, f"{da.name!r}: expected 0 or 1 non-spatial dim, got {non}"
+    return str(non[0])
+
+
+def _dim_labels(da: xr.DataArray, dim: str) -> list[str]:
+    """Render a non-spatial dim's coord values as display labels.
+
+    Order of preference:
+    1. A sibling ``pair_label_<slug>`` string coord on the same dim (written by
+       the geozarr converter).
+    2. Datetime64 dim coord → ``YYYY-MM-DD`` strings.
+    3. Matching ``reference_date_*`` / ``secondary_date_*`` date coords on the
+       same dim → ``YYYY-MM-DD_YYYY-MM-DD`` pair strings.
+    4. Fallback: ``str()`` of each value.
+    """
+    for c in da.coords:
+        if str(c).startswith("pair_label_") and da[c].dims == (dim,):
+            return [str(v) for v in da[c].values]
+
+    import pandas as pd  # noqa: PLC0415
+
+    vals = da.coords[dim].values
+    if np.issubdtype(vals.dtype, np.datetime64):
+        return pd.to_datetime(vals).strftime("%Y-%m-%d").tolist()
+
+    ref = [
+        c
+        for c in da.coords
+        if str(c).startswith("reference_date_") and da[c].dims == (dim,)
+    ]
+    sec = [
+        c
+        for c in da.coords
+        if str(c).startswith("secondary_date_") and da[c].dims == (dim,)
+    ]
+    if ref and sec:
+        r = pd.to_datetime(da[ref[0]].values)
+        s = pd.to_datetime(da[sec[0]].values)
+        return [
+            f"{a.strftime('%Y-%m-%d')}_{b.strftime('%Y-%m-%d')}" for a, b in zip(r, s)
+        ]
+
+    return [str(v) for v in vals]
+
+
+def _reference_date(labels: list[str], dim: str) -> str | None:
+    """Return a shared reference date if all pair labels share the same ref."""
+    if not dim.startswith("pair_") or not labels:
+        return None
+    refs = {lbl.split("_")[0] for lbl in labels if "_" in lbl}
+    return refs.pop() if len(refs) == 1 else None
 
 
 def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
     """Create dataset info structure from Xarray Dataset."""
-    # Get bounds from the dataset
     bounds = ds.rio.bounds()
     if ds.rio.crs != rasterio.crs.CRS.from_epsg(4326):
         mdim_vars = [v for v in ds.data_vars.values() if v.ndim >= 2]
-        # Get just one layer to reproject, and subsample for quick reprojecting
         da = mdim_vars[0][..., ::10, ::10]
         if da.ndim == 3:
             da = da[0]
@@ -202,44 +233,47 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
         f"latlon_bounds: {latlon_bounds}, bounds: {bounds}, ds.rio.crs: {ds.rio.crs}"
     )
 
-    # Get time values formatted for frontend
-    time_values = ds.time.dt.strftime("%Y-%m-%d").values.tolist()
-
-    # Create info for each variable that has spatial dimensions
     dataset_info = {}
-
-    skip_spatial_reference = os.getenv("BOWSER_SPATIAL_REFERENCE_DISP") == "NO"
+    skip_spatial_reference = not settings.BOWSER_USE_SPATIAL_REFERENCE_DISP
     for var_name, var in ds.data_vars.items():
-        if "x" in var.dims and "y" in var.dims:
-            use_moving_reference = (
-                ("displacement" in str(var_name).lower() and "short_wave" not in str(var_name).lower())
-                or "velocity" in str(var_name).lower()
-            ) and not skip_spatial_reference
-            available_mask_vars = [
-                v for v in ["temporal_coherence", "phase_similarity", "recommended_mask"]
-                if v in ds.data_vars
-            ]
-            has_time = "time" in var.dims
-            attrs = dict(var.attrs)
-            dataset_info[var_name] = {
-                "name": var_name,
-                "file_list": (
-                    [f"variable:{var_name}:time:{i}" for i in range(len(ds.time))]
-                    if has_time
-                    else [f"variable:{var_name}"]
-                ),
-                "mask_file_list": [],
-                "mask_min_value": 0.1,
-                "nodata": None,
-                "uses_spatial_ref": use_moving_reference,
-                "algorithm": "shift" if use_moving_reference else None,
-                "bounds": list(bounds),
-                "latlon_bounds": list(latlon_bounds),
-                "x_values": time_values if has_time else [],
-                "available_mask_vars": available_mask_vars,
-                "label": attrs.get("long_name", var_name),
-                "unit": attrs.get("units", ""),
-            }
+        if not {"x", "y"}.issubset(set(var.dims)):
+            continue
+        use_moving_reference = (
+            (
+                "displacement" in str(var_name).lower()
+                and "short_wave" not in str(var_name).lower()
+            )
+            or "velocity" in str(var_name).lower()
+        ) and not skip_spatial_reference
+        available_mask_vars = [
+            v
+            for v in ["temporal_coherence", "phase_similarity", "recommended_mask"]
+            if v in ds.data_vars
+        ]
+        dim = _non_spatial_dim(var)
+        labels = _dim_labels(var, dim) if dim is not None else []
+        n = len(labels) if dim is not None else 1
+        attrs = dict(var.attrs)
+        dataset_info[var_name] = {
+            "name": var_name,
+            "file_list": (
+                [f"variable:{var_name}:{dim}:{i}" for i in range(n)]
+                if dim is not None
+                else [f"variable:{var_name}"]
+            ),
+            "mask_file_list": [],
+            "mask_min_value": 0.1,
+            "nodata": None,
+            "uses_spatial_ref": use_moving_reference,
+            "algorithm": "shift" if use_moving_reference else None,
+            "bounds": list(bounds),
+            "latlon_bounds": list(latlon_bounds),
+            "x_values": labels,
+            "reference_date": _reference_date(labels, dim) if dim else None,
+            "available_mask_vars": available_mask_vars,
+            "label": attrs.get("long_name", var_name),
+            "unit": attrs.get("units", ""),
+        }
 
     return dataset_info
 
@@ -267,16 +301,16 @@ def create_rastergroup_dataset_info(raster_groups: dict) -> dict:
 @app.get("/datasets")
 async def datasets():
     """Return the JSON describing all available datasets."""
-    if DATA_MODE == "md":
-        return create_xarray_dataset_info(XARRAY_DATASET)
+    if state.mode == "md":
+        return create_xarray_dataset_info(state.dataset)
     else:  # cog mode
-        return create_rastergroup_dataset_info(RASTER_GROUPS)
+        return create_rastergroup_dataset_info(state.raster_groups)
 
 
 @app.get("/mode")
 async def get_mode():
     """Return the current data mode (md or cog) for frontend routing."""
-    return {"mode": DATA_MODE}
+    return {"mode": state.mode}
 
 
 @app.get("/config")
@@ -288,11 +322,11 @@ async def get_config():
 @app.get("/variables")
 async def get_variables():
     """Get available variables (only for MD mode)."""
-    if DATA_MODE != "md":
+    if state.mode != "md":
         return {"variables": {}}
 
     variables = {}
-    for var_name, var in XARRAY_DATASET.data_vars.items():
+    for var_name, var in state.dataset.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
             variables[var_name] = {
                 "dimensions": list(var.dims),
@@ -317,7 +351,7 @@ _MD_VAR_RANGE_CACHE: dict[str, tuple[float, float]] = {}
 def _md_var_range(var: str) -> tuple[float, float]:
     """Return (nanmin, nanmax) for an MD dataset variable, cached after first call."""
     if var not in _MD_VAR_RANGE_CACHE:
-        arr = XARRAY_DATASET[var].values
+        arr = state.dataset[var].values
         _MD_VAR_RANGE_CACHE[var] = (float(np.nanmin(arr)), float(np.nanmax(arr)))
     return _MD_VAR_RANGE_CACHE[var]
 
@@ -337,11 +371,13 @@ def _apply_layer_masks_md(
         var = m.get("dataset")
         threshold = float(m.get("threshold", 0.5))
         mode = m.get("mode", "min")
-        if not var or var not in XARRAY_DATASET.data_vars:
+        if not var or var not in state.dataset.data_vars:
             continue
-        mask_da = XARRAY_DATASET[var]
-        if time_idx is not None and "time" in mask_da.dims:
-            mask_da = mask_da.isel(time=time_idx)
+        mask_da = state.dataset[var]
+        if time_idx is not None:
+            mdim = _non_spatial_dim(mask_da)
+            if mdim is not None:
+                mask_da = mask_da.isel({mdim: time_idx})
         if mode == "max":
             da = da.where(mask_da <= threshold)
         else:
@@ -356,20 +392,25 @@ async def _get_ref_median(
     buffer_m: float = 0.0,
     layer_masks: list[dict] | None = None,
 ) -> np.ndarray:
-    """Return reference time series: buffer median when buffer_m > 0 (MD mode), else single pixel."""
+    """Return reference time series.
+
+    Buffer median when ``buffer_m > 0`` (MD mode), else a single pixel.
+    """
     layer_masks = layer_masks or []
-    if buffer_m <= 0 or DATA_MODE != "md":
+    if buffer_m <= 0 or state.mode != "md":
         return await _get_point_values(dataset_name, lon, lat, layer_masks)
 
-    if dataset_name not in XARRAY_DATASET.data_vars:
-        raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
+    if dataset_name not in state.dataset.data_vars:
+        raise HTTPException(
+            status_code=404, detail=f"Variable {dataset_name} not found"
+        )
 
-    from pyproj import Transformer as _T  # noqa: PLC0415
+    from pyproj import Transformer as _T  # noqa: PLC0415, N814
 
-    da = XARRAY_DATASET[dataset_name]
+    da = state.dataset[dataset_name]
     da = _apply_layer_masks_md(da, layer_masks)
 
-    tr = _T.from_crs(4326, XARRAY_DATASET.rio.crs, always_xy=True)
+    tr = _T.from_crs(4326, state.dataset.rio.crs, always_xy=True)
     cx, cy = tr.transform(lon, lat)
     res_x = float(abs(da.x[1] - da.x[0])) if da.x.size > 1 else 1.0
     res_y = float(abs(da.y[1] - da.y[0])) if da.y.size > 1 else 1.0
@@ -397,22 +438,24 @@ async def _get_point_values(
     layer_masks: list[dict] | None = None,
 ) -> np.ndarray:
     """Get point values for a dataset at lon/lat, with optional MD-mode masking."""
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = XARRAY_DATASET[dataset_name]
+        da = state.dataset[dataset_name]
         da = _apply_layer_masks_md(da, layer_masks or [])
-        x, y = transformer_from_lonlat.transform(lon, lat)
+        x, y = state.transformer_from_lonlat.transform(lon, lat)
         point_data = da.sel(x=x, y=y, method="nearest")
         return np.atleast_1d(point_data.values)
     else:  # cog mode
-        if dataset_name not in RASTER_GROUPS:
+        if dataset_name not in state.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        return np.atleast_1d(RASTER_GROUPS[dataset_name]._reader.read_lonlat(lon, lat))
+        return np.atleast_1d(
+            state.raster_groups[dataset_name]._reader.read_lonlat(lon, lat)
+        )
 
 
 @app.get(
@@ -448,19 +491,20 @@ async def chart_point(
 ):
     """Fetch the Chart.js time series values for a point (relative to a reference)."""
     # Get time values based on data mode
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = XARRAY_DATASET[dataset_name]
-        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        x_values = _dim_labels(da, dim) if dim is not None else []
     else:  # cog mode
-        if dataset_name not in RASTER_GROUPS:
+        if dataset_name not in state.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = RASTER_GROUPS[dataset_name]
+        rg = state.raster_groups[dataset_name]
         x_values = rg.x_values
 
     def values_to_chart_data(values):
@@ -499,31 +543,40 @@ async def multi_point(
     calculate_trends: bool = Body(
         False, description="Whether to calculate trend analysis"
     ),
-    layer_masks: list[dict] = Body([], description="List of {dataset, threshold, mode} mask dicts"),
-    ref_buffer_m: float = Body(0.0, description="Buffer radius (m) for median re-referencing; 0 = single pixel"),
+    layer_masks: list[dict] = Body(
+        [], description="List of {dataset, threshold, mode} mask dicts"
+    ),
+    ref_buffer_m: float = Body(
+        0.0, description="Buffer radius (m) for median re-referencing; 0 = single pixel"
+    ),
 ):
     """Fetch time series data for multiple points efficiently."""
     # Get time values based on data mode
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = XARRAY_DATASET[dataset_name]
-        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        x_values = _dim_labels(da, dim) if dim is not None else []
     else:  # cog mode
-        if dataset_name not in RASTER_GROUPS:
+        if dataset_name not in state.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = RASTER_GROUPS[dataset_name]
+        rg = state.raster_groups[dataset_name]
         x_values = rg.x_values
 
     # Get reference values if provided (use buffer median when ref_buffer_m > 0)
     ref_values = None
     if ref_lon is not None and ref_lat is not None:
         ref_values = await _get_ref_median(
-            dataset_name, ref_lon, ref_lat, ref_buffer_m, layer_masks,
+            dataset_name,
+            ref_lon,
+            ref_lat,
+            ref_buffer_m,
+            layer_masks,
         )
 
     # Process each point
@@ -541,7 +594,10 @@ async def multi_point(
         try:
             # Get values at the point
             values = await _get_point_values(
-                dataset_name, float(lon), float(lat), layer_masks
+                dataset_name,
+                float(lon),  # type: ignore[arg-type]
+                float(lat),  # type: ignore[arg-type]
+                layer_masks,
             )
 
             # Apply reference subtraction if provided
@@ -558,7 +614,7 @@ async def multi_point(
             # Calculate trend if requested
             trend_data = None
             if calculate_trends and len(chart_data) > 1:
-                trend_result = calculate_trend(values, x_values)
+                trend_result = calculate_trend(values, x_values)  # type: ignore[arg-type]
                 # Convert to frontend format
                 trend_data = {
                     "slope": trend_result["slope"],
@@ -608,19 +664,20 @@ async def trend_analysis(
 ):
     """Calculate trend analysis (mm/year rate) for a single point."""
     # Get time values based on data mode
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = XARRAY_DATASET[dataset_name]
-        x_values = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        x_values = _dim_labels(da, dim) if dim is not None else []
     else:  # cog mode
-        if dataset_name not in RASTER_GROUPS:
+        if dataset_name not in state.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = RASTER_GROUPS[dataset_name]
+        rg = state.raster_groups[dataset_name]
         x_values = rg.x_values
 
     # Get values at the point
@@ -632,7 +689,7 @@ async def trend_analysis(
         values = values - ref_values
 
     # Calculate trend
-    trend_data = calculate_trend(values, x_values)
+    trend_data = calculate_trend(values, x_values)  # type: ignore[arg-type]
 
     return JSONResponse(trend_data)
 
@@ -640,30 +697,29 @@ async def trend_analysis(
 @app.get("/datasets/{dataset_name}/time_bounds")
 async def get_time_bounds(dataset_name: str):
     """Get time bounds for a dataset to help with trend calculations."""
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = XARRAY_DATASET[dataset_name]
-        time_values = da.time.values
-        start_time = str(time_values[0])
-        end_time = str(time_values[-1])
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        labels = _dim_labels(da, dim) if dim is not None else []
     else:  # cog mode
-        if dataset_name not in RASTER_GROUPS:
+        if dataset_name not in state.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = RASTER_GROUPS[dataset_name]
-        x_values = rg.x_values
-        start_time = str(x_values[0])
-        end_time = str(x_values[-1])
+        labels = [str(v) for v in state.raster_groups[dataset_name].x_values]
+
+    if not labels:
+        raise HTTPException(status_code=400, detail=f"{dataset_name} has no time dim")
 
     return JSONResponse(
         {
-            "start_time": start_time,
-            "end_time": end_time,
-            "num_time_steps": len(time_values) if DATA_MODE == "md" else len(x_values),
+            "start_time": labels[0],
+            "end_time": labels[-1],
+            "num_time_steps": len(labels),
         }
     )
 
@@ -681,19 +737,28 @@ async def get_colorbar(cmap_name: str):
 @app.get(
     "/dataset_range/{dataset_name}",
     response_class=JSONResponse,
-    responses={200: {"description": "Return min/max/p2/p98 for a dataset (first time slice)"}},
+    responses={
+        200: {"description": "Return min/max/p2/p98 for a dataset (first time slice)"}
+    },
 )
 async def get_dataset_range(dataset_name: str):
     """Return the value range of a dataset for use in mask threshold sliders."""
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
-            raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
-        da = XARRAY_DATASET[dataset_name]
-        arr = da.isel(time=0).values.ravel().astype(float) if "time" in da.dims else da.values.ravel().astype(float)
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        arr = (
+            (da.isel({dim: 0}) if dim is not None else da).values.ravel().astype(float)
+        )
     else:
-        if dataset_name not in RASTER_GROUPS:
-            raise HTTPException(status_code=404, detail=f"Dataset {dataset_name} not found")
-        rg = RASTER_GROUPS[dataset_name]
+        if dataset_name not in state.raster_groups:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = state.raster_groups[dataset_name]
         with rasterio.open(rg.file_list[0]) as src:
             arr = src.read(1).ravel().astype(float)
             nodata = src.nodata
@@ -704,12 +769,14 @@ async def get_dataset_range(dataset_name: str):
     if valid.size == 0:
         raise HTTPException(status_code=204, detail="No valid data")
 
-    return JSONResponse({
-        "min": float(valid.min()),
-        "max": float(valid.max()),
-        "p2": float(np.percentile(valid, 2)),
-        "p98": float(np.percentile(valid, 98)),
-    })
+    return JSONResponse(
+        {
+            "min": float(valid.min()),
+            "max": float(valid.max()),
+            "p2": float(np.percentile(valid, 2)),
+            "p98": float(np.percentile(valid, 98)),
+        }
+    )
 
 
 @app.get(
@@ -723,19 +790,24 @@ async def get_histogram(
     nbins: Annotated[int, Query(ge=4, le=256)] = 100,
 ):
     """Compute a histogram of valid pixel values for one time step of a dataset."""
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
-            raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
-        da = XARRAY_DATASET[dataset_name]
-        if "time" in da.dims:
-            time_index = min(time_index, da.sizes["time"] - 1)
-            arr = da.isel(time=time_index).values.ravel().astype(float)
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = state.dataset[dataset_name]
+        dim = _non_spatial_dim(da)
+        if dim is not None:
+            time_index = min(time_index, da.sizes[dim] - 1)
+            arr = da.isel({dim: time_index}).values.ravel().astype(float)
         else:
             arr = da.values.ravel().astype(float)
     else:
-        if dataset_name not in RASTER_GROUPS:
-            raise HTTPException(status_code=404, detail=f"Dataset {dataset_name} not found")
-        rg = RASTER_GROUPS[dataset_name]
+        if dataset_name not in state.raster_groups:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = state.raster_groups[dataset_name]
         time_index = min(time_index, len(rg.file_list) - 1)
         with rasterio.open(rg.file_list[time_index]) as src:
             arr = src.read(1).ravel().astype(float)
@@ -748,24 +820,30 @@ async def get_histogram(
         raise HTTPException(status_code=204, detail="No valid data")
 
     counts, bin_edges = np.histogram(valid, bins=nbins)
-    return JSONResponse({
-        "bins": bin_edges.tolist(),
-        "counts": counts.tolist(),
-        "min": float(valid.min()),
-        "max": float(valid.max()),
-        "p2": float(np.percentile(valid, 2)),
-        "p98": float(np.percentile(valid, 98)),
-        "p16": float(np.percentile(valid, 16)),
-        "p84": float(np.percentile(valid, 84)),
-        "p23": float(np.percentile(valid, 2.275)),
-        "p977": float(np.percentile(valid, 97.725)),
-    })
+    return JSONResponse(
+        {
+            "bins": bin_edges.tolist(),
+            "counts": counts.tolist(),
+            "min": float(valid.min()),
+            "max": float(valid.max()),
+            "p2": float(np.percentile(valid, 2)),
+            "p98": float(np.percentile(valid, 98)),
+            "p16": float(np.percentile(valid, 16)),
+            "p84": float(np.percentile(valid, 84)),
+            "p23": float(np.percentile(valid, 2.275)),
+            "p977": float(np.percentile(valid, 97.725)),
+        }
+    )
 
 
 @app.post(
     "/buffer_timeseries",
     response_class=JSONResponse,
-    responses={200: {"description": "Return median + sampled pixel time series within a buffer"}},
+    responses={
+        200: {
+            "description": "Return median + sampled pixel time series within a buffer"
+        }
+    },
 )
 async def buffer_timeseries(
     lon: float = Body(..., description="Center longitude"),
@@ -775,20 +853,28 @@ async def buffer_timeseries(
     n_samples: int = Body(10, description="Number of random pixel samples to return"),
     ref_lon: Optional[float] = Body(None),
     ref_lat: Optional[float] = Body(None),
-    layer_masks: list[dict] = Body([], description="List of {dataset, threshold, mode} mask dicts"),
-    ref_buffer_m: float = Body(0.0, description="Buffer radius (m) for median re-referencing; 0 = single pixel"),
+    layer_masks: list[dict] = Body(
+        [], description="List of {dataset, threshold, mode} mask dicts"
+    ),
+    ref_buffer_m: float = Body(
+        0.0, description="Buffer radius (m) for median re-referencing; 0 = single pixel"
+    ),
 ):
     """Collect all pixels within a circular buffer, return median + random samples."""
-    if DATA_MODE == "md":
-        if dataset_name not in XARRAY_DATASET.data_vars:
-            raise HTTPException(status_code=404, detail=f"Variable {dataset_name} not found")
-        da = XARRAY_DATASET[dataset_name]
+    if state.mode == "md":
+        if dataset_name not in state.dataset.data_vars:
+            raise HTTPException(
+                status_code=404, detail=f"Variable {dataset_name} not found"
+            )
+        da = state.dataset[dataset_name]
         da = _apply_layer_masks_md(da, layer_masks)
-        x_values: list = da.time.dt.strftime("%Y-%m-%d").values.tolist()
+        dim = _non_spatial_dim(da)
+        x_values: list = _dim_labels(da, dim) if dim is not None else []
 
         # Project centre to dataset CRS
-        from pyproj import Transformer as _T  # noqa: PLC0415
-        tr = _T.from_crs(4326, XARRAY_DATASET.rio.crs, always_xy=True)
+        from pyproj import Transformer as _T  # noqa: PLC0415, N814
+
+        tr = _T.from_crs(4326, state.dataset.rio.crs, always_xy=True)
         cx, cy = tr.transform(lon, lat)
 
         res_x = float(abs(da.x[1] - da.x[0])) if da.x.size > 1 else 1.0
@@ -815,18 +901,24 @@ async def buffer_timeseries(
         # Reference subtraction (use buffer median when ref_buffer_m > 0)
         if ref_lon is not None and ref_lat is not None:
             ref_vals = await _get_ref_median(
-                dataset_name, ref_lon, ref_lat, ref_buffer_m, layer_masks,
+                dataset_name,
+                ref_lon,
+                ref_lat,
+                ref_buffer_m,
+                layer_masks,
             )
             flat = flat - ref_vals[:, np.newaxis]
 
     else:
-        if dataset_name not in RASTER_GROUPS:
-            raise HTTPException(status_code=404, detail=f"Dataset {dataset_name} not found")
-        rg = RASTER_GROUPS[dataset_name]
+        if dataset_name not in state.raster_groups:
+            raise HTTPException(
+                status_code=404, detail=f"Dataset {dataset_name} not found"
+            )
+        rg = state.raster_groups[dataset_name]
         x_values = rg.x_values
 
         reader0 = rg._reader.readers[0]
-        tr_from = reader0._transformer_from_lonlat
+        tr_from = reader0._state.transformer_from_lonlat
         cx, cy = tr_from.transform(lon, lat)
         tf = reader0.transform
         res_x = abs(tf.a)
@@ -839,7 +931,7 @@ async def buffer_timeseries(
         r0, r1 = max(0, row_c - pr_y), min(reader0.shape[0], row_c + pr_y + 1)
         c0, c1 = max(0, col_c - pr_x), min(reader0.shape[1], col_c + pr_x + 1)
 
-        rows, cols = np.meshgrid(np.arange(r0, r1), np.arange(c0, c1), indexing='ij')
+        rows, cols = np.meshgrid(np.arange(r0, r1), np.arange(c0, c1), indexing="ij")
         xs = tf.c + (cols + 0.5) * tf.a
         ys = tf.f + (rows + 0.5) * tf.e
         dist = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2)
@@ -852,7 +944,9 @@ async def buffer_timeseries(
         for t_idx in range(T):
             with rasterio.open(rg.file_list[t_idx]) as src:
                 nodata = src.nodata
-                patch = src.read(1, window=rasterio.windows.Window(c0, r0, nx, ny)).astype(float)
+                patch = src.read(
+                    1, window=rasterio.windows.Window(c0, r0, nx, ny)
+                ).astype(float)
                 if nodata is not None:
                     patch[patch == nodata] = np.nan
                 flat_full[t_idx] = patch.ravel()
@@ -869,6 +963,7 @@ async def buffer_timeseries(
         raise HTTPException(status_code=404, detail="No valid pixels in buffer")
 
     import warnings as _w  # noqa: PLC0415
+
     with _w.catch_warnings():
         _w.simplefilter("ignore", RuntimeWarning)
         median_ts = np.nanmedian(flat, axis=1).tolist()
@@ -879,15 +974,25 @@ async def buffer_timeseries(
     sample_idx = rng.choice(flat.shape[1], size=n_actual, replace=False)
     samples = flat[:, sample_idx].T.tolist()  # list of n_actual time series
 
-    return JSONResponse({
-        "labels": x_values,
-        "median": [{"x": x, "y": float(v)} for x, v in zip(x_values, median_ts) if not np.isnan(v)],
-        "samples": [
-            [{"x": x, "y": float(v)} for x, v in zip(x_values, ts) if not np.isnan(v)]
-            for ts in samples
-        ],
-        "n_pixels": int(flat.shape[1]),
-    })
+    return JSONResponse(
+        {
+            "labels": x_values,
+            "median": [
+                {"x": x, "y": float(v)}
+                for x, v in zip(x_values, median_ts)
+                if not np.isnan(v)
+            ],
+            "samples": [
+                [
+                    {"x": x, "y": float(v)}
+                    for x, v in zip(x_values, ts)
+                    if not np.isnan(v)
+                ]
+                for ts in samples
+            ],
+            "n_pixels": int(flat.shape[1]),
+        }
+    )
 
 
 @app.post(
@@ -899,10 +1004,22 @@ async def extract_profile(
     coords: list[list[float]] = Body(..., description="List of [lon, lat] pairs"),
     dataset_name: str = Body(..., description="Dataset name"),
     time_index: int = Body(0, description="Time index"),
-    n_samples: int = Body(200, description="Number of samples along line (used when sampling_interval=0)"),
+    n_samples: int = Body(
+        200, description="Number of samples along line (used when sampling_interval=0)"
+    ),
     radius: float = Body(0.0, description="Buffer radius in metres (0 = single line)"),
-    n_random: int = Body(5, description="Number of random sample lines within buffer (legacy)"),
-    sampling_interval: float = Body(0.0, description="Bin spacing in metres along profile (0 = use n_samples). When > 0, each bin collects all pixels within ±(sampling_interval/2) of the bin centre along the profile direction and within ±radius perpendicular, then returns their median."),
+    n_random: int = Body(
+        5, description="Number of random sample lines within buffer (legacy)"
+    ),
+    sampling_interval: float = Body(
+        0.0,
+        description=(
+            "Bin spacing in metres along profile (0 = use n_samples). When > 0, "
+            "each bin collects all pixels within ±(sampling_interval/2) of the "
+            "bin centre along the profile direction and within ±radius "
+            "perpendicular, then returns their median."
+        ),
+    ),
 ):
     """Sample raster values along a polyline.
 
@@ -937,31 +1054,40 @@ async def extract_profile(
     def _read_lonlat(slon: float, slat: float) -> float | None:
         """Read a single value at (slon, slat); return None on failure."""
         try:
-            if DATA_MODE == "md":
-                if dataset_name not in XARRAY_DATASET.data_vars:
+            if state.mode == "md":
+                if dataset_name not in state.dataset.data_vars:
                     return None
-                da = XARRAY_DATASET[dataset_name]
-                if "time" in da.dims and time_index < da.shape[0]:
-                    da = da.isel(time=time_index)
-                x_c, y_c = transformer_from_lonlat.transform(slon, slat)
+                da = state.dataset[dataset_name]
+                dim = _non_spatial_dim(da)
+                if dim is not None and time_index < da.sizes[dim]:
+                    da = da.isel({dim: time_index})
+                x_c, y_c = state.transformer_from_lonlat.transform(slon, slat)
                 val = float(da.sel(x=x_c, y=y_c, method="nearest").values)
             else:
-                if dataset_name not in RASTER_GROUPS:
+                if dataset_name not in state.raster_groups:
                     return None
-                rg = RASTER_GROUPS[dataset_name]
+                rg = state.raster_groups[dataset_name]
                 t = min(time_index, len(rg.file_list) - 1)
-                val = float(np.atleast_1d(rg._reader.readers[t].read_lonlat(slon, slat))[0])
+                val = float(
+                    np.atleast_1d(rg._reader.readers[t].read_lonlat(slon, slat))[0]
+                )
             return val if np.isfinite(val) else None
         except Exception:
             return None
 
     def _pos_at_dist(sd: float) -> tuple[float, float, float]:
         """Return (lon, lat, bearing_deg) at distance sd along the polyline."""
-        seg_idx = int(np.clip(np.searchsorted(seg_dists, sd, side="right") - 1, 0, len(lons) - 2))
-        frac = (sd - seg_dists[seg_idx]) / max(seg_dists[seg_idx + 1] - seg_dists[seg_idx], 1e-9)
+        seg_idx = int(
+            np.clip(np.searchsorted(seg_dists, sd, side="right") - 1, 0, len(lons) - 2)
+        )
+        frac = (sd - seg_dists[seg_idx]) / max(
+            seg_dists[seg_idx + 1] - seg_dists[seg_idx], 1e-9
+        )
         slon = lons[seg_idx] + frac * (lons[seg_idx + 1] - lons[seg_idx])
         slat = lats[seg_idx] + frac * (lats[seg_idx + 1] - lats[seg_idx])
-        az, _, _ = geod.inv(lons[seg_idx], lats[seg_idx], lons[seg_idx + 1], lats[seg_idx + 1])
+        az, _, _ = geod.inv(
+            lons[seg_idx], lats[seg_idx], lons[seg_idx + 1], lats[seg_idx + 1]
+        )
         return float(slon), float(slat), float(az)
 
     # ── Binned-median sampling (new mode) ─────────────────────────────────────
@@ -987,7 +1113,9 @@ async def extract_profile(
 
         # Display sample lines (for chart decoration), evenly spaced, max n_random
         n_display = max(1, min(n_random, 5)) if radius > 0 else 0
-        perp_offsets_display = np.linspace(-radius, radius, n_display) if n_display > 0 else np.empty(0)
+        perp_offsets_display = (
+            np.linspace(-radius, radius, n_display) if n_display > 0 else np.empty(0)
+        )
 
         centre_profile: list[dict] = []
         median_profile: list[dict] = []
@@ -1001,8 +1129,11 @@ async def extract_profile(
             positions = [_pos_at_dist(ad) for ad in along_dists]  # (lon, lat, bearing)
 
             # --- Centre values (no perpendicular offset) ---
-            centre_vals = [v for clon, clat, _ in positions
-                           if (v := _read_lonlat(clon, clat)) is not None]
+            centre_vals = [
+                v
+                for clon, clat, _ in positions
+                if (v := _read_lonlat(clon, clat)) is not None
+            ]
 
             # --- Full 2-D window (centre + perpendicular strip) ---
             all_vals = list(centre_vals)
@@ -1016,9 +1147,13 @@ async def extract_profile(
                             all_vals.append(v)
 
             if centre_vals:
-                centre_profile.append({"dist": float(bc), "value": float(np.nanmedian(centre_vals))})
+                centre_profile.append(
+                    {"dist": float(bc), "value": float(np.nanmedian(centre_vals))}
+                )
             if all_vals:
-                median_profile.append({"dist": float(bc), "value": float(np.nanmedian(all_vals))})
+                median_profile.append(
+                    {"dist": float(bc), "value": float(np.nanmedian(all_vals))}
+                )
 
             # --- Display sample lines (reuse cached positions) ---
             for k, off in enumerate(perp_offsets_display):
@@ -1032,15 +1167,19 @@ async def extract_profile(
                     if v is not None:
                         svals.append(v)
                 if svals:
-                    sample_profiles_acc[k].append({"dist": float(bc), "value": float(np.nanmedian(svals))})
+                    sample_profiles_acc[k].append(
+                        {"dist": float(bc), "value": float(np.nanmedian(svals))}
+                    )
 
-        return JSONResponse({
-            "centre": centre_profile,
-            "median": median_profile,
-            "samples": sample_profiles_acc,
-            "binned": True,
-            "bin_width": float(sampling_interval),
-        })
+        return JSONResponse(
+            {
+                "centre": centre_profile,
+                "median": median_profile,
+                "samples": sample_profiles_acc,
+                "binned": True,
+                "bin_width": float(sampling_interval),
+            }
+        )
 
     # ── Legacy mode: evenly-spaced points ─────────────────────────────────────
     sample_dists = np.linspace(0, total_dist, n_samples)
@@ -1074,7 +1213,9 @@ async def extract_profile(
                 o_lon, o_lat, _ = geod.fwd(slon, slat, perp_az, off)
             all_lines[j + 1].append(_read_lonlat(o_lon, o_lat))
 
-    arr = np.array([[v if v is not None else np.nan for v in line] for line in all_lines])
+    arr = np.array(
+        [[v if v is not None else np.nan for v in line] for line in all_lines]
+    )
     median_vals = np.nanmedian(arr, axis=0)
 
     centre_profile = [
@@ -1096,11 +1237,13 @@ async def extract_profile(
         for j in range(n_random)
     ]
 
-    return JSONResponse({
-        "centre": centre_profile,
-        "median": median_profile,
-        "samples": sample_profiles,
-    })
+    return JSONResponse(
+        {
+            "centre": centre_profile,
+            "median": median_profile,
+            "samples": sample_profiles,
+        }
+    )
 
 
 # Upload directory for custom masks
@@ -1111,11 +1254,14 @@ _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 @app.post(
     "/upload_mask",
     response_class=JSONResponse,
-    responses={200: {"description": "Upload a GeoTIFF mask file and return its server path"}},
+    responses={
+        200: {"description": "Upload a GeoTIFF mask file and return its server path"}
+    },
 )
 async def upload_mask(file: UploadFile):
     """Accept a GeoTIFF mask upload and store it for use in masking."""
     import uuid  # noqa: PLC0415
+
     dest = _UPLOAD_DIR / f"mask_{uuid.uuid4().hex}.tif"
     dest.write_bytes(await file.read())
     return JSONResponse({"path": str(dest)})
@@ -1150,18 +1296,22 @@ PostProcessParams: Callable = algorithms.dependency
 
 
 # Set up routing based on data mode
-# if DATA_MODE == "cog":
+# if state.mode == "cog":
 # COG mode: use RasterGroup approach
 # Ordered lists of RasterGroup names to search for each mask type in COG mode.
-_COG_COHERENCE_NAMES  = ["Temporal coherence", "Average temporal coherence", "(Pseudo) correlation"]
+_COG_COHERENCE_NAMES = [
+    "Temporal coherence",
+    "Average temporal coherence",
+    "(Pseudo) correlation",
+]
 _COG_SIMILARITY_NAMES = ["Phase cosine similarity", "Phase cosine similarity (full)"]
 
 
 def _cog_mask_file(group_names: list[str], time_idx: int) -> str | None:
     """Return the file path for the first matching RasterGroup at time_idx."""
     for name in group_names:
-        if name in RASTER_GROUPS:
-            fl = RASTER_GROUPS[name].file_list
+        if name in state.raster_groups:
+            fl = state.raster_groups[name].file_list
             if fl:
                 return fl[min(time_idx, len(fl) - 1)]
     return None
@@ -1171,9 +1321,16 @@ def InputDependency(
     url: Annotated[str, Query(description="Dataset URL")],
     mask: Annotated[str | None, Query(description="Mask URL")] = None,
     mask_min_value: Annotated[float, Query(description="Mask Minimum Value")] = 0.1,
-    custom_mask: Annotated[str | None, Query(description="Custom mask GeoTIFF path")] = None,
-    layer_masks: Annotated[str | None, Query(description="JSON list of {dataset,threshold,mode} mask dicts")] = None,
-    time_idx: Annotated[int, Query(description="Time index for resolving mask files")] = 0,
+    custom_mask: Annotated[
+        str | None, Query(description="Custom mask GeoTIFF path")
+    ] = None,
+    layer_masks: Annotated[
+        str | None,
+        Query(description="JSON list of {dataset,threshold,mode} mask dicts"),
+    ] = None,
+    time_idx: Annotated[
+        int, Query(description="Time index for resolving mask files")
+    ] = 0,
 ) -> dict:
     """Create dataset path from args."""
     extra_masks: list[tuple[str, float]] = []
@@ -1187,14 +1344,15 @@ def InputDependency(
                 dataset = m.get("dataset")
                 threshold = float(m.get("threshold", 0.5))
                 mode = m.get("mode", "min")
-                if not dataset or dataset not in RASTER_GROUPS:
+                if not dataset or dataset not in state.raster_groups:
                     continue
-                fl = RASTER_GROUPS[dataset].file_list
+                fl = state.raster_groups[dataset].file_list
                 if not fl:
                     continue
                 f = fl[min(time_idx, len(fl) - 1)]
-                # Threshold is now an absolute value — pass it directly
-                # CustomReader extra_masks keeps pixels where value > min_value ('min' mode only)
+                # Threshold is now an absolute value — pass it directly.
+                # CustomReader extra_masks keeps pixels where value > min_value
+                # ('min' mode only).
                 if mode == "min":
                     extra_masks.append((f, threshold))
                 # 'max' mode not supported for COG tiles (CustomReader has no inversion)
@@ -1223,30 +1381,51 @@ logger.info("Configured COG endpoints at /cog/*")
 
 # MD mode: use xarray approach
 def XarrayPathDependency(
+    request: Request,
     variable: str = Query(..., description="Variable name"),
     time_idx: Optional[int] = Query(None, description="Time index"),
     mask_variable: Optional[str] = Query(None, description="Mask variable"),
     mask_min_value: float = Query(0.1, description="Mask minimum value"),
-    layer_masks: Optional[str] = Query(None, description="JSON list of {dataset,threshold,mode} mask dicts"),
-    custom_mask_path: Optional[str] = Query(None, description="Path to uploaded custom mask GeoTIFF"),
+    layer_masks: Optional[str] = Query(
+        None, description="JSON list of {dataset,threshold,mode} mask dicts"
+    ),
+    custom_mask_path: Optional[str] = Query(
+        None, description="Path to uploaded custom mask GeoTIFF"
+    ),
 ) -> xr.DataArray:
-    """Create a DataArray from query parameters."""
-    da = XARRAY_DATASET[variable]
-    skip_recommended_mask = os.getenv("BOWSER_USE_RECOMMENDED_MASK") == "NO"
+    """Create a DataArray from query parameters.
+
+    Picks the appropriate multiscale pyramid level for tile-bearing routes;
+    non-tile routes fall back to the native-resolution level.
+    """
+    # Path param is only present on tile-bearing routes like
+    # /md/tiles/{tms}/{z}/{x}/{y}. Missing elsewhere — fall back to full res.
+    try:
+        tile_z = int(request.path_params["z"])
+    except (KeyError, TypeError, ValueError):
+        ds = state.dataset
+    else:
+        ds = state.dataset_for_tile_zoom(tile_z)
+    da = ds[variable]
+    skip_recommended_mask = not settings.BOWSER_USE_RECOMMENDED_MASK
     if mask_variable is not None:
-        mask_da = XARRAY_DATASET[mask_variable]
+        mask_da = ds[mask_variable]
     elif variable == "displacement" and (
-        "recommended_mask" in XARRAY_DATASET.data_vars and not skip_recommended_mask
+        "recommended_mask" in ds.data_vars and not skip_recommended_mask
     ):
-        mask_da = XARRAY_DATASET["recommended_mask"]
+        mask_da = ds["recommended_mask"]
     else:
         mask_da = None
 
-    # Resolve time
-    if time_idx is not None and "time" in da.dims:
-        da = da.sel(time=XARRAY_DATASET.time[time_idx])
+    # Resolve the per-variable non-spatial dim (was hardcoded "time")
+    if time_idx is not None:
+        dim = _non_spatial_dim(da)
+        if dim is not None:
+            da = da.isel({dim: time_idx})
         if mask_da is not None:
-            mask_da = mask_da.sel(time=XARRAY_DATASET.time[time_idx])
+            mdim = _non_spatial_dim(mask_da)
+            if mdim is not None:
+                mask_da = mask_da.isel({mdim: time_idx})
 
     # Apply primary mask
     if mask_da is not None:
@@ -1263,7 +1442,10 @@ def XarrayPathDependency(
     if custom_mask_path and Path(custom_mask_path).exists():
         try:
             import rioxarray as rxr  # noqa: PLC0415
-            custom_da = rxr.open_rasterio(custom_mask_path, masked=True).squeeze("band", drop=True)
+
+            custom_da = rxr.open_rasterio(custom_mask_path, masked=True).squeeze(
+                "band", drop=True
+            )
             custom_da_repr = custom_da.rio.reproject_match(da)
             da = da.where(custom_da_repr > 0)
         except Exception as exc:
@@ -1289,4 +1471,4 @@ add_exception_handlers(app, DEFAULT_STATUS_CODES)
 dist_path = Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
 print(f"Setup complete: time to load datasets: {time.time() - t0:.1f} sec.")
-logger.info(f"Bowser started in {DATA_MODE.upper()} mode")
+logger.info(f"Bowser started in {state.mode.upper()} mode")

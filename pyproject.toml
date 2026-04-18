@@ -20,6 +20,7 @@ dependencies = [
   "rioxarray",
   "matplotlib",
   "pydantic-settings",
+  "geozarr-toolkit",
   "rich",
   "s3fs>=2024.1.0",
   "aiobotocore>=2.13.0",
