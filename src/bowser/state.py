@@ -11,13 +11,16 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+import threading
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 import xarray as xr
 from pyproj import Transformer
 
+from .catalog import CatalogEntry, load_catalog
 from .config import Settings
 
 Mode = Literal["md", "cog"]
@@ -27,6 +30,52 @@ logger = logging.getLogger("bowser")
 
 # Web Mercator map circumference at the equator.
 _WEB_MERCATOR_EQUATOR_M = 40075016.686
+
+
+def _open_md(uri: str) -> tuple[xr.Dataset, Transformer, list["PyramidLevel"]]:
+    """Open an MD-mode source at ``uri`` and return ``(ds, transformer, levels)``.
+
+    Single entry point for every MD load — both ``BowserState.load`` (for
+    the default single-dataset startup) and ``BowserState.load_zarr`` (for
+    registry-driven per-catalog-entry opens) go through here.
+
+    ``uri`` can be a local path, ``s3://``, ``file://``, or ``http(s)://`` —
+    whatever fsspec understands. For ``.zarr`` stores the pyramid layout is
+    auto-detected and all levels are opened.
+    """
+    from .geozarr import (  # noqa: PLC0415 — avoid import cycle
+        data_group_name,
+        load_pyramid_levels,
+        resolve_crs,
+    )
+
+    logger.info(f"Loading MD dataset from {uri}")
+    levels: list[PyramidLevel] = []
+    if uri.endswith(".zarr") or "://" in uri:
+        group = data_group_name(uri)
+        if group is not None:
+            levels = load_pyramid_levels(uri)
+            px = [round(lv.pixel_size_m, 3) for lv in levels]
+            logger.info(f"Pyramid detected: {len(levels)} level(s), px(m): {px}")
+            ds = levels[0].dataset
+        else:
+            ds = xr.open_zarr(uri, consolidated=False)
+    else:
+        ds = xr.open_dataset(uri)
+
+    crs = resolve_crs(ds)
+    if "spatial_ref" in ds.variables and "time" in ds.spatial_ref.dims:
+        ds = ds.assign_coords(spatial_ref=ds.spatial_ref.isel(time=0).drop_vars("time"))
+    ds.rio.write_crs(crs, inplace=True)
+    tr = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
+    if not levels:
+        levels = [PyramidLevel.from_dataset("", ds)]
+    else:
+        # Propagate the patched CRS to every level so they all have rio.crs set.
+        levels[0] = PyramidLevel.from_dataset(levels[0].asset, ds)
+        for i in range(1, len(levels)):
+            levels[i].dataset.rio.write_crs(crs, inplace=True)
+    return ds, tr, levels
 
 
 @dataclass
@@ -96,46 +145,10 @@ class BowserState:
     @classmethod
     def load(cls, settings: Settings) -> "BowserState":
         """Load data sources per the active Settings and return a populated state."""
-        from .geozarr import resolve_crs  # noqa: PLC0415 — avoid import cycle
         from .titiler import RasterGroup  # noqa: PLC0415
 
         if settings.BOWSER_STACK_DATA_FILE:
-            stack_file = settings.BOWSER_STACK_DATA_FILE
-            logger.info(f"Loading xarray dataset from {stack_file} (MD mode)")
-            levels: list[PyramidLevel] = []
-            if stack_file.endswith(".zarr"):
-                from .geozarr import (  # noqa: PLC0415
-                    data_group_name,
-                    load_pyramid_levels,
-                )
-
-                group = data_group_name(stack_file)
-                if group is not None:
-                    levels = load_pyramid_levels(stack_file)
-                    px = [round(lv.pixel_size_m, 3) for lv in levels]
-                    logger.info(
-                        f"Pyramid detected: {len(levels)} level(s), px(m): {px}"
-                    )
-                    ds = levels[0].dataset
-                else:
-                    ds = xr.open_zarr(stack_file)
-            else:
-                ds = xr.open_dataset(stack_file)
-            crs = resolve_crs(ds)
-            if "spatial_ref" in ds.variables and "time" in ds.spatial_ref.dims:
-                ds = ds.assign_coords(
-                    spatial_ref=ds.spatial_ref.isel(time=0).drop_vars("time")
-                )
-            ds.rio.write_crs(crs, inplace=True)
-            tr = Transformer.from_crs(4326, ds.rio.crs, always_xy=True)
-            if not levels:
-                levels = [PyramidLevel.from_dataset("", ds)]
-            else:
-                # Re-write CRS on the level-0 dataset we just patched, and
-                # propagate to the other levels so they all have rio.crs set.
-                levels[0] = PyramidLevel.from_dataset(levels[0].asset, ds)
-                for i in range(1, len(levels)):
-                    levels[i].dataset.rio.write_crs(crs, inplace=True)
+            ds, tr, levels = _open_md(settings.BOWSER_STACK_DATA_FILE)
             return cls(mode="md", dataset=ds, transformer_from_lonlat=tr, levels=levels)
 
         cfg = Path(settings.BOWSER_DATASET_CONFIG_FILE)
@@ -172,6 +185,17 @@ class BowserState:
             "or BOWSER_CATALOG_FILE (multi-dataset catalog)."
         )
 
+    @classmethod
+    def load_zarr(cls, uri: str) -> "BowserState":
+        """Load a single GeoZarr store (local or fsspec URI) as an MD-mode state.
+
+        Takes any fsspec-compatible URI directly (``s3://``, ``/abs/path``,
+        ``file://…``, ``http(s)://…``). Used by the ``DatasetRegistry`` to
+        populate per-dataset states on demand.
+        """
+        ds, tr, levels = _open_md(uri)
+        return cls(mode="md", dataset=ds, transformer_from_lonlat=tr, levels=levels)
+
     # --- narrowed accessors — call these instead of manually unwrapping Optionals ---
     def require_md(self) -> tuple[xr.Dataset, Transformer]:
         """Return the MD-mode dataset + lon/lat transformer, asserting the mode."""
@@ -184,3 +208,81 @@ class BowserState:
         assert self.mode == "cog", f"expected COG mode, got {self.mode}"
         assert self.raster_groups is not None
         return self.raster_groups
+
+
+@dataclass
+class DatasetRegistry:
+    """Per-dataset-id registry of MD BowserStates, loaded lazily from a catalog.
+
+    The registry holds a catalog (populated at startup from
+    ``settings.BOWSER_CATALOG_FILE``) and an LRU cache of already-opened
+    ``BowserState`` instances. Callers request a state by ``dataset_id``;
+    first access triggers open, subsequent accesses hit the cache. When the
+    cache is full the least-recently-used state is evicted.
+
+    The registry is read-only with respect to catalog entries: reloading the
+    catalog requires calling ``reload_catalog`` (or restarting the server).
+    No user-specific state ever lives here — two requests for the same
+    dataset share the exact same xarray.Dataset handle.
+    """
+
+    catalog: dict[str, CatalogEntry] = field(default_factory=dict)
+    maxsize: int = 4
+    _cache: "OrderedDict[str, BowserState]" = field(default_factory=OrderedDict)
+    # FastAPI runs sync dependencies in a threadpool, so a concurrent burst
+    # of first-miss requests for the same dataset could double-open the zarr
+    # and race on ``OrderedDict`` mutation. Guard every read/write on the
+    # cache with this lock.
+    _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+
+    @classmethod
+    def from_settings(cls, settings: Settings) -> "DatasetRegistry":
+        """Build a registry from ``BOWSER_CATALOG_FILE``; empty if unset."""
+        if not settings.BOWSER_CATALOG_FILE:
+            return cls()
+        entries = load_catalog(settings.BOWSER_CATALOG_FILE)
+        return cls(catalog={e.id: e for e in entries})
+
+    def get(self, dataset_id: str) -> BowserState:
+        """Return the BowserState for ``dataset_id``, loading on first access."""
+        if dataset_id not in self.catalog:
+            raise KeyError(
+                f"unknown dataset id {dataset_id!r}; "
+                f"catalog has {sorted(self.catalog)}"
+            )
+        with self._lock:
+            cached = self._cache.get(dataset_id)
+            if cached is not None:
+                self._cache.move_to_end(dataset_id)
+                return cached
+        # Load outside the lock — opening a zarr is slow and we don't want to
+        # serialise unrelated requests on it. If a concurrent caller beat us
+        # to the insert, keep theirs and drop ours on the floor (garbage
+        # collection handles cleanup).
+        state = BowserState.load_zarr(self.catalog[dataset_id].uri)
+        with self._lock:
+            if dataset_id in self._cache:
+                self._cache.move_to_end(dataset_id)
+                return self._cache[dataset_id]
+            self._cache[dataset_id] = state
+            while len(self._cache) > self.maxsize:
+                evicted, _ = self._cache.popitem(last=False)
+                logger.info(f"DatasetRegistry evicted {evicted!r}")
+        return state
+
+    def ids(self) -> list[str]:
+        """Return the list of catalog-registered dataset ids."""
+        return list(self.catalog)
+
+    def reload_catalog(self, settings: Settings) -> None:
+        """Re-read the catalog file; keeps already-loaded states in cache."""
+        if not settings.BOWSER_CATALOG_FILE:
+            with self._lock:
+                self.catalog = {}
+            return
+        entries = load_catalog(settings.BOWSER_CATALOG_FILE)
+        with self._lock:
+            self.catalog = {e.id: e for e in entries}
+            # Drop cached states whose id is no longer in the catalog.
+            for missing in list(self._cache.keys() - self.catalog.keys()):
+                del self._cache[missing]
