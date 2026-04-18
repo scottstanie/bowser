@@ -918,7 +918,7 @@ async def buffer_timeseries(
         x_values = rg.x_values
 
         reader0 = rg._reader.readers[0]
-        tr_from = reader0._state.transformer_from_lonlat
+        tr_from = reader0._transformer_from_lonlat
         cx, cy = tr_from.transform(lon, lat)
         tf = reader0.transform
         res_x = abs(tf.a)
@@ -1295,9 +1295,6 @@ algorithms = default_algorithms.register(
 PostProcessParams: Callable = algorithms.dependency
 
 
-# Set up routing based on data mode
-# if state.mode == "cog":
-# COG mode: use RasterGroup approach
 # Ordered lists of RasterGroup names to search for each mask type in COG mode.
 _COG_COHERENCE_NAMES = [
     "Temporal coherence",
@@ -1356,8 +1353,8 @@ def InputDependency(
                 if mode == "min":
                     extra_masks.append((f, threshold))
                 # 'max' mode not supported for COG tiles (CustomReader has no inversion)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Failed to parse layer_masks: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse layer_masks JSON: {e}")
 
     return {
         "data": url,
@@ -1435,8 +1432,8 @@ def XarrayPathDependency(
     if layer_masks:
         try:
             da = _apply_layer_masks_md(da, json.loads(layer_masks), time_idx)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"Failed to apply layer_masks: {e}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse layer_masks JSON: {e}")
 
     # Custom mask (uploaded GeoTIFF) — reproject to match da
     if custom_mask_path and Path(custom_mask_path).exists():

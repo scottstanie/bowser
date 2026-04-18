@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     # --- data source (one-time-at-startup) ---
     BOWSER_DATASET_CONFIG_FILE: str = "bowser_rasters.json"
     BOWSER_STACK_DATA_FILE: str = ""
+    # Multi-dataset catalog file (TOML). When set, bowser can run without a
+    # single default dataset — every request must carry ``?dataset=<id>``.
+    # Catalog schema + registry live in later layers; we define the setting
+    # here so ``BowserState.load`` can fall through to "catalog-only" mode.
+    BOWSER_CATALOG_FILE: str = ""
 
     # --- UI ---
     BOWSER_TITLE: str = ""

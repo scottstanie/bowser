@@ -151,9 +151,25 @@ class BowserState:
             )
             return cls(mode="cog", raster_groups=raster_groups)
 
+        # Catalog-only startup: there's a BOWSER_CATALOG_FILE but neither a
+        # stack file nor a RasterGroup config. The DatasetRegistry will serve
+        # every request by ?dataset=<id>; the default "state" is a stub that
+        # passes mode checks but has no data. Every endpoint that reads
+        # ``state.dataset`` / ``state.raster_groups`` directly must either
+        # route through ``_resolve_state(dataset)`` first or accept 404 /
+        # HTTP 400 when called without a dataset id.
+        if settings.BOWSER_CATALOG_FILE:
+            logger.info(
+                "Catalog-only startup (no default stack/COG). "
+                "Every request must carry ?dataset=<id>."
+            )
+            return cls(mode="md")
+
         raise ValueError(
-            "No data files specified — need either BOWSER_STACK_DATA_FILE (MD mode) "
-            "or BOWSER_DATASET_CONFIG_FILE (COG mode)."
+            "No data files specified — need at least one of: "
+            "BOWSER_STACK_DATA_FILE (MD mode), "
+            "BOWSER_DATASET_CONFIG_FILE (COG mode), "
+            "or BOWSER_CATALOG_FILE (multi-dataset catalog)."
         )
 
     # --- narrowed accessors — call these instead of manually unwrapping Optionals ---
