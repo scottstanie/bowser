@@ -20,7 +20,6 @@ dependencies = [
   "rioxarray",
   "matplotlib",
   "pydantic-settings",
-  "geozarr-toolkit",
   "rich",
   "s3fs>=2024.1.0",
   "aiobotocore>=2.13.0",
@@ -57,6 +56,10 @@ widget = [
   "bqplot>=0.12",
 ]
 test = ["pytest", "httpx", "ipython", "types-python-dateutil"]
+# GeoZarr writer: only needed for scripts/tifs_to_geozarr.py. Bowser runtime
+# reads back the attrs with plain zarr and never imports this package, so it
+# stays out of the default env to avoid pulling pydantic>=2.12.
+writer = ["geozarr-toolkit>=0.1.1"]
 
 # [project.urls]
 # Homepage = "https://github.com/opera-adt/bowser"
@@ -96,10 +99,19 @@ python-dateutil = ">=2.9.0.post0,<3"
 s3fs = ">=2024.1.0"
 aiobotocore = ">=2.13.0"
 
+[tool.pixi.feature.writer.dependencies]
+# geozarr-toolkit requires pydantic >= 2.12; bump it in its own solve-group
+# so the default runtime env can keep whatever conda-forge settles on.
+pydantic = ">=2.12"
+
+[tool.pixi.feature.writer.pypi-dependencies]
+geozarr-toolkit = ">=0.1.1"
+
 [tool.pixi.environments]
 default = { solve-group = "default" }
 widget = { features = ["widget"], solve-group = "default" }
 test = { features = ["test"], solve-group = "test" }
+writer = { features = ["writer"], solve-group = "writer" }
 all = { features = ["widget", "test"], solve-group = "all" }
 
 [tool.pixi.tasks]
