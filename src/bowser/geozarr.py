@@ -16,10 +16,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import xarray as xr
 from rasterio.crs import CRS
+
+BloscCname = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 
 __all__ = [
     "resolve_crs",
@@ -27,7 +29,18 @@ __all__ = [
     "build_pyramid",
     "data_group_name",
     "load_pyramid_levels",
+    "shard_encoding",
 ]
+
+# Defaults tuned for DISP-S1-sized cubes on S3: 256×256 chunks keep random-access
+# tile reads cheap, and 4× shard factor on every dim means one HTTP GET per
+# shard covers a 1024×1024 tile block (or 4 timesteps for timeseries reads).
+# Pair of references: opera-utils uses `(4, 256, 256)` chunks × `(1, 4, 4)`
+# shard_factors; we keep time chunk = 1 because bowser tile renders hit one
+# timestep at a time, and we want shard time = 4 so timeseries `/point` reads
+# bundle 4 timesteps per HTTP GET.
+DEFAULT_CHUNK = 256
+DEFAULT_SHARD_FACTOR = 4
 
 logger = logging.getLogger("bowser")
 
@@ -64,6 +77,69 @@ def resolve_crs(ds: xr.Dataset) -> CRS:
         "No CRS found on dataset. Expected GeoZarr 'proj:code'/'proj:wkt2' "
         "root attrs or a CF 'spatial_ref' variable with 'crs_wkt'."
     )
+
+
+def shard_encoding(
+    ds: xr.Dataset,
+    *,
+    chunk: int = DEFAULT_CHUNK,
+    shard_factor: int = DEFAULT_SHARD_FACTOR,
+    compression_name: BloscCname = "zstd",
+    compression_level: int = 6,
+) -> dict[str, dict]:
+    """Build per-variable ``encoding`` dict with chunks + shards + compression.
+
+    Produces a zarr v3 encoding dict ready to hand to
+    ``xr.Dataset.to_zarr(..., encoding=...)``. Every spatial data variable gets:
+
+    - ``chunks`` = 1 on non-spatial dims, ``chunk`` on y/x
+    - ``shards`` = chunks × ``shard_factor`` on every dim
+    - ``compressors`` = one ``BloscCodec`` with ``zstd``
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset whose data_vars will be written. Variables with ndim < 2 are
+        skipped (chunks/shards only make sense for gridded arrays).
+    chunk : int
+        Edge length of a chunk along the y and x dims, in pixels.
+    shard_factor : int
+        Multiplier from chunk → shard shape, applied to every dim.
+    compression_name, compression_level : str, int
+        Blosc sub-codec and compression level (1–9).
+
+    Returns
+    -------
+    dict[str, dict]
+        Mapping from variable name to its per-variable encoding dict.
+
+    """
+    from zarr.codecs import BloscCodec  # noqa: PLC0415 — optional runtime dep
+
+    assert chunk >= 1 and shard_factor >= 1
+    encoding: dict[str, dict] = {}
+    for name, da in ds.data_vars.items():
+        if da.ndim < 2:
+            continue
+        # Match by literal dim name rather than da.rio.x_dim/y_dim, which
+        # requires a set CRS and fails on freshly-opened coarsened levels
+        # inside build_pyramid.
+        chunks = tuple(
+            min(chunk, da.sizes[d]) if d in ("x", "y") else 1 for d in da.dims
+        )
+        shards = tuple(c * shard_factor for c in chunks)
+        # Shard shape must be a whole multiple of chunk shape along every dim;
+        # our construction guarantees this, but assert loudly rather than
+        # silently fall back to no-sharding like opera-utils does.
+        assert all(s % c == 0 for s, c in zip(shards, chunks))
+        encoding[str(name)] = {
+            "chunks": chunks,
+            "shards": shards,
+            "compressors": [
+                BloscCodec(cname=compression_name, clevel=compression_level)
+            ],
+        }
+    return encoding
 
 
 def _multiscales_layout(path: str | Path) -> list[dict] | None:
@@ -199,12 +275,17 @@ def build_pyramid(
     level0: str = "0",
     min_size: int = 256,
     max_levels: int = 6,
+    chunk: int = DEFAULT_CHUNK,
+    shard_factor: int = DEFAULT_SHARD_FACTOR,
 ) -> list[dict]:
     """Build a coarsened multiscale pyramid for data already written at ``path/level0``.
 
     Writes sibling subgroups ``"1"``, ``"2"``, … each at 2× coarser spatial
     resolution than the previous, stopping when ``min(y, x) < min_size`` or
     after ``max_levels`` levels. Uses mean resampling across both spatial dims.
+    Every level is written with the same chunk + shard encoding as level 0
+    (see ``shard_encoding``), so pyramid levels don't undo the small-file
+    consolidation won by sharding.
 
     Returns
     -------
@@ -223,15 +304,16 @@ def build_pyramid(
             break
         logger.info("Coarsening level %d → %d × %d (y × x)", i, y_sz, x_sz)
         coarse = prev.coarsen({"y": 2, "x": 2}, boundary="trim").mean()
-        # Rechunk to match the target layout — coarsen produces dask chunks
-        # that won't align with our (512, 512) zarr chunks otherwise.
-        rechunk_sizes = {
-            "y": min(512, coarse.sizes["y"]),
-            "x": min(512, coarse.sizes["x"]),
+        # Rechunk to the shard shape before writing — dask chunks must be
+        # whole shards for the zarr sharding codec to accept the write.
+        shard = chunk * shard_factor
+        rechunk_sizes: dict[str, int] = {
+            "y": min(shard, coarse.sizes["y"]),
+            "x": min(shard, coarse.sizes["x"]),
         }
         for d in coarse.dims:
             if d not in rechunk_sizes:
-                rechunk_sizes[str(d)] = 1
+                rechunk_sizes[str(d)] = shard_factor
         coarse = coarse.chunk(rechunk_sizes)
         # Strip inherited encoding — chunk hints carried over from /0 will
         # conflict with the newly-sized arrays on /1+.
@@ -242,7 +324,10 @@ def build_pyramid(
         # for coarsened levels, and tile reads would use the wrong affine.
         if "spatial_ref" in coarse.variables:
             coarse["spatial_ref"].attrs.pop("GeoTransform", None)
-        coarse.to_zarr(path, group=str(i), mode="w", consolidated=True)
+        encoding = shard_encoding(coarse, chunk=chunk, shard_factor=shard_factor)
+        coarse.to_zarr(
+            path, group=str(i), mode="w", consolidated=True, encoding=encoding
+        )
         levels.append(
             {
                 "asset": str(i),

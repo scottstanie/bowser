@@ -31,7 +31,13 @@ import rioxarray  # noqa: F401  (registers xr.DataArray.rio accessor)
 import xarray as xr
 from opera_utils import get_dates
 
-from bowser.geozarr import annotate_store, build_pyramid
+from bowser.geozarr import (
+    DEFAULT_CHUNK,
+    DEFAULT_SHARD_FACTOR,
+    annotate_store,
+    build_pyramid,
+    shard_encoding,
+)
 
 logger = logging.getLogger("tifs_to_geozarr")
 
@@ -39,8 +45,24 @@ logger = logging.getLogger("tifs_to_geozarr")
 @click.command()
 @click.argument("config", type=click.Path(exists=True, dir_okay=False))
 @click.argument("output", type=click.Path())
-@click.option("--chunk-x", default=512, show_default=True, type=int)
-@click.option("--chunk-y", default=512, show_default=True, type=int)
+@click.option(
+    "--chunk",
+    default=DEFAULT_CHUNK,
+    show_default=True,
+    type=int,
+    help="Square chunk edge (pixels) along y and x.",
+)
+@click.option(
+    "--shard-factor",
+    default=DEFAULT_SHARD_FACTOR,
+    show_default=True,
+    type=int,
+    help=(
+        "Shard shape = chunk × factor on every dim. "
+        "4× bundles 1024×1024 pixel blocks (16 chunks) per shard on y/x and "
+        "4 timesteps per shard on non-spatial dims — one HTTP GET per shard."
+    ),
+)
 @click.option(
     "--pyramid/--no-pyramid",
     default=False,
@@ -58,8 +80,8 @@ logger = logging.getLogger("tifs_to_geozarr")
 def main(
     config: str,
     output: str,
-    chunk_x: int,
-    chunk_y: int,
+    chunk: int,
+    shard_factor: int,
     pyramid: bool,
     min_pyramid_size: int,
     verbose: int,
@@ -80,19 +102,28 @@ def main(
             file_date_fmt=rg.get("file_date_fmt") or "%Y%m%d",
             display_name=rg["name"],
             name=name,
-            chunk_x=chunk_x,
-            chunk_y=chunk_y,
+            chunk=chunk,
         )
 
     assert data_vars, f"No non-empty raster groups in {config}"
     ds = xr.Dataset(data_vars)
-    encoding = _build_encoding(ds, chunk_x=chunk_x, chunk_y=chunk_y)
+    # Rechunk dask arrays to shard shape before writing — zarr's safe-chunk
+    # validator treats each shard as one atomic write unit, so dask chunks on
+    # every dim (spatial and non-spatial) must align with the shard grid.
+    shard = chunk * shard_factor
+    ds = ds.chunk({d: (shard if d in ("x", "y") else shard_factor) for d in ds.dims})
+    encoding = shard_encoding(ds, chunk=chunk, shard_factor=shard_factor)
 
     if pyramid:
         logger.info("Writing level 0 → %s/0", output)
         ds.to_zarr(output, group="0", mode="w", consolidated=True, encoding=encoding)
         logger.info("Building pyramid")
-        levels = build_pyramid(output, min_size=min_pyramid_size)
+        levels = build_pyramid(
+            output,
+            min_size=min_pyramid_size,
+            chunk=chunk,
+            shard_factor=shard_factor,
+        )
         annotate_store(output, data_group="0", multiscales_levels=levels)
     else:
         logger.info("Writing zarr → %s", output)
@@ -108,12 +139,11 @@ def _build_dataarray(
     file_date_fmt: str,
     display_name: str,
     name: str,
-    chunk_x: int,
-    chunk_y: int,
+    chunk: int,
 ) -> xr.DataArray:
     """Open all files and stack into a single DataArray with an appropriate dim."""
     fmt = file_date_fmt
-    opened = [_open_one(f, chunk_x=chunk_x, chunk_y=chunk_y) for f in file_list]
+    opened = [_open_one(f, chunk=chunk) for f in file_list]
 
     if len(opened) == 1:
         return opened[0].rename(name)
@@ -171,13 +201,13 @@ def _build_dataarray(
     return da.rename(name)
 
 
-def _open_one(path: str, *, chunk_x: int, chunk_y: int) -> xr.DataArray:
+def _open_one(path: str, *, chunk: int) -> xr.DataArray:
     """Open a single-band GeoTIFF, upcasting float16 to float32.
 
     GDAL/rasterio reprojection and titiler tile rendering both choke on
     float16.
     """
-    da = rioxarray.open_rasterio(path, chunks={"x": chunk_x, "y": chunk_y}).squeeze(
+    da = rioxarray.open_rasterio(path, chunks={"x": chunk, "y": chunk}).squeeze(
         "band", drop=True
     )
     if da.dtype == np.float16:
@@ -191,21 +221,6 @@ def _sanitize(name: str) -> str:
     for c in " .-/()":
         out = out.replace(c, "_")
     return "_".join(filter(None, out.split("_")))
-
-
-def _build_encoding(ds: xr.Dataset, *, chunk_x: int, chunk_y: int) -> dict:
-    encoding: dict[str, dict] = {}
-    for name, da in ds.data_vars.items():
-        chunks = []
-        for dim in da.dims:
-            if dim == "x":
-                chunks.append(min(chunk_x, da.sizes[dim]))
-            elif dim == "y":
-                chunks.append(min(chunk_y, da.sizes[dim]))
-            else:
-                chunks.append(1)
-        encoding[name] = {"chunks": tuple(chunks)}
-    return encoding
 
 
 if __name__ == "__main__":
