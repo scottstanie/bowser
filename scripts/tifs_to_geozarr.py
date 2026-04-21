@@ -33,6 +33,8 @@ from opera_utils import get_dates
 
 from bowser.geozarr import (
     DEFAULT_CHUNK,
+    DEFAULT_COMPRESSION_LEVEL,
+    DEFAULT_COMPRESSION_NAME,
     DEFAULT_SHARD_FACTOR,
     annotate_store,
     build_pyramid,
@@ -64,6 +66,23 @@ logger = logging.getLogger("tifs_to_geozarr")
     ),
 )
 @click.option(
+    "--compression",
+    default=DEFAULT_COMPRESSION_NAME,
+    show_default=True,
+    type=click.Choice(["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]),
+    help=(
+        "Blosc sub-codec. lz4 is ~6× faster than zstd at ~10% worse ratio; "
+        "zstd clevel 3 is a good middle ground."
+    ),
+)
+@click.option(
+    "--compression-level",
+    default=DEFAULT_COMPRESSION_LEVEL,
+    show_default=True,
+    type=click.IntRange(1, 9),
+    help="Compression level (1=fastest, 9=smallest).",
+)
+@click.option(
     "--pyramid/--no-pyramid",
     default=False,
     show_default=True,
@@ -82,6 +101,8 @@ def main(
     output: str,
     chunk: int,
     shard_factor: int,
+    compression: str,
+    compression_level: int,
     pyramid: bool,
     min_pyramid_size: int,
     verbose: int,
@@ -112,22 +133,30 @@ def main(
     # every dim (spatial and non-spatial) must align with the shard grid.
     shard = chunk * shard_factor
     ds = ds.chunk({d: (shard if d in ("x", "y") else shard_factor) for d in ds.dims})
-    encoding = shard_encoding(ds, chunk=chunk, shard_factor=shard_factor)
+    encoding = shard_encoding(
+        ds,
+        chunk=chunk,
+        shard_factor=shard_factor,
+        compression_name=compression,  # type: ignore[arg-type]
+        compression_level=compression_level,
+    )
 
     if pyramid:
         logger.info("Writing level 0 → %s/0", output)
-        ds.to_zarr(output, group="0", mode="w", consolidated=True, encoding=encoding)
+        ds.to_zarr(output, group="0", mode="w", consolidated=False, encoding=encoding)
         logger.info("Building pyramid")
         levels = build_pyramid(
             output,
             min_size=min_pyramid_size,
             chunk=chunk,
             shard_factor=shard_factor,
+            compression_name=compression,  # type: ignore[arg-type]
+            compression_level=compression_level,
         )
         annotate_store(output, data_group="0", multiscales_levels=levels)
     else:
         logger.info("Writing zarr → %s", output)
-        ds.to_zarr(output, mode="w", consolidated=True, encoding=encoding)
+        ds.to_zarr(output, mode="w", consolidated=False, encoding=encoding)
         annotate_store(output)
 
     click.echo(f"Wrote {output} with variables: {sorted(data_vars)}")

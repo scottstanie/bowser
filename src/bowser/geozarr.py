@@ -41,6 +41,12 @@ __all__ = [
 # bundle 4 timesteps per HTTP GET.
 DEFAULT_CHUNK = 256
 DEFAULT_SHARD_FACTOR = 4
+# lz4 + clevel 5 = zarr's own default. ~6× faster to compress than zstd-6 at
+# only ~10% worse ratio, and sharding already collapses the file count, so the
+# extra bytes don't cost us HTTP round-trips. Users who want smaller stores
+# can override with `shard_encoding(..., compression_name="zstd", ...)`.
+DEFAULT_COMPRESSION_NAME: "BloscCname" = "lz4"
+DEFAULT_COMPRESSION_LEVEL = 5
 
 logger = logging.getLogger("bowser")
 
@@ -84,8 +90,8 @@ def shard_encoding(
     *,
     chunk: int = DEFAULT_CHUNK,
     shard_factor: int = DEFAULT_SHARD_FACTOR,
-    compression_name: BloscCname = "zstd",
-    compression_level: int = 6,
+    compression_name: BloscCname = DEFAULT_COMPRESSION_NAME,
+    compression_level: int = DEFAULT_COMPRESSION_LEVEL,
 ) -> dict[str, dict]:
     """Build per-variable ``encoding`` dict with chunks + shards + compression.
 
@@ -195,7 +201,7 @@ def annotate_store(
     variable: str | None = None,
     data_group: str | None = None,
     multiscales_levels: list[dict] | None = None,
-    consolidate: bool = True,
+    consolidate: bool = False,
 ) -> None:
     """Write GeoZarr attrs to a zarr store.
 
@@ -217,9 +223,13 @@ def annotate_store(
         ``multiscales.layout`` entries for a pyramid. When not given but
         ``data_group`` is set, a single-level layout pointing at ``data_group``
         is written.
-    consolidate : bool, default True
-        Re-consolidate metadata at root (and at the data group) so downstream
-        readers still find ``.zmetadata``.
+    consolidate : bool, default False
+        Re-consolidate metadata at root (and at the data group). Off by
+        default because (a) bowser opens every store with
+        ``consolidated=False`` to work around the aiobotocore ContextVar bug
+        on S3, so ``.zmetadata`` is never read, and (b) zarr v3 hasn't
+        standardized consolidated metadata yet — leaving it on emits a
+        ``ZarrUserWarning`` on every write.
 
     """
     import zarr
@@ -232,7 +242,13 @@ def annotate_store(
     from geozarr_toolkit.helpers.metadata import create_multiscales_layout
 
     # 1. Write spatial:/proj:/zarr_conventions on the data group.
-    ds = xr.open_zarr(path, group=data_group) if data_group else xr.open_zarr(path)
+    # consolidated=False: we don't write .zmetadata (see the consolidate kwarg
+    # above), so asking zarr to look for it just produces a fallback warning.
+    ds = (
+        xr.open_zarr(path, group=data_group, consolidated=False)
+        if data_group
+        else xr.open_zarr(path, consolidated=False)
+    )
     crs = resolve_crs(ds)
     ds = ds.rio.write_crs(crs)
 
@@ -277,6 +293,8 @@ def build_pyramid(
     max_levels: int = 6,
     chunk: int = DEFAULT_CHUNK,
     shard_factor: int = DEFAULT_SHARD_FACTOR,
+    compression_name: BloscCname = DEFAULT_COMPRESSION_NAME,
+    compression_level: int = DEFAULT_COMPRESSION_LEVEL,
 ) -> list[dict]:
     """Build a coarsened multiscale pyramid for data already written at ``path/level0``.
 
@@ -293,7 +311,7 @@ def build_pyramid(
         ``multiscales.layout`` entries ready to hand to ``annotate_store``.
 
     """
-    ds = xr.open_zarr(path, group=level0)
+    ds = xr.open_zarr(path, group=level0, consolidated=False)
 
     levels: list[dict[str, Any]] = [{"asset": level0}]
     prev = ds
@@ -324,9 +342,15 @@ def build_pyramid(
         # for coarsened levels, and tile reads would use the wrong affine.
         if "spatial_ref" in coarse.variables:
             coarse["spatial_ref"].attrs.pop("GeoTransform", None)
-        encoding = shard_encoding(coarse, chunk=chunk, shard_factor=shard_factor)
+        encoding = shard_encoding(
+            coarse,
+            chunk=chunk,
+            shard_factor=shard_factor,
+            compression_name=compression_name,
+            compression_level=compression_level,
+        )
         coarse.to_zarr(
-            path, group=str(i), mode="w", consolidated=True, encoding=encoding
+            path, group=str(i), mode="w", consolidated=False, encoding=encoding
         )
         levels.append(
             {
