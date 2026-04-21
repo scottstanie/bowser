@@ -15,6 +15,8 @@ References
 from __future__ import annotations
 
 import logging
+import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,6 +33,7 @@ __all__ = [
     "data_group_name",
     "load_pyramid_levels",
     "shard_encoding",
+    "ZarrWriteConfig",
 ]
 
 # Defaults tuned for DISP-S1-sized cubes on S3: 256×256 chunks keep random-access
@@ -49,7 +52,56 @@ DEFAULT_SHARD_FACTOR = 4
 DEFAULT_COMPRESSION_NAME: "BloscCname" = "lz4"
 DEFAULT_COMPRESSION_LEVEL = 5
 
+# Default quantize targets: variables whose values are inherently noisy and
+# carry only a few bits of real information per sample (coherence-like
+# quality layers). Quantize zeroes low mantissa bits before compression —
+# adjacent pixels then share more bit patterns, so Blosc finds longer runs.
+# On DISP-S1 temporal coherence the on-disk size drops ~40% with no
+# visual or analytic impact on the ~1 bit of real signal per pixel.
+DEFAULT_QUANTIZE_PATTERNS: tuple[str, ...] = (
+    "coherence",
+    "similarity",
+    "dispersion",
+)
+
 logger = logging.getLogger("bowser")
+
+
+@dataclass(frozen=True)
+class ZarrWriteConfig:
+    """Encoding knobs for a sharded zarr v3 write.
+
+    Bundles the chunk / shard / compression / quantize parameters that
+    ``shard_encoding`` and ``build_pyramid`` both consume. Construct one at
+    CLI-parse time and hand it around — saves threading six kwargs through
+    every call site.
+
+    Attributes
+    ----------
+    chunk : int
+        Square chunk edge (pixels) along y and x.
+    shard_factor : int
+        Shard shape = chunk × factor on every dim. 1 disables sharding.
+    compression_name, compression_level : str, int
+        Blosc sub-codec and clevel.
+    quantize_digits : int or None
+        If set, matching float variables get a ``Quantize`` filter before
+        compression that rounds to this many significant digits. ``None``
+        means no quantization.
+    quantize_patterns : tuple of str
+        Substring patterns matched against variable names (case-insensitive)
+        to decide whether a variable gets the quantize filter. Integer-dtype
+        variables are always skipped regardless of name.
+    """
+
+    chunk: int = DEFAULT_CHUNK
+    shard_factor: int = DEFAULT_SHARD_FACTOR
+    compression_name: BloscCname = DEFAULT_COMPRESSION_NAME
+    compression_level: int = DEFAULT_COMPRESSION_LEVEL
+    quantize_digits: int | None = None
+    quantize_patterns: tuple[str, ...] = field(
+        default_factory=lambda: DEFAULT_QUANTIZE_PATTERNS
+    )
 
 
 def resolve_crs(ds: xr.Dataset) -> CRS:
@@ -88,32 +140,28 @@ def resolve_crs(ds: xr.Dataset) -> CRS:
 
 def shard_encoding(
     ds: xr.Dataset,
-    *,
-    chunk: int = DEFAULT_CHUNK,
-    shard_factor: int = DEFAULT_SHARD_FACTOR,
-    compression_name: BloscCname = DEFAULT_COMPRESSION_NAME,
-    compression_level: int = DEFAULT_COMPRESSION_LEVEL,
+    config: ZarrWriteConfig | None = None,
 ) -> dict[str, dict]:
     """Build per-variable ``encoding`` dict with chunks + shards + compression.
 
     Produces a zarr v3 encoding dict ready to hand to
-    ``xr.Dataset.to_zarr(..., encoding=...)``. Every spatial data variable gets:
+    ``xr.Dataset.to_zarr(..., encoding=...)``. Every spatial data variable
+    gets:
 
-    - ``chunks`` = 1 on non-spatial dims, ``chunk`` on y/x
-    - ``shards`` = chunks × ``shard_factor`` on every dim
-    - ``compressors`` = one ``BloscCodec`` with ``zstd``
+    - ``chunks`` = 1 on non-spatial dims, ``config.chunk`` on y/x
+    - ``shards`` = chunks × ``config.shard_factor`` on every dim (when > 1)
+    - ``filters`` = one ``Quantize`` codec if the variable name matches a
+      configured pattern and the dtype is floating-point
+    - ``compressors`` = one ``BloscCodec``
 
     Parameters
     ----------
     ds : xr.Dataset
         Dataset whose data_vars will be written. Variables with ndim < 2 are
         skipped (chunks/shards only make sense for gridded arrays).
-    chunk : int
-        Edge length of a chunk along the y and x dims, in pixels.
-    shard_factor : int
-        Multiplier from chunk → shard shape, applied to every dim.
-    compression_name, compression_level : str, int
-        Blosc sub-codec and compression level (1–9).
+    config : ZarrWriteConfig, optional
+        Encoding knobs. Defaults to ``ZarrWriteConfig()`` (chunks=256,
+        shard_factor=4, Blosc/lz4/5, no quantization).
 
     Returns
     -------
@@ -123,7 +171,8 @@ def shard_encoding(
     """
     from zarr.codecs import BloscCodec  # noqa: PLC0415 — optional runtime dep
 
-    assert chunk >= 1 and shard_factor >= 1
+    cfg = config or ZarrWriteConfig()
+    assert cfg.chunk >= 1 and cfg.shard_factor >= 1
     encoding: dict[str, dict] = {}
     for name, da in ds.data_vars.items():
         if da.ndim < 2:
@@ -132,23 +181,45 @@ def shard_encoding(
         # requires a set CRS and fails on freshly-opened coarsened levels
         # inside build_pyramid.
         chunks = tuple(
-            min(chunk, da.sizes[d]) if d in ("x", "y") else 1 for d in da.dims
+            min(cfg.chunk, da.sizes[d]) if d in ("x", "y") else 1 for d in da.dims
         )
         var_enc: dict = {
             "chunks": chunks,
             "compressors": [
-                BloscCodec(cname=compression_name, clevel=compression_level)
+                BloscCodec(cname=cfg.compression_name, clevel=cfg.compression_level)
             ],
         }
+        quantize = _quantize_codec_for(str(name), da.dtype, cfg)
+        if quantize is not None:
+            var_enc["filters"] = [quantize]
         # shard_factor=1 means "don't wrap chunks in a shard" — dask chunks can
         # stay small, each dask task writes exactly one chunk, parallelism is
         # maximum. Useful when write time dominates (local disk, small cubes).
-        if shard_factor > 1:
-            shards = tuple(c * shard_factor for c in chunks)
+        if cfg.shard_factor > 1:
+            shards = tuple(c * cfg.shard_factor for c in chunks)
             assert all(s % c == 0 for s, c in zip(shards, chunks))
             var_enc["shards"] = shards
         encoding[str(name)] = var_enc
     return encoding
+
+
+def _quantize_codec_for(name: str, dtype: np.dtype, cfg: ZarrWriteConfig):
+    """Return a ``Quantize`` codec for this variable, or ``None`` to skip.
+
+    Integer dtypes always skip (quantize is a float-only codec). Floats are
+    quantized when ``cfg.quantize_digits`` is set and the variable name
+    contains any of ``cfg.quantize_patterns`` (case-insensitive).
+    """
+    if cfg.quantize_digits is None:
+        return None
+    if not np.issubdtype(dtype, np.floating):
+        return None
+    lname = name.lower()
+    if not any(pat.lower() in lname for pat in cfg.quantize_patterns):
+        return None
+    from zarr.codecs.numcodecs import Quantize  # noqa: PLC0415 — optional dep
+
+    return Quantize(digits=cfg.quantize_digits, dtype=str(dtype))
 
 
 def _multiscales_layout(path: str | Path) -> list[dict] | None:
@@ -316,11 +387,26 @@ def _coarsen_2x2_numpy(ds: xr.Dataset) -> xr.Dataset:
         arr = arr[..., :ny, :nx]
         # Reshape last two axes to (ny//2, 2, nx//2, 2), mean the two "2" axes.
         reshaped = arr.reshape(arr.shape[:-2] + (ny // 2, 2, nx // 2, 2))
-        # Upcast int → float for the mean so we don't truncate silently; cast
-        # back at the end to preserve the original dtype on disk.
-        coarse = reshaped.mean(axis=(-3, -1), dtype=np.float32).astype(
-            arr.dtype, copy=False
-        )
+        if np.issubdtype(arr.dtype, np.floating):
+            # nanmean rather than mean: plain mean propagates NaN so any 2×2
+            # block touching a NaN becomes NaN and the coarsened tile is
+            # effectively masked out (visible as black/transparent tiles at
+            # zoom). Coherence-like masked layers have enough NaNs that
+            # propagating them destroys the pyramid. All-NaN blocks
+            # legitimately stay NaN; suppress the RuntimeWarning those raise.
+            with np.errstate(invalid="ignore"), warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore", r"Mean of empty slice", RuntimeWarning
+                )
+                coarse = np.nanmean(reshaped, axis=(-3, -1), dtype=np.float32).astype(
+                    arr.dtype, copy=False
+                )
+        else:
+            # Integer dtypes don't have NaN; use plain mean. Cast back to
+            # original dtype after (mean upcasts to float64 otherwise).
+            coarse = reshaped.mean(axis=(-3, -1), dtype=np.float32).astype(
+                arr.dtype, copy=False
+            )
         new_vars[str(name)] = xr.DataArray(coarse, dims=da.dims, attrs=dict(da.attrs))
 
     y_old = np.asarray(ds.y.values)
@@ -345,10 +431,7 @@ def build_pyramid(
     level0: str = "0",
     min_size: int = 256,
     max_levels: int = 6,
-    chunk: int = DEFAULT_CHUNK,
-    shard_factor: int = DEFAULT_SHARD_FACTOR,
-    compression_name: BloscCname = DEFAULT_COMPRESSION_NAME,
-    compression_level: int = DEFAULT_COMPRESSION_LEVEL,
+    config: ZarrWriteConfig | None = None,
     level_0_ds: xr.Dataset | None = None,
 ) -> list[dict]:
     """Build a coarsened multiscale pyramid for data already written at ``path/level0``.
@@ -372,8 +455,8 @@ def build_pyramid(
         Stop building once either spatial dim drops below this.
     max_levels : int
         Safety cap on the number of coarsened levels.
-    chunk, shard_factor, compression_name, compression_level
-        Forwarded to ``shard_encoding`` for every written level.
+    config : ZarrWriteConfig, optional
+        Encoding config forwarded to ``shard_encoding`` for every level.
     level_0_ds : xr.Dataset, optional
         If provided, used as the starting point instead of re-reading level
         0 from disk. The converter passes its in-memory numpy-backed
@@ -386,6 +469,7 @@ def build_pyramid(
         ``multiscales.layout`` entries ready to hand to ``annotate_store``.
 
     """
+    cfg = config or ZarrWriteConfig()
     if level_0_ds is not None:
         ds = level_0_ds
     else:
@@ -411,13 +495,7 @@ def build_pyramid(
         # freshly-shaped arrays.
         for v in list(coarse.variables):
             coarse[v].encoding.clear()
-        encoding = shard_encoding(
-            coarse,
-            chunk=chunk,
-            shard_factor=shard_factor,
-            compression_name=compression_name,
-            compression_level=compression_level,
-        )
+        encoding = shard_encoding(coarse, cfg)
         coarse.to_zarr(
             path, group=str(i), mode="w", consolidated=False, encoding=encoding
         )

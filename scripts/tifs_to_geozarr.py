@@ -48,7 +48,9 @@ from bowser.geozarr import (
     DEFAULT_CHUNK,
     DEFAULT_COMPRESSION_LEVEL,
     DEFAULT_COMPRESSION_NAME,
+    DEFAULT_QUANTIZE_PATTERNS,
     DEFAULT_SHARD_FACTOR,
+    ZarrWriteConfig,
     annotate_store,
     build_pyramid,
     shard_encoding,
@@ -106,6 +108,28 @@ def _timed(label: str):
     help="Compression level (1=fastest, 9=smallest).",
 )
 @click.option(
+    "--quantize-digits",
+    default=0,
+    show_default=True,
+    type=click.IntRange(0, 10),
+    help=(
+        "If > 0, round matching float variables to this many significant "
+        "digits before compression (via numcodecs Quantize). Typical "
+        "coherence-like layers carry ~1 bit of real info per pixel and "
+        "compress ~40% smaller with `--quantize-digits 3`. 0 disables."
+    ),
+)
+@click.option(
+    "--quantize-patterns",
+    default=",".join(DEFAULT_QUANTIZE_PATTERNS),
+    show_default=True,
+    help=(
+        "Comma-separated substrings matched against variable names (lower-"
+        "case) to decide which float vars get the quantize filter. "
+        "Integer-dtype variables are always skipped."
+    ),
+)
+@click.option(
     "--workers",
     default=0,
     show_default=True,
@@ -136,6 +160,8 @@ def main(
     shard_factor: int,
     compression: str,
     compression_level: int,
+    quantize_digits: int,
+    quantize_patterns: str,
     workers: int,
     pyramid: bool,
     min_pyramid_size: int,
@@ -168,13 +194,18 @@ def main(
 
     with _timed("assemble xr.Dataset"):
         ds = _assemble_dataset(loaded, ref)
-    encoding = shard_encoding(
-        ds,
+
+    write_cfg = ZarrWriteConfig(
         chunk=chunk,
         shard_factor=shard_factor,
         compression_name=compression,  # type: ignore[arg-type]
         compression_level=compression_level,
+        quantize_digits=quantize_digits if quantize_digits > 0 else None,
+        quantize_patterns=tuple(
+            p.strip() for p in quantize_patterns.split(",") if p.strip()
+        ),
     )
+    encoding = shard_encoding(ds, write_cfg)
 
     if pyramid:
         with _timed("write level 0"):
@@ -187,10 +218,7 @@ def main(
             levels = build_pyramid(
                 output,
                 min_size=min_pyramid_size,
-                chunk=chunk,
-                shard_factor=shard_factor,
-                compression_name=compression,  # type: ignore[arg-type]
-                compression_level=compression_level,
+                config=write_cfg,
                 level_0_ds=ds,
             )
         with _timed("annotate_store"):
