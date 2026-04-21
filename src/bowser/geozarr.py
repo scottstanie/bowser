@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 import xarray as xr
 from rasterio.crs import CRS
 
@@ -287,6 +288,57 @@ def annotate_store(
             zarr.consolidate_metadata(str(path), path=data_group)
 
 
+def _coarsen_2x2_numpy(ds: xr.Dataset) -> xr.Dataset:
+    """Coarsen every (..., y, x) variable by 2×2 mean, in pure numpy.
+
+    A pyramidal write step needs roughly 1 s of real work per level (reshape
+    + mean + compress). Doing it via ``xr.Dataset.coarsen().mean()`` is
+    ~100× slower in practice because coarsen is lazy and defers to dask,
+    which rebuilds a graph referencing the previous level's on-disk zarr
+    and re-traverses it every level. This helper assumes every spatial
+    variable has dims ending in ``(y, x)`` (the converter's output layout)
+    and does the whole level in-memory.
+    """
+    assert "y" in ds.dims and "x" in ds.dims, "expected y/x dims on the dataset"
+    new_vars: dict[str, xr.DataArray] = {}
+    for name, da in ds.data_vars.items():
+        if "y" not in da.dims or "x" not in da.dims:
+            # Non-spatial var (e.g. scalar spatial_ref), carry over unchanged.
+            new_vars[str(name)] = da
+            continue
+        assert da.dims[-2:] == (
+            "y",
+            "x",
+        ), f"{name}: expected dims to end in (y, x), got {da.dims}"
+        arr = np.asarray(da.values)
+        ny = (arr.shape[-2] // 2) * 2
+        nx = (arr.shape[-1] // 2) * 2
+        arr = arr[..., :ny, :nx]
+        # Reshape last two axes to (ny//2, 2, nx//2, 2), mean the two "2" axes.
+        reshaped = arr.reshape(arr.shape[:-2] + (ny // 2, 2, nx // 2, 2))
+        # Upcast int → float for the mean so we don't truncate silently; cast
+        # back at the end to preserve the original dtype on disk.
+        coarse = reshaped.mean(axis=(-3, -1), dtype=np.float32).astype(
+            arr.dtype, copy=False
+        )
+        new_vars[str(name)] = xr.DataArray(coarse, dims=da.dims, attrs=dict(da.attrs))
+
+    y_old = np.asarray(ds.y.values)
+    x_old = np.asarray(ds.x.values)
+    ny = (len(y_old) // 2) * 2
+    nx = (len(x_old) // 2) * 2
+    y_new = y_old[:ny].reshape(-1, 2).mean(axis=1)
+    x_new = x_old[:nx].reshape(-1, 2).mean(axis=1)
+
+    coords: dict[str, Any] = {"y": y_new, "x": x_new}
+    for cname, c in ds.coords.items():
+        if cname in ("y", "x"):
+            continue
+        coords[str(cname)] = c
+
+    return xr.Dataset(new_vars, coords=coords, attrs=dict(ds.attrs))
+
+
 def build_pyramid(
     path: str | Path,
     *,
@@ -297,15 +349,36 @@ def build_pyramid(
     shard_factor: int = DEFAULT_SHARD_FACTOR,
     compression_name: BloscCname = DEFAULT_COMPRESSION_NAME,
     compression_level: int = DEFAULT_COMPRESSION_LEVEL,
+    level_0_ds: xr.Dataset | None = None,
 ) -> list[dict]:
     """Build a coarsened multiscale pyramid for data already written at ``path/level0``.
 
     Writes sibling subgroups ``"1"``, ``"2"``, … each at 2× coarser spatial
     resolution than the previous, stopping when ``min(y, x) < min_size`` or
-    after ``max_levels`` levels. Uses mean resampling across both spatial dims.
+    after ``max_levels`` levels. Uses 2×2 mean resampling in numpy — see
+    ``_coarsen_2x2_numpy`` for why we sidestep xarray's lazy coarsen.
+
     Every level is written with the same chunk + shard encoding as level 0
     (see ``shard_encoding``), so pyramid levels don't undo the small-file
     consolidation won by sharding.
+
+    Parameters
+    ----------
+    path : str or Path
+        Zarr store path. Level-0 data must already exist at ``path/<level0>``.
+    level0 : str
+        Subgroup name where level-0 data lives.
+    min_size : int
+        Stop building once either spatial dim drops below this.
+    max_levels : int
+        Safety cap on the number of coarsened levels.
+    chunk, shard_factor, compression_name, compression_level
+        Forwarded to ``shard_encoding`` for every written level.
+    level_0_ds : xr.Dataset, optional
+        If provided, used as the starting point instead of re-reading level
+        0 from disk. The converter passes its in-memory numpy-backed
+        Dataset directly — saves both the disk read and the full dask
+        re-traversal that the old implementation did on every pyramid level.
 
     Returns
     -------
@@ -313,7 +386,12 @@ def build_pyramid(
         ``multiscales.layout`` entries ready to hand to ``annotate_store``.
 
     """
-    ds = xr.open_zarr(path, group=level0, consolidated=False)
+    if level_0_ds is not None:
+        ds = level_0_ds
+    else:
+        # Eagerly load — we're about to traverse the whole thing multiple
+        # times for mean-coarsen, and 4 GB fits in RAM on any dev machine.
+        ds = xr.open_zarr(path, group=level0, consolidated=False).load()
 
     levels: list[dict[str, Any]] = [{"asset": level0}]
     prev = ds
@@ -323,27 +401,16 @@ def build_pyramid(
         if y_sz < min_size or x_sz < min_size:
             break
         logger.info("Coarsening level %d → %d × %d (y × x)", i, y_sz, x_sz)
-        coarse = prev.coarsen({"y": 2, "x": 2}, boundary="trim").mean()
-        # Rechunk to the shard shape before writing — dask chunks must be
-        # whole shards for the zarr sharding codec to accept the write.
-        shard = chunk * shard_factor
-        rechunk_sizes: dict[str, int] = {
-            "y": min(shard, coarse.sizes["y"]),
-            "x": min(shard, coarse.sizes["x"]),
-        }
-        for d in coarse.dims:
-            if d not in rechunk_sizes:
-                rechunk_sizes[str(d)] = shard_factor
-        coarse = coarse.chunk(rechunk_sizes)
-        # Strip inherited encoding — chunk hints carried over from /0 will
-        # conflict with the newly-sized arrays on /1+.
-        for v in list(coarse.variables):
-            coarse[v].encoding.clear()
+        coarse = _coarsen_2x2_numpy(prev)
         # Drop the stale GeoTransform attribute carried over from level 0; if
         # we left it, rioxarray would report the original full-res pixel size
         # for coarsened levels, and tile reads would use the wrong affine.
         if "spatial_ref" in coarse.variables:
             coarse["spatial_ref"].attrs.pop("GeoTransform", None)
+        # Clear any inherited encoding hints that would conflict with the
+        # freshly-shaped arrays.
+        for v in list(coarse.variables):
+            coarse[v].encoding.clear()
         encoding = shard_encoding(
             coarse,
             chunk=chunk,

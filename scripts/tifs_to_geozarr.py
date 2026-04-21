@@ -191,6 +191,7 @@ def main(
                 shard_factor=shard_factor,
                 compression_name=compression,  # type: ignore[arg-type]
                 compression_level=compression_level,
+                level_0_ds=ds,
             )
         with _timed("annotate_store"):
             annotate_store(output, data_group="0", multiscales_levels=levels)
