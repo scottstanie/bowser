@@ -6,6 +6,38 @@ once an item is tracked upstream, drop it from this list.
 
 ## Open
 
+### 0. aiobotocore ContextVar conflict when zarr opens an S3 URI
+
+**Where:** `bowser.geozarr._multiscales_layout`, `state.BowserState.load_zarr`
+(the S3 path). Works around it by passing `consolidated=False` to
+`xr.open_zarr`, which avoids the `zarr.open_consolidated` sync-over-async
+code path that triggers the bug.
+
+**What's wrong:** In our pixi/linux runtime, `xr.open_zarr("s3://…")` via
+the default consolidated path spawns a helper thread with a fresh event
+loop to drive `aiobotocore`. aiobotocore creates a `ContextVar` token on
+one event loop and tries to reset it on another → `ValueError: <Token …>
+was created in a different Context`.
+
+Known aiobotocore issue (see #918 upstream). Also forces
+`deploy/ec2-bootstrap.sh` to inject IAM role credentials via env vars
+instead of letting `s3fs` discover them through IMDS — the same async
+credential refresh path hits the same ContextVar conflict.
+
+**Fix options:**
+
+1. Upgrade `aiobotocore` past the fixed version when one ships.
+2. Replace `s3fs` with `obstore` (sync, no aiobotocore dep) — this is the
+   path `titiler.xarray` already uses.
+3. Pre-warm a single `s3fs.S3FileSystem(asynchronous=False)` instance and
+   pass it in via `storage_options`.
+
+Worth tracking: the workaround is visible in every S3-backed entrypoint;
+if we add more, same treatment needed.
+
+---
+
+
 ### 1. `file_list` in MD mode is a vestigial fake-URI
 
 **Where:** `main.py` `create_xarray_dataset_info` (`file_list: ["variable:foo:time:N", ...]`).

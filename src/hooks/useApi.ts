@@ -1,9 +1,30 @@
 import { useCallback } from 'react';
 import { MultiPointTimeSeriesData, LayerMask } from '../types';
 
+/**
+ * Read `?dataset=<id>` from the current URL.
+ *
+ * Used to route all API calls at the catalog-registered dataset the user
+ * picked (or the default when absent). Two clients on two datasets never
+ * share server-side state because the dataset id travels on every request.
+ */
+function currentDatasetId(): string | null {
+  return new URLSearchParams(window.location.search).get('dataset');
+}
+
+/**
+ * Append `dataset=<id>` to an URLSearchParams when one is set.
+ */
+function withDataset(params: URLSearchParams): URLSearchParams {
+  const id = currentDatasetId();
+  if (id) params.set('dataset', id);
+  return params;
+}
+
 export function useApi() {
   const fetchDatasets = useCallback(async () => {
-    const response = await fetch('/datasets');
+    const url = `/datasets?${withDataset(new URLSearchParams())}`;
+    const response = await fetch(url);
     return await response.json();
   }, []);
 
@@ -19,11 +40,11 @@ export function useApi() {
   }, []);
 
   const fetchPointTimeSeries = useCallback(async (lon: number, lat: number, datasetName: string) => {
-    const params = new URLSearchParams({
+    const params = withDataset(new URLSearchParams({
       dataset_name: datasetName,
       lon: lon.toString(),
       lat: lat.toString(),
-    });
+    }));
 
     try {
       const response = await fetch(`/point?${params}`);
@@ -52,7 +73,7 @@ export function useApi() {
       params.ref_lon = refLon.toString();
     }
 
-    const urlParams = new URLSearchParams(params);
+    const urlParams = withDataset(new URLSearchParams(params));
 
     try {
       const response = await fetch(`/chart_point?${urlParams}`);
@@ -83,7 +104,9 @@ export function useApi() {
     };
 
     try {
-      const response = await fetch('/multi_point', {
+      const id = currentDatasetId();
+      const url = id ? `/multi_point?dataset=${encodeURIComponent(id)}` : '/multi_point';
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -114,7 +137,7 @@ export function useApi() {
       params.ref_lon = refLon.toString();
     }
 
-    const urlParams = new URLSearchParams(params);
+    const urlParams = withDataset(new URLSearchParams(params));
 
     try {
       const response = await fetch(`/trend_analysis/${datasetName}?${urlParams}`);
@@ -127,7 +150,10 @@ export function useApi() {
 
   const fetchTimeBounds = useCallback(async (datasetName: string) => {
     try {
-      const response = await fetch(`/datasets/${datasetName}/time_bounds`);
+      const params = withDataset(new URLSearchParams());
+      const qs = params.toString();
+      const url = qs ? `/datasets/${datasetName}/time_bounds?${qs}` : `/datasets/${datasetName}/time_bounds`;
+      const response = await fetch(url);
       return await response.json();
     } catch (error) {
       console.error('Error fetching time bounds:', error);
@@ -147,7 +173,9 @@ export function useApi() {
     refBufferM: number = 0,
   ) => {
     try {
-      const response = await fetch('/buffer_timeseries', {
+      const id = currentDatasetId();
+      const url = id ? `/buffer_timeseries?dataset=${encodeURIComponent(id)}` : '/buffer_timeseries';
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -179,5 +207,6 @@ export function useApi() {
     fetchTrendAnalysis,
     fetchTimeBounds,
     fetchBufferTimeSeries,
+    currentDatasetId,
   };
 }

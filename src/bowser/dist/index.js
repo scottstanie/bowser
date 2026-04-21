@@ -7266,9 +7266,18 @@ function useAppContext() {
   }
   return context;
 }
+function currentDatasetId() {
+  return new URLSearchParams(window.location.search).get("dataset");
+}
+function withDataset(params) {
+  const id2 = currentDatasetId();
+  if (id2) params.set("dataset", id2);
+  return params;
+}
 function useApi() {
   const fetchDatasets = reactExports.useCallback(async () => {
-    const response = await fetch("/datasets");
+    const url = `/datasets?${withDataset(new URLSearchParams())}`;
+    const response = await fetch(url);
     return await response.json();
   }, []);
   const fetchDataMode = reactExports.useCallback(async () => {
@@ -7281,11 +7290,11 @@ function useApi() {
     return await response.json();
   }, []);
   const fetchPointTimeSeries = reactExports.useCallback(async (lon, lat, datasetName) => {
-    const params = new URLSearchParams({
+    const params = withDataset(new URLSearchParams({
       dataset_name: datasetName,
       lon: lon.toString(),
       lat: lat.toString()
-    });
+    }));
     try {
       const response = await fetch(`/point?${params}`);
       return await response.json();
@@ -7304,7 +7313,7 @@ function useApi() {
       params.ref_lat = refLat.toString();
       params.ref_lon = refLon.toString();
     }
-    const urlParams = new URLSearchParams(params);
+    const urlParams = withDataset(new URLSearchParams(params));
     try {
       const response = await fetch(`/chart_point?${urlParams}`);
       return await response.json();
@@ -7324,7 +7333,9 @@ function useApi() {
       ref_buffer_m: refBufferM
     };
     try {
-      const response = await fetch("/multi_point", {
+      const id2 = currentDatasetId();
+      const url = id2 ? `/multi_point?dataset=${encodeURIComponent(id2)}` : "/multi_point";
+      const response = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -7346,7 +7357,7 @@ function useApi() {
       params.ref_lat = refLat.toString();
       params.ref_lon = refLon.toString();
     }
-    const urlParams = new URLSearchParams(params);
+    const urlParams = withDataset(new URLSearchParams(params));
     try {
       const response = await fetch(`/trend_analysis/${datasetName}?${urlParams}`);
       return await response.json();
@@ -7357,7 +7368,10 @@ function useApi() {
   }, []);
   const fetchTimeBounds = reactExports.useCallback(async (datasetName) => {
     try {
-      const response = await fetch(`/datasets/${datasetName}/time_bounds`);
+      const params = withDataset(new URLSearchParams());
+      const qs = params.toString();
+      const url = qs ? `/datasets/${datasetName}/time_bounds?${qs}` : `/datasets/${datasetName}/time_bounds`;
+      const response = await fetch(url);
       return await response.json();
     } catch (error) {
       console.error("Error fetching time bounds:", error);
@@ -7366,7 +7380,9 @@ function useApi() {
   }, []);
   const fetchBufferTimeSeries = reactExports.useCallback(async (lon, lat, datasetName, bufferM, nSamples, refLon, refLat, layerMasks = [], refBufferM = 0) => {
     try {
-      const response = await fetch("/buffer_timeseries", {
+      const id2 = currentDatasetId();
+      const url = id2 ? `/buffer_timeseries?dataset=${encodeURIComponent(id2)}` : "/buffer_timeseries";
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -7397,7 +7413,8 @@ function useApi() {
     fetchMultiPointTimeSeries,
     fetchTrendAnalysis,
     fetchTimeBounds,
-    fetchBufferTimeSeries
+    fetchBufferTimeSeries,
+    currentDatasetId
   };
 }
 function useAttribution(map2, attribution) {
@@ -29679,6 +29696,8 @@ function RasterTileLayer() {
       if (state.dataMode === "md") {
         if (state.customMaskPath) params.custom_mask_path = state.customMaskPath;
       }
+      const datasetId = new URLSearchParams(window.location.search).get("dataset");
+      if (datasetId) params.dataset = datasetId;
       const urlParams = new URLSearchParams(params).toString();
       const endpoint = state.dataMode === "md" ? `/md/WebMercatorQuad/tilejson.json?${urlParams}` : `/cog/WebMercatorQuad/tilejson.json?${urlParams}`;
       try {

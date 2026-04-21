@@ -189,6 +189,12 @@ function RasterTileLayer() {
         if (state.customMaskPath) params.custom_mask_path = state.customMaskPath;
       }
 
+      // Thread the catalog-selected dataset (if the user came from the
+      // picker) onto the tile URL so the backend routes this tile to the
+      // right BowserState.
+      const datasetId = new URLSearchParams(window.location.search).get('dataset');
+      if (datasetId) params.dataset = datasetId;
+
       const urlParams = new URLSearchParams(params).toString();
       const endpoint = state.dataMode === 'md'
         ? `/md/WebMercatorQuad/tilejson.json?${urlParams}`
