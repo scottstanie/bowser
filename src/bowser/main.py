@@ -13,7 +13,16 @@ import matplotlib
 import numpy as np
 import rasterio
 import xarray as xr
-from fastapi import Body, FastAPI, HTTPException, Query, Request, Response, UploadFile
+from fastapi import (
+    Body,
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response as StarletteResponse
@@ -22,7 +31,7 @@ from starlette.templating import Jinja2Templates
 from starlette_cramjam.middleware import CompressionMiddleware
 
 from .config import settings
-from .state import BowserState
+from .state import BowserState, DatasetRegistry
 from .utils import (
     calculate_trend,
     desensitize_mpl_case,
@@ -154,7 +163,48 @@ if settings.BOWSER_HTPASSWD_FILE:
 
 
 state = BowserState.load(settings)
-print(f"Data loading complete in {time.time() - t0:.1f} sec. Mode: {state.mode}")
+# Multi-dataset registry (empty unless BOWSER_CATALOG_FILE is set). Every MD
+# endpoint that accepts a ``dataset`` query param routes through this; when
+# ``dataset`` is omitted, callers fall back to the single ``state`` above so
+# the existing single-dataset CLI flow keeps working unchanged.
+registry = DatasetRegistry.from_settings(settings)
+print(
+    f"Data loading complete in {time.time() - t0:.1f} sec. "
+    f"Mode: {state.mode}, catalog entries: {len(registry.ids())}"
+)
+
+
+def _resolve_state(dataset: str | None) -> BowserState:
+    """Return the BowserState to serve a request from.
+
+    - ``dataset=None`` → the default single-dataset ``state`` (legacy flow).
+      In catalog-only mode (``state`` is a stub with no data), callers that
+      try to use the returned state will fail loudly on attribute access —
+      which is what we want: an endpoint that forgot to honour ``?dataset=``
+      must not silently serve wrong data from the default.
+    - ``dataset=<id>`` → the registry-loaded state for that catalog entry.
+
+    Raises ``HTTPException(404)`` when ``dataset`` is given but not in the
+    catalog.
+    """
+    if dataset is None:
+        return state
+    try:
+        return registry.get(dataset)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+def TargetState(dataset: str | None = Query(None)) -> BowserState:
+    """FastAPI dependency: route a request to its catalog-chosen ``BowserState``.
+
+    Every MD endpoint that reads ``target.dataset`` / ``target.raster_groups``
+    should take this as ``target: BowserState = Depends(TargetState)``.
+    Requests without ``?dataset=`` get the module-level default state (legacy
+    single-dataset flow). Requests with ``?dataset=X`` get the registry-loaded
+    state for that catalog entry (or 404 on unknown id).
+    """
+    return _resolve_state(dataset)
 
 
 _SPATIAL_DIMS = ("x", "y")
@@ -299,12 +349,18 @@ def create_rastergroup_dataset_info(raster_groups: dict) -> dict:
 
 
 @app.get("/datasets")
-async def datasets():
-    """Return the JSON describing all available datasets."""
-    if state.mode == "md":
-        return create_xarray_dataset_info(state.dataset)
+async def datasets(dataset: str | None = Query(None)):
+    """Return the JSON describing all data variables for the chosen dataset.
+
+    When ``dataset`` is given, routes through the catalog-loaded store for
+    that id; otherwise returns info for the single dataset loaded via
+    ``--stack-file`` or the RasterGroup config in COG mode.
+    """
+    target = _resolve_state(dataset)
+    if target.mode == "md":
+        return create_xarray_dataset_info(target.dataset)
     else:  # cog mode
-        return create_rastergroup_dataset_info(state.raster_groups)
+        return create_rastergroup_dataset_info(target.raster_groups)
 
 
 @app.get("/mode")
@@ -336,13 +392,18 @@ async def get_catalog():
 
 
 @app.get("/variables")
-async def get_variables():
-    """Get available variables (only for MD mode)."""
-    if state.mode != "md":
+async def get_variables(dataset: str | None = Query(None)):
+    """Get available variables (only for MD mode).
+
+    When ``dataset`` is given, resolves to that catalog entry's store;
+    otherwise returns the single dataset loaded via ``--stack-file``.
+    """
+    target = _resolve_state(dataset)
+    if target.mode != "md":
         return {"variables": {}}
 
     variables = {}
-    for var_name, var in state.dataset.data_vars.items():
+    for var_name, var in target.dataset.data_vars.items():
         if "x" in var.dims and "y" in var.dims:
             variables[var_name] = {
                 "dimensions": list(var.dims),
@@ -711,22 +772,25 @@ async def trend_analysis(
 
 
 @app.get("/datasets/{dataset_name}/time_bounds")
-async def get_time_bounds(dataset_name: str):
+async def get_time_bounds(
+    dataset_name: str,
+    target: BowserState = Depends(TargetState),
+):
     """Get time bounds for a dataset to help with trend calculations."""
-    if state.mode == "md":
-        if dataset_name not in state.dataset.data_vars:
+    if target.mode == "md":
+        if dataset_name not in target.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = state.dataset[dataset_name]
+        da = target.dataset[dataset_name]
         dim = _non_spatial_dim(da)
         labels = _dim_labels(da, dim) if dim is not None else []
     else:  # cog mode
-        if dataset_name not in state.raster_groups:
+        if dataset_name not in target.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        labels = [str(v) for v in state.raster_groups[dataset_name].x_values]
+        labels = [str(v) for v in target.raster_groups[dataset_name].x_values]
 
     if not labels:
         raise HTTPException(status_code=400, detail=f"{dataset_name} has no time dim")
@@ -757,24 +821,27 @@ async def get_colorbar(cmap_name: str):
         200: {"description": "Return min/max/p2/p98 for a dataset (first time slice)"}
     },
 )
-async def get_dataset_range(dataset_name: str):
+async def get_dataset_range(
+    dataset_name: str,
+    target: BowserState = Depends(TargetState),
+):
     """Return the value range of a dataset for use in mask threshold sliders."""
-    if state.mode == "md":
-        if dataset_name not in state.dataset.data_vars:
+    if target.mode == "md":
+        if dataset_name not in target.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = state.dataset[dataset_name]
+        da = target.dataset[dataset_name]
         dim = _non_spatial_dim(da)
         arr = (
             (da.isel({dim: 0}) if dim is not None else da).values.ravel().astype(float)
         )
     else:
-        if dataset_name not in state.raster_groups:
+        if dataset_name not in target.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = state.raster_groups[dataset_name]
+        rg = target.raster_groups[dataset_name]
         with rasterio.open(rg.file_list[0]) as src:
             arr = src.read(1).ravel().astype(float)
             nodata = src.nodata
@@ -804,14 +871,15 @@ async def get_histogram(
     dataset_name: str,
     time_index: Annotated[int, Query(ge=0)] = 0,
     nbins: Annotated[int, Query(ge=4, le=256)] = 100,
+    target: BowserState = Depends(TargetState),
 ):
     """Compute a histogram of valid pixel values for one time step of a dataset."""
-    if state.mode == "md":
-        if dataset_name not in state.dataset.data_vars:
+    if target.mode == "md":
+        if dataset_name not in target.dataset.data_vars:
             raise HTTPException(
                 status_code=404, detail=f"Variable {dataset_name} not found"
             )
-        da = state.dataset[dataset_name]
+        da = target.dataset[dataset_name]
         dim = _non_spatial_dim(da)
         if dim is not None:
             time_index = min(time_index, da.sizes[dim] - 1)
@@ -819,11 +887,11 @@ async def get_histogram(
         else:
             arr = da.values.ravel().astype(float)
     else:
-        if dataset_name not in state.raster_groups:
+        if dataset_name not in target.raster_groups:
             raise HTTPException(
                 status_code=404, detail=f"Dataset {dataset_name} not found"
             )
-        rg = state.raster_groups[dataset_name]
+        rg = target.raster_groups[dataset_name]
         time_index = min(time_index, len(rg.file_list) - 1)
         with rasterio.open(rg.file_list[time_index]) as src:
             arr = src.read(1).ravel().astype(float)
@@ -1396,6 +1464,13 @@ logger.info("Configured COG endpoints at /cog/*")
 def XarrayPathDependency(
     request: Request,
     variable: str = Query(..., description="Variable name"),
+    dataset: Optional[str] = Query(
+        None,
+        description=(
+            "Catalog dataset id (multi-dataset mode). Omit to use the single "
+            "store loaded via --stack-file."
+        ),
+    ),
     time_idx: Optional[int] = Query(None, description="Time index"),
     mask_variable: Optional[str] = Query(None, description="Mask variable"),
     mask_min_value: float = Query(0.1, description="Mask minimum value"),
@@ -1409,16 +1484,20 @@ def XarrayPathDependency(
     """Create a DataArray from query parameters.
 
     Picks the appropriate multiscale pyramid level for tile-bearing routes;
-    non-tile routes fall back to the native-resolution level.
+    non-tile routes fall back to the native-resolution level. Routes through
+    the catalog registry when ``dataset`` is given — different ``dataset``
+    values at the same time serve from independent BowserStates, so two
+    clients on two datasets never collide.
     """
+    target = _resolve_state(dataset)
     # Path param is only present on tile-bearing routes like
     # /md/tiles/{tms}/{z}/{x}/{y}. Missing elsewhere — fall back to full res.
     try:
         tile_z = int(request.path_params["z"])
     except (KeyError, TypeError, ValueError):
-        ds = state.dataset
+        ds = target.dataset
     else:
-        ds = state.dataset_for_tile_zoom(tile_z)
+        ds = target.dataset_for_tile_zoom(tile_z)
     da = ds[variable]
     skip_recommended_mask = not settings.BOWSER_USE_RECOMMENDED_MASK
     if mask_variable is not None:
