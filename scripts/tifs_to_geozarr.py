@@ -12,6 +12,13 @@ Reads the ``RasterGroup`` JSON config produced by ``bowser set-data`` /
 - optional multiscale pyramid (``--pyramid``): levels written to ``/0``, ``/1``,
   ``/2``, … subgroups; root carries the ``multiscales`` convention attrs
 
+Read path: one ``ProcessPoolExecutor`` worker per raster group, each using
+plain ``rasterio.open(f).read(1)`` into a pre-allocated numpy stack. No dask,
+no rioxarray lazy graph, no xarray IO lock. Profiling of the previous
+dask-backed path showed ~80% of wall time spent with idle threadpool workers
+and ~26% of active time blocked on ``xarray/backends/locks.py:__enter__`` —
+those are what this rewrite removes.
+
 Usage
 -----
     python scripts/tifs_to_geozarr.py bowser_rasters.json cube.zarr
@@ -22,12 +29,16 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import click
 import numpy as np
 import pandas as pd
-import rioxarray  # noqa: F401  (registers xr.DataArray.rio accessor)
+import rasterio
 import xarray as xr
 from opera_utils import get_dates
 
@@ -85,15 +96,13 @@ logger = logging.getLogger("tifs_to_geozarr")
     help="Compression level (1=fastest, 9=smallest).",
 )
 @click.option(
-    "--eager/--lazy",
-    default=True,
+    "--workers",
+    default=0,
     show_default=True,
+    type=int,
     help=(
-        "Eager: materialize each variable into numpy before writing — one "
-        "read-and-compute pass per variable, then a clean compressed write. "
-        "Lazy: leave as a dask graph spanning all variables (what xarray does "
-        "by default). Eager is faster on cubes that fit in RAM (multi-GB "
-        "regional stacks); switch to --lazy for continental-scale cubes."
+        "Parallel worker processes — one variable per worker. "
+        "0 = min(len(variables), cpu_count())."
     ),
 )
 @click.option(
@@ -117,50 +126,31 @@ def main(
     shard_factor: int,
     compression: str,
     compression_level: int,
-    eager: bool,
+    workers: int,
     pyramid: bool,
     min_pyramid_size: int,
     verbose: int,
 ) -> None:
     """Convert CONFIG (bowser_rasters.json) into OUTPUT (single zarr store)."""
     logging.basicConfig(level=logging.INFO if verbose else logging.WARNING)
-    groups = json.loads(Path(config).read_text())
+    groups_cfg = [g for g in json.loads(Path(config).read_text()) if g.get("file_list")]
+    assert groups_cfg, f"No non-empty raster groups in {config}"
 
-    data_vars: dict[str, xr.DataArray] = {}
-    for rg in groups:
-        file_list = rg.get("file_list") or []
-        if not file_list:
-            continue
-        name = _sanitize(rg["name"])
-        logger.info("Building %s (%d files)", name, len(file_list))
-        data_vars[name] = _build_dataarray(
-            file_list=file_list,
-            file_date_fmt=rg.get("file_date_fmt") or "%Y%m%d",
-            display_name=rg["name"],
-            name=name,
-            chunk=chunk,
-        )
+    # Spatial reference comes from the first file of the first group — all groups
+    # are assumed to be co-registered (the converter would break silently otherwise,
+    # so fail loudly on shape/CRS mismatch inside the worker).
+    ref = _load_spatial_ref(groups_cfg[0]["file_list"][0])
 
-    assert data_vars, f"No non-empty raster groups in {config}"
-    ds = xr.Dataset(data_vars)
-    # Eager: materialize into numpy per-variable now, before handing to zarr.
-    # This replaces one giant dask graph (all 15 vars × all tifs × all tiles,
-    # shared across level 0 + every pyramid level) with N small
-    # read-and-compute passes — each variable is parallel-loaded with dask,
-    # then written with zarr's own thread pool handling compression. On a
-    # 15-var 4 GB DISP cube this is ~3× faster than lazy writes.
-    if eager:
-        logger.info("Eagerly materializing %d variables", len(ds.data_vars))
-        ds = ds.load()
-    # Rechunk dask arrays to shard shape — zarr's safe-chunk validator treats
-    # each shard as one atomic write unit, so dask chunks on every dim must
-    # align with the shard grid. Skip when shard_factor=1 (no sharding): dask
-    # chunks then match zarr chunks, one task per chunk, maximum parallelism.
-    if not eager and shard_factor > 1:
-        shard = chunk * shard_factor
-        ds = ds.chunk(
-            {d: (shard if d in ("x", "y") else shard_factor) for d in ds.dims}
-        )
+    n_workers = workers or min(len(groups_cfg), os.cpu_count() or 4)
+    logger.info("Loading %d variables with %d workers", len(groups_cfg), n_workers)
+    loaded: list[_Loaded] = []
+    if n_workers == 1:
+        loaded = [_load_group(g, ref) for g in groups_cfg]
+    else:
+        with ProcessPoolExecutor(max_workers=n_workers) as pool:
+            loaded = list(pool.map(_load_group, groups_cfg, [ref] * len(groups_cfg)))
+
+    ds = _assemble_dataset(loaded, ref)
     encoding = shard_encoding(
         ds,
         chunk=chunk,
@@ -187,24 +177,87 @@ def main(
         ds.to_zarr(output, mode="w", consolidated=False, encoding=encoding)
         annotate_store(output)
 
-    click.echo(f"Wrote {output} with variables: {sorted(data_vars)}")
+    click.echo(f"Wrote {output} with variables: {sorted(lv.name for lv in loaded)}")
 
 
-def _build_dataarray(
-    *,
-    file_list: list[str],
-    file_date_fmt: str,
-    display_name: str,
-    name: str,
-    chunk: int,
-) -> xr.DataArray:
-    """Open all files and stack into a single DataArray with an appropriate dim."""
-    fmt = file_date_fmt
-    opened = [_open_one(f, chunk=chunk) for f in file_list]
+@dataclass
+class _SpatialRef:
+    """Geospatial reference captured from the first tif in the first group.
 
-    if len(opened) == 1:
-        return opened[0].rename(name)
+    Every subsequent file must match ``shape`` and ``crs`` exactly — the worker
+    asserts this inside ``_load_group`` so a miscalibrated config fails loud
+    rather than producing a silently-corrupt cube.
+    """
 
+    height: int
+    width: int
+    crs_wkt: str
+    transform: tuple[float, ...]  # 6-element rasterio affine
+    x_coords: np.ndarray
+    y_coords: np.ndarray
+
+
+@dataclass
+class _Loaded:
+    """A single materialized raster group, ready to hand to xarray."""
+
+    name: str
+    display_name: str
+    array: np.ndarray  # (N, H, W) for 3D groups; (H, W) for single-file groups
+    dim_name: str | None  # None for 2D
+    coords: dict[str, tuple[str, np.ndarray]]  # {coord_name: (dim, values)}
+
+
+def _load_spatial_ref(path: str) -> _SpatialRef:
+    with rasterio.open(path) as src:
+        t = src.transform
+        # Pixel-center coordinates: (ix + 0.5, iy + 0.5) * transform. Same
+        # convention rioxarray uses on open_rasterio.
+        x = (np.arange(src.width) + 0.5) * t.a + t.c
+        y = (np.arange(src.height) + 0.5) * t.e + t.f
+        return _SpatialRef(
+            height=src.height,
+            width=src.width,
+            crs_wkt=src.crs.to_wkt() if src.crs else "",
+            transform=tuple(t)[:6],
+            x_coords=x.astype(np.float64),
+            y_coords=y.astype(np.float64),
+        )
+
+
+def _load_group(rg: dict, ref: _SpatialRef) -> _Loaded:
+    """Read every file in a RasterGroup into one numpy array.
+
+    Runs inside a worker process — imports are at module top so pickling costs
+    are just the ``rg`` dict and ``ref`` dataclass (both tiny).
+    """
+    file_list: list[str] = rg["file_list"]
+    name = _sanitize(rg["name"])
+    display_name = rg["name"]
+    fmt = rg.get("file_date_fmt") or "%Y%m%d"
+
+    # Dtype: float16 tifs are unusable downstream (GDAL reprojection + titiler
+    # both choke), so upcast at read time. Everything else flows through
+    # unchanged.
+    with rasterio.open(file_list[0]) as src0:
+        src_dtype = src0.dtypes[0]
+    out_dtype = np.dtype("float32" if src_dtype == "float16" else src_dtype)
+
+    if len(file_list) == 1:
+        arr = _read_one(file_list[0], ref, out_dtype)
+        return _Loaded(
+            name=name, display_name=display_name, array=arr, dim_name=None, coords={}
+        )
+
+    # 3D: pre-allocate (N, H, W) once, then fill per file — avoids the
+    # (concat N arrays) memory bump that stacking would cause.
+    stack = np.empty((len(file_list), ref.height, ref.width), dtype=out_dtype)
+    for i, f in enumerate(file_list):
+        stack[i] = _read_one(f, ref, out_dtype)
+
+    # Dim + coord choice mirrors the original xarray-backed code: single ref
+    # date → linear time series; multiple refs → integer pair index + date
+    # labels; single date per file → plain time series.
     dates_per_file = [get_dates(f, fmt=fmt) for f in file_list]
     pair_dim = f"pair_{name}"
     time_dim = f"time_{name}"
@@ -213,63 +266,93 @@ def _build_dataarray(
         pairs = [(d[0], d[1]) for d in dates_per_file]
         ref_dates = {p[0] for p in pairs}
         if len(ref_dates) == 1:
-            # Linear time series keyed on secondary date.
             sec = pd.to_datetime([p[1] for p in pairs])
-            order = np.argsort(sec)
-            opened = [opened[i] for i in order]
-            idx = pd.Index(sec[order], name=time_dim)
-            da = xr.concat(opened, dim=idx)
-        else:
-            # True pair index: integer index ordered by (ref, sec).
-            order = sorted(range(len(pairs)), key=lambda i: pairs[i])
-            opened = [opened[i] for i in order]
-            pairs = [pairs[i] for i in order]
-            idx = pd.Index(range(len(pairs)), name=pair_dim)
-            da = xr.concat(opened, dim=idx)
-            labels = [
-                f"{p[0].strftime('%Y-%m-%d')}_{p[1].strftime('%Y-%m-%d')}"
-                for p in pairs
-            ]
-            da = da.assign_coords(
-                {
-                    f"reference_date_{name}": (
-                        pair_dim,
-                        pd.to_datetime([p[0] for p in pairs]),
-                    ),
-                    f"secondary_date_{name}": (
-                        pair_dim,
-                        pd.to_datetime([p[1] for p in pairs]),
-                    ),
-                    f"pair_label_{name}": (pair_dim, labels),
-                }
+            order = np.argsort(sec).tolist()
+            stack = stack[order]
+            return _Loaded(
+                name=name,
+                display_name=display_name,
+                array=stack,
+                dim_name=time_dim,
+                coords={time_dim: (time_dim, sec[order].to_numpy())},
             )
-    elif all(len(d) == 1 for d in dates_per_file):
-        t = pd.to_datetime([d[0] for d in dates_per_file])
-        order = np.argsort(t)
-        opened = [opened[i] for i in order]
-        idx = pd.Index(t[order], name=time_dim)
-        da = xr.concat(opened, dim=idx)
-    else:
-        raise ValueError(
-            f"Group {display_name!r}: inconsistent filename date structure "
-            f"({[len(d) for d in dates_per_file]})"
+        order = sorted(range(len(pairs)), key=lambda i: pairs[i])
+        stack = stack[order]
+        pairs = [pairs[i] for i in order]
+        labels = np.array(
+            [f"{p[0].strftime('%Y-%m-%d')}_{p[1].strftime('%Y-%m-%d')}" for p in pairs]
         )
-
-    return da.rename(name)
-
-
-def _open_one(path: str, *, chunk: int) -> xr.DataArray:
-    """Open a single-band GeoTIFF, upcasting float16 to float32.
-
-    GDAL/rasterio reprojection and titiler tile rendering both choke on
-    float16.
-    """
-    da = rioxarray.open_rasterio(path, chunks={"x": chunk, "y": chunk}).squeeze(
-        "band", drop=True
+        return _Loaded(
+            name=name,
+            display_name=display_name,
+            array=stack,
+            dim_name=pair_dim,
+            coords={
+                pair_dim: (pair_dim, np.arange(len(pairs))),
+                f"reference_date_{name}": (
+                    pair_dim,
+                    pd.to_datetime([p[0] for p in pairs]).to_numpy(),
+                ),
+                f"secondary_date_{name}": (
+                    pair_dim,
+                    pd.to_datetime([p[1] for p in pairs]).to_numpy(),
+                ),
+                f"pair_label_{name}": (pair_dim, labels),
+            },
+        )
+    if all(len(d) == 1 for d in dates_per_file):
+        t = pd.to_datetime([d[0] for d in dates_per_file])
+        order = np.argsort(t).tolist()
+        stack = stack[order]
+        return _Loaded(
+            name=name,
+            display_name=display_name,
+            array=stack,
+            dim_name=time_dim,
+            coords={time_dim: (time_dim, t[order].to_numpy())},
+        )
+    raise ValueError(
+        f"Group {display_name!r}: inconsistent filename date structure "
+        f"({[len(d) for d in dates_per_file]})"
     )
-    if da.dtype == np.float16:
-        da = da.astype(np.float32)
-    return da
+
+
+def _read_one(path: str, ref: _SpatialRef, out_dtype: np.dtype) -> np.ndarray:
+    """Read band 1 of a single tif as a 2D numpy array, asserting shape match."""
+    with rasterio.open(path) as src:
+        assert (src.height, src.width) == (
+            ref.height,
+            ref.width,
+        ), f"{path}: shape {(src.height, src.width)} != ref {(ref.height, ref.width)}"
+        arr = src.read(1)
+    return arr.astype(out_dtype, copy=False)
+
+
+def _assemble_dataset(loaded: list[_Loaded], ref: _SpatialRef) -> xr.Dataset:
+    """Combine per-group numpy arrays into one ``xr.Dataset`` with shared x/y coords."""
+    data_vars: dict[str, xr.DataArray] = {}
+    extra_coords: dict[str, tuple[Any, np.ndarray]] = {}
+    for lv in loaded:
+        if lv.dim_name is None:
+            da = xr.DataArray(lv.array, dims=("y", "x"), name=lv.name)
+        else:
+            da = xr.DataArray(lv.array, dims=(lv.dim_name, "y", "x"), name=lv.name)
+            # Attach this group's per-dim coords to the containing Dataset so
+            # they're written alongside the variable.
+            for cname, (cdim, cvals) in lv.coords.items():
+                extra_coords[cname] = (cdim, cvals)
+        data_vars[lv.name] = da
+    ds = xr.Dataset(
+        data_vars,
+        coords={"y": ref.y_coords, "x": ref.x_coords, **extra_coords},
+    )
+    if ref.crs_wkt:
+        # Let rioxarray write spatial_ref via the usual accessor — keeps the
+        # CF `grid_mapping` attribute wiring identical to the old path.
+        import rioxarray  # noqa: F401, PLC0415
+
+        ds = ds.rio.write_crs(ref.crs_wkt)
+    return ds
 
 
 def _sanitize(name: str) -> str:
