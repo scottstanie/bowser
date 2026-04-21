@@ -1,7 +1,6 @@
 # Multi-stage Dockerfile for bowser.
 # Uses pixi to get the conda-forge GDAL / rasterio / rioxarray stack, then
-# ships the resolved env into a minimal ubuntu production image. Mirrors the
-# pattern in sarapp-explorer/Dockerfile.
+# ships the resolved env into a minimal ubuntu production image.
 
 # Stage 1: resolve deps with pixi (cached by pyproject.toml + pixi.lock)
 FROM ghcr.io/prefix-dev/pixi:0.65.0 AS install

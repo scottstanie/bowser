@@ -12,10 +12,10 @@ docker tag bowser:local ghcr.io/opera-adt/bowser:latest
 docker push ghcr.io/opera-adt/bowser:latest
 ```
 
-The image uses the `pixi` multi-stage pattern from `sarapp-explorer`: pixi
-resolves conda-forge GDAL / rasterio / rioxarray in stage 1, the final
-`ubuntu:24.04` stage ships only the resolved env and bowser source. No
-pixi, no python build tools in production.
+The image uses a three-stage pixi build: pixi resolves conda-forge GDAL /
+rasterio / rioxarray in stage 1, the final `ubuntu:24.04` stage ships only
+the resolved env and bowser source. No pixi, no python build tools in
+production.
 
 ## Run locally
 
