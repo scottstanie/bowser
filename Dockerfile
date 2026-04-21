@@ -1,29 +1,52 @@
-FROM python:3.12-slim
+# Multi-stage Dockerfile for bowser.
+# Uses pixi to get the conda-forge GDAL / rasterio / rioxarray stack, then
+# ships the resolved env into a minimal ubuntu production image.
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        gdal-bin libgdal-dev gcc g++ git \
-    && rm -rf /var/lib/apt/lists/*
+# Stage 1: resolve deps with pixi (cached by pyproject.toml + pixi.lock)
+FROM ghcr.io/prefix-dev/pixi:0.65.0 AS install
 
 WORKDIR /app
 
-# Install Python deps first (layer-cached separately from source)
-COPY pyproject.toml ./
-COPY src/bowser/_version.py src/bowser/_version.py
-RUN pip install --no-cache-dir \
-        "gdal==$(gdal-config --version)" \
-        s3fs \
-        fsspec \
-    && pip install --no-cache-dir -e ".[widget]" || true
+COPY pyproject.toml pixi.lock ./
 
-# Copy full source + pre-built frontend dist
-COPY src/ src/
-COPY src/bowser/dist/ src/bowser/dist/
+# Create minimal source structure so pixi can resolve the editable workspace
+RUN mkdir -p src/bowser && \
+    touch src/bowser/__init__.py && \
+    printf 'version = "0.0.0"\n__version__ = version\n' > src/bowser/_version.py
 
-RUN pip install --no-cache-dir --no-build-isolation -e .
+ENV SETUPTOOLS_SCM_PRETEND_VERSION_FOR_BOWSER_INSAR=0.0.0
+RUN --mount=type=cache,target=/root/.cache/rattler/cache,sharing=private \
+    pixi install -e default
 
-ENV BOWSER_HOST=0.0.0.0
-ENV BOWSER_PORT=8000
+# Stage 2: drop the real source + bake the activation script
+FROM install AS build
 
-EXPOSE 8000
+COPY src/ /app/src/
 
-ENTRYPOINT ["bowser", "run"]
+RUN pixi shell-hook -e default > /activate.sh && \
+    chmod +x /activate.sh
+
+# Stage 3: minimal production image — no pixi, just the resolved env
+FROM ubuntu:24.04 AS production
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/.pixi/envs/default /app/.pixi/envs/default
+COPY --from=build /app/src/bowser /app/src/bowser
+COPY --from=build /activate.sh /activate.sh
+
+WORKDIR /app
+ENV PYTHONPATH=/app/src
+
+RUN printf '#!/bin/bash\nset -e\nsource /activate.sh\nexec "$@"\n' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+EXPOSE 8080
+
+# The default CMD expects caller to supply either --stack-file or a catalog
+# (via BOWSER_CATALOG_FILE env var set at `docker run` time).
+CMD ["bowser", "run", "--host", "0.0.0.0", "--port", "8080", "--log-level", "info"]
