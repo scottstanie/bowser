@@ -148,6 +148,44 @@ automatically from the expected client tile size.
 
 ---
 
+### 8. titiler doesn't pick pyramid levels by zoom — bowser wraps it
+
+**Where:** `src/bowser/main.py` `XarrayPathDependency` (~L1464); level
+picker in `src/bowser/state.py` `BowserState.dataset_for_tile_zoom`.
+
+**What's wrong:** titiler's xarray backend (as of v0.x, Apr 2026) accepts
+a `group=<N>` parameter to open a specific zarr subgroup, but nothing in
+titiler reads a GeoZarr `multiscales` root attr and picks the right
+group for a given tile zoom. Bowser does it itself in a path
+dependency: extracts `z` from the request path, calls
+`dataset_for_tile_zoom(z)`, hands titiler the chosen level's
+`xr.Dataset`. Works, but the wrapper is fragile — any endpoint that
+bypasses `XarrayPathDependency` gets level-0 at every zoom.
+
+Bowser's level picker also uses an equator-plane approximation for tile
+pixel size, so it's ~6% off for mid-latitude datasets. Not enough to
+cross a 2× pyramid boundary in practice, but not technically correct.
+
+**Fix (upstream, ~150 lines in developmentseed/titiler):**
+
+1. New path dependency `MultiscalesGroupDependency` that reads the
+   `multiscales` root attr, picks a level via a CRS-aware zoom → res
+   mapper (maxrjones's snippet in titiler#1071 using
+   `rasterio.warp.calculate_default_transform` is the reference
+   implementation), and sets `group=<chosen>` on the Reader.
+2. Fixture `pyramid_geozarr.zarr` with a proper `multiscales` attr +
+   tests that zoom 0 picks the coarsest and zoom 14 picks level 0.
+3. File a titiler issue linking #1071 with bowser's specific GeoZarr
+   use case; drop in our converter's output as a repro store.
+
+Once that ships, bowser's `XarrayPathDependency` becomes a two-line
+config change (point titiler at the new dependency, delete
+`dataset_for_tile_zoom`). Until then the wrapper works fine.
+
+Related: titiler#1071 (Jan 2025 thread, still open).
+
+---
+
 ## Done (recent sessions)
 
 - ✅ Module-level globals (`DATA_MODE`, `XARRAY_DATASET`, `RASTER_GROUPS`,
