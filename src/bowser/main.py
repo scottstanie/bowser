@@ -1559,7 +1559,22 @@ logger.info("Configured MD endpoints at /md/*")
 # Add exception handlers
 add_exception_handlers(app, DEFAULT_STATUS_CODES)
 
-# Serve static files
+# Mount the dataset picker first so /picker.html resolves before the catch-all
+# SPA mount at /. The picker is a standalone page — no React build required —
+# that reads /catalog and redirects to /?dataset=<id> on click.
+static_path = Path(__file__).parent / "static"
+if static_path.exists():
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+    @app.get("/picker", include_in_schema=False)
+    async def picker_redirect():
+        """Friendly alias for /static/picker.html."""
+        from starlette.responses import RedirectResponse  # noqa: PLC0415
+
+        return RedirectResponse("/static/picker.html")
+
+
+# Serve the SPA as a catch-all under /.
 dist_path = Path(__file__).parent / "dist"
 app.mount("/", StaticFiles(directory=dist_path, html=True))
 print(f"Setup complete: time to load datasets: {time.time() - t0:.1f} sec.")

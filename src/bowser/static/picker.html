@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>bowser — dataset picker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e4e4e7; background: #18181b; }
+    #map { position: fixed; inset: 0; }
+    #panel {
+      position: fixed; top: 1rem; left: 1rem; right: 1rem; z-index: 1000;
+      max-width: 28rem; padding: 1rem 1.25rem;
+      background: rgba(24, 24, 27, 0.92); border: 1px solid #3f3f46; border-radius: 0.5rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    }
+    h1 { margin: 0 0 0.25rem; font-size: 1.05rem; font-weight: 600; }
+    .subtitle { margin: 0 0 0.75rem; color: #a1a1aa; font-size: 0.85rem; }
+    #list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; }
+    #list li {
+      padding: 0.5rem 0.75rem; margin-bottom: 0.4rem; border: 1px solid #3f3f46; border-radius: 0.375rem;
+      background: #27272a; cursor: pointer; transition: background 120ms;
+    }
+    #list li:hover { background: #3f3f46; }
+    #list .id { font-family: ui-monospace, monospace; color: #a5f3fc; font-size: 0.8rem; }
+    #list .name { font-weight: 500; }
+    #list .desc { color: #a1a1aa; font-size: 0.8rem; margin-top: 0.125rem; }
+    .paste {
+      margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid #3f3f46;
+      font-size: 0.85rem;
+    }
+    .paste input {
+      width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.4rem 0.6rem;
+      background: #27272a; color: #e4e4e7; border: 1px solid #52525b; border-radius: 0.25rem;
+      font-family: ui-monospace, monospace; font-size: 0.8rem;
+    }
+    .paste button {
+      margin-top: 0.4rem; padding: 0.35rem 0.9rem;
+      background: #2563eb; color: white; border: 0; border-radius: 0.25rem; cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .paste button:hover:not(:disabled) { background: #1d4ed8; }
+    .paste button:disabled, .paste input:disabled { opacity: 0.5; cursor: not-allowed; }
+    .empty { color: #a1a1aa; font-size: 0.85rem; padding: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <h1>Pick a dataset</h1>
+    <p class="subtitle">Click a bounding box or a list entry to launch bowser against it.</p>
+    <ul id="list"><li class="empty">Loading catalog…</li></ul>
+    <div class="paste">
+      <label for="uri">Or open a zarr store by URI:</label>
+      <input id="uri" type="text"
+             placeholder="s3://bucket/path.zarr  |  /local/cube.zarr"
+             disabled title="Ad-hoc URI loading isn't wired up on the server yet." />
+      <button id="open-uri" disabled
+              title="Coming soon — use `bowser register` on the server instead.">Open</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const map = L.map("map", { zoomControl: true }).setView([20, 0], 2);
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      { attribution: "© OpenStreetMap", maxZoom: 19 }
+    ).addTo(map);
+
+    function launch(datasetId) {
+      // Redirect to the main app carrying the dataset id. The frontend
+      // and backend both accept ``?dataset=<id>`` to route multi-tenant
+      // requests at the catalog entry.
+      window.location.href = `/?dataset=${encodeURIComponent(datasetId)}`;
+    }
+
+    // Build DOM via textContent + createElement, never innerHTML. Catalog
+    // fields are operator-authored, not user input — but XSS-safe rendering
+    // is one-liner cheap so there's no reason to trust them.
+    const mkEl = (tag, cls, text) => {
+      const el = document.createElement(tag);
+      if (cls) el.className = cls;
+      if (text !== undefined) el.textContent = text;
+      return el;
+    };
+
+    const setEmpty = (msg) => {
+      const list = document.getElementById("list");
+      list.textContent = "";
+      list.appendChild(mkEl("li", "empty", msg));
+    };
+
+    async function loadCatalog() {
+      const res = await fetch("/catalog");
+      const { datasets } = await res.json();
+
+      if (!datasets.length) {
+        setEmpty("Catalog is empty. Add entries with `bowser register` on the server.");
+        return;
+      }
+
+      const list = document.getElementById("list");
+      list.textContent = "";
+
+      const layer = L.featureGroup().addTo(map);
+      for (const d of datasets) {
+        const [minX, minY, maxX, maxY] = d.bbox;
+        const poly = L.rectangle(
+          [[minY, minX], [maxY, maxX]],
+          { color: "#2563eb", weight: 2, fillOpacity: 0.15 }
+        );
+        const tip = document.createElement("div");
+        tip.appendChild(mkEl("strong", null, d.name));
+        tip.appendChild(document.createElement("br"));
+        tip.appendChild(mkEl("code", null, d.id));
+        poly.bindTooltip(tip);
+        poly.on("click", () => launch(d.id));
+        poly.addTo(layer);
+
+        const li = document.createElement("li");
+        li.appendChild(mkEl("div", "name", d.name));
+        li.appendChild(mkEl("div", "id", d.id));
+        if (d.description) li.appendChild(mkEl("div", "desc", d.description));
+        li.addEventListener("click", () => launch(d.id));
+        li.addEventListener("mouseenter", () => poly.setStyle({ weight: 4, fillOpacity: 0.3 }));
+        li.addEventListener("mouseleave", () => poly.setStyle({ weight: 2, fillOpacity: 0.15 }));
+        list.appendChild(li);
+      }
+
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+    }
+
+    // The URI paste/Open control is disabled until the server grows a
+    // handler for ``?stack=<uri>`` that loads a store into the registry on
+    // the fly. See TECH_DEBT.md.
+
+    loadCatalog().catch((err) => {
+      setEmpty("Failed to load catalog: " + (err.message || String(err)));
+    });
+  </script>
+</body>
+</html>
