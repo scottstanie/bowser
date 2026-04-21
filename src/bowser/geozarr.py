@@ -133,18 +133,20 @@ def shard_encoding(
         chunks = tuple(
             min(chunk, da.sizes[d]) if d in ("x", "y") else 1 for d in da.dims
         )
-        shards = tuple(c * shard_factor for c in chunks)
-        # Shard shape must be a whole multiple of chunk shape along every dim;
-        # our construction guarantees this, but assert loudly rather than
-        # silently fall back to no-sharding like opera-utils does.
-        assert all(s % c == 0 for s, c in zip(shards, chunks))
-        encoding[str(name)] = {
+        var_enc: dict = {
             "chunks": chunks,
-            "shards": shards,
             "compressors": [
                 BloscCodec(cname=compression_name, clevel=compression_level)
             ],
         }
+        # shard_factor=1 means "don't wrap chunks in a shard" — dask chunks can
+        # stay small, each dask task writes exactly one chunk, parallelism is
+        # maximum. Useful when write time dominates (local disk, small cubes).
+        if shard_factor > 1:
+            shards = tuple(c * shard_factor for c in chunks)
+            assert all(s % c == 0 for s, c in zip(shards, chunks))
+            var_enc["shards"] = shards
+        encoding[str(name)] = var_enc
     return encoding
 
 

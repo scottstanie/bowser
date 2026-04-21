@@ -22,9 +22,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 
 import click
+import dask.config
 import numpy as np
 import pandas as pd
 import rioxarray  # noqa: F401  (registers xr.DataArray.rio accessor)
@@ -58,11 +60,13 @@ logger = logging.getLogger("tifs_to_geozarr")
     "--shard-factor",
     default=DEFAULT_SHARD_FACTOR,
     show_default=True,
-    type=int,
+    type=click.IntRange(1, 64),
     help=(
         "Shard shape = chunk × factor on every dim. "
         "4× bundles 1024×1024 pixel blocks (16 chunks) per shard on y/x and "
-        "4 timesteps per shard on non-spatial dims — one HTTP GET per shard."
+        "4 timesteps per shard on non-spatial dims — one HTTP GET per shard. "
+        "Set to 1 to disable sharding entirely (fastest local write; more "
+        "files on disk)."
     ),
 )
 @click.option(
@@ -109,6 +113,10 @@ def main(
 ) -> None:
     """Convert CONFIG (bowser_rasters.json) into OUTPUT (single zarr store)."""
     logging.basicConfig(level=logging.INFO if verbose else logging.WARNING)
+    # Pin the dask threadpool to all logical cores. Default is already
+    # min(32, ncpu), but some environments (pixi on macOS) see the default
+    # as 1-2 workers — making this explicit is cheap insurance.
+    dask.config.set({"num_workers": os.cpu_count() or 4})
     groups = json.loads(Path(config).read_text())
 
     data_vars: dict[str, xr.DataArray] = {}
@@ -128,11 +136,15 @@ def main(
 
     assert data_vars, f"No non-empty raster groups in {config}"
     ds = xr.Dataset(data_vars)
-    # Rechunk dask arrays to shard shape before writing — zarr's safe-chunk
-    # validator treats each shard as one atomic write unit, so dask chunks on
-    # every dim (spatial and non-spatial) must align with the shard grid.
-    shard = chunk * shard_factor
-    ds = ds.chunk({d: (shard if d in ("x", "y") else shard_factor) for d in ds.dims})
+    # Rechunk dask arrays to shard shape — zarr's safe-chunk validator treats
+    # each shard as one atomic write unit, so dask chunks on every dim must
+    # align with the shard grid. Skip when shard_factor=1 (no sharding): dask
+    # chunks then match zarr chunks, one task per chunk, maximum parallelism.
+    if shard_factor > 1:
+        shard = chunk * shard_factor
+        ds = ds.chunk(
+            {d: (shard if d in ("x", "y") else shard_factor) for d in ds.dims}
+        )
     encoding = shard_encoding(
         ds,
         chunk=chunk,
