@@ -1,0 +1,126 @@
+# Tech-debt backlog
+
+Staging ground for smells we've spotted but not fixed. Each entry should get
+opened as a GitHub issue eventually. This file is not meant to live forever —
+once an item is tracked upstream, drop it from this list.
+
+## Open
+
+### 1. `file_list` in MD mode is a vestigial fake-URI
+
+**Where:** `main.py` `create_xarray_dataset_info` (`file_list: ["variable:foo:time:N", ...]`).
+
+**What's wrong:** The backend never parses these strings; only the array length
+is consumed by the frontend. The frontend separately sends `variable` +
+`time_idx` query params to the tile endpoint. The URI-shaped payload is
+confusing and easy to break when adding new dim types.
+
+**Fix:** Drop `file_list` from the MD dataset payload; expose `n_time_steps`
+instead. Update `src/components/MapContainer.tsx` and
+`src/bowser/dist/index.js` to stop using `file_list[timeIdx]`.
+
+---
+
+### 2. `spatial_ref` round-trips through zarr as a `data_var`, not a `coord`
+
+**Where:** `state.load`, `create_xarray_dataset_info` (filters `ndim >= 2` to
+skip it), anywhere iterating `data_vars`.
+
+**What's wrong:** rioxarray writes `spatial_ref` as a variable, not a
+coordinate. Downstream iteration has to know to skip it. Surprise factor is
+high.
+
+**Fix:** In `annotate_store` / `tifs_to_geozarr.py`, call
+`ds = ds.set_coords("spatial_ref")` on write so readers see it as a coord. Or
+promote on read in `state.load`.
+
+---
+
+### 3. `_apply_layer_masks_md` catches every Exception as JSON error
+
+**Where:** `main.py` around line 1260: `except (json.JSONDecodeError, Exception)`.
+
+**What's wrong:** The second clause subsumes the first and swallows every
+runtime error into a warning log. Real bugs get masked.
+
+**Fix:** Catch `json.JSONDecodeError` only. Let everything else raise and land
+in FastAPI's normal error handler.
+
+---
+
+### 4. Five near-duplicate `setup_*` CLI commands
+
+**Where:** `cli.py` — `setup-dolphin`, `setup-disp-s1`, `setup-aligned-disp-s1`,
+`setup-nisar-gunw`, `setup-hyp3`. Plus `_prepare_disp_s1.py::get_disp_s1_outputs`
+and `get_aligned_disp_s1_outputs` with parallel structure.
+
+**What's wrong:** Each command is ~40 lines of hand-written `RasterGroup`
+dicts. Adding a new product means copy-pasting the structure.
+
+**Fix:** Declarative: a YAML/TOML per product family listing the groups. One
+loader + one CLI entry. Target: ~400 lines deleted.
+
+---
+
+### 5. Source float16 GeoTIFFs from dolphin
+
+**Where:** Not a bowser bug — dolphin writes float16 output. `tifs_to_geozarr.py`
+upcasts to float32 on read (GDAL/rasterio can't reproject float16). The
+existing `_prepare_utils.py:146` does the same with a comment.
+
+**Fix:** Upstream question — should dolphin write float32 to begin with? If
+yes, the workaround disappears; if no, keep the upcast but document.
+
+---
+
+### 6. rioxarray caches stale affine on `spatial_ref.GeoTransform` after coarsening
+
+**Where:** `build_pyramid` in `geozarr.py`.
+
+**What's wrong:** `ds.coarsen(...).mean()` updates x/y coord spacing but
+leaves `spatial_ref.attrs["GeoTransform"]` at the full-res affine. Any caller
+of `ds.rio.transform()` on a coarsened level silently gets the wrong pixel
+size. Our pyramid builder strips the attr explicitly; any future
+coarsen-and-write path needs the same treatment.
+
+**Fix:** Either upstream a coarsen-aware rewrite of `GeoTransform` in
+rioxarray, or ship a `bowser.geozarr.coarsen_spatial` helper that does the
+strip automatically.
+
+---
+
+### 7. Pyramid level picker assumes a single native resolution per store
+
+**Where:** `state.BowserState.dataset_for_tile_zoom`.
+
+**What's wrong:** Pyramid levels are a per-store concept, but which level
+serves a tile is a per-*variable* question in principle. If a future store
+mixes variables with different native pixel sizes (e.g. downsampled mask +
+full-res displacement), the picker gives wrong answers.
+
+**Fix:** Index levels per-variable, or enforce at converter time that all
+variables share a native grid.
+
+---
+
+### 8. `--min-pyramid-size` is coupled to the tile size without self-documenting
+
+**Where:** `scripts/tifs_to_geozarr.py`.
+
+**What's wrong:** Default 256 matches bowser's 256-px tiles, but the knob is a
+pyramid-builder option. Changing one without the other silently degrades tile
+quality.
+
+**Fix:** Read tile size from a shared constant. Or derive the min
+automatically from the expected client tile size.
+
+---
+
+## Done (recent sessions)
+
+- ✅ Module-level globals (`DATA_MODE`, `XARRAY_DATASET`, `RASTER_GROUPS`,
+  `transformer_from_lonlat`) replaced with a `BowserState` dataclass.
+- ✅ `BOWSER_SPATIAL_REFERENCE_DISP` / `BOWSER_USE_RECOMMENDED_MASK` promoted
+  from `os.getenv("YES"/"NO")` to typed `Settings` booleans.
+- ✅ Hardcoded `ds.time` / `da.time` / `.isel(time=...)` replaced with
+  per-variable non-spatial dim discovery (`_non_spatial_dim`, `_dim_labels`).

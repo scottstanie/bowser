@@ -117,10 +117,12 @@ def run(
         os.environ["BOWSER_STACK_DATA_FILE"] = stack_file
     else:
         os.environ["BOWSER_DATASET_CONFIG_FILE"] = rasters_file
-    os.environ["BOWSER_SPATIAL_REFERENCE_DISP"] = (
-        "NO" if no_spatial_reference else "YES"
-    )
-    os.environ["BOWSER_USE_RECOMMENDED_MASK"] = "NO" if no_recommended_mask else "YES"
+    # These map to bowser.config.Settings fields; pydantic-settings parses
+    # the usual truthy/falsy strings, so "true"/"false" is enough.
+    os.environ["BOWSER_USE_SPATIAL_REFERENCE_DISP"] = str(
+        not no_spatial_reference
+    ).lower()
+    os.environ["BOWSER_USE_RECOMMENDED_MASK"] = str(not no_recommended_mask).lower()
     if title:
         os.environ["BOWSER_TITLE"] = title
     if htpasswd_file:
@@ -668,7 +670,7 @@ def setup_aligned_disp_s1(disp_s1_dir: str, output: str):
     "mask_path",
     type=click.Path(exists=True, dir_okay=False),
     default=None,
-    help="Mask GeoTIFF (e.g. combined_mask.tif). Pixels where mask == 0 are set to NaN.",
+    help="Mask GeoTIFF (e.g. combined_mask.tif); pixels where mask==0 are NaN.",
 )
 @click.option(
     "-j",
@@ -686,9 +688,10 @@ def prepare_amplitude(slc_files, output_dir, overwrite, mask_path, workers):
     SLC_FILES: one or more paths to complex GeoTIFF files (e.g. linked_phase/*.slc.tif).
     Pixels where |z|==0 or outside the mask are written as nodata (NaN).
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     import numpy as np
     import rasterio
-    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -739,7 +742,7 @@ def prepare_amplitude(slc_files, output_dir, overwrite, mask_path, workers):
                     if mask_arr is not None:
                         r, c = window.row_off, window.col_off
                         h, w = window.height, window.width
-                        db = np.where(mask_arr[r:r + h, c:c + w] != 0, db, np.nan)
+                        db = np.where(mask_arr[r : r + h, c : c + w] != 0, db, np.nan)
                     dst.write(db.astype(np.float32), 1, window=window)
 
         _make_cog(tmp_path, out_path)

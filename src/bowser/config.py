@@ -6,15 +6,34 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Settings for FastAPI app."""
+    """Settings for FastAPI app.
 
-    # Can be overridden by environment variable:
+    All fields can be overridden by a matching environment variable. The CLI
+    writes these at startup so uvicorn workers see the same config after the
+    import-boundary crossing; runtime code should always go through
+    ``settings.<field>`` rather than calling ``os.getenv`` directly.
+    """
+
+    # --- data source (one-time-at-startup) ---
     BOWSER_DATASET_CONFIG_FILE: str = "bowser_rasters.json"
     BOWSER_STACK_DATA_FILE: str = ""
+    # Multi-dataset catalog file (TOML). When set, bowser can run without a
+    # single default dataset — every request must carry ``?dataset=<id>``.
+    # Catalog schema + registry live in later layers; we define the setting
+    # here so ``BowserState.load`` can fall through to "catalog-only" mode.
+    BOWSER_CATALOG_FILE: str = ""
+
+    # --- UI ---
     BOWSER_TITLE: str = ""
     LOG_LEVEL: str = "WARNING"
+
+    # --- auth ---
     # Path to an htpasswd-format file for HTTP Basic Auth (empty = no auth)
     BOWSER_HTPASSWD_FILE: str = ""
+
+    # --- runtime behaviour flags (previously read via os.getenv "YES"/"NO") ---
+    BOWSER_USE_SPATIAL_REFERENCE_DISP: bool = True
+    BOWSER_USE_RECOMMENDED_MASK: bool = True
 
     # SECRET_KEY: str = secrets.token_urlsafe(32)
     # SERVER_NAME: str
