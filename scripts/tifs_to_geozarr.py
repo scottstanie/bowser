@@ -30,7 +30,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from concurrent.futures import ProcessPoolExecutor
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +55,14 @@ from bowser.geozarr import (
 )
 
 logger = logging.getLogger("tifs_to_geozarr")
+
+
+@contextmanager
+def _timed(label: str):
+    """Log elapsed wall time for a named phase. Runs at INFO level (-v)."""
+    t0 = time.perf_counter()
+    yield
+    logger.info("%s: %.2fs", label, time.perf_counter() - t0)
 
 
 @click.command()
@@ -143,14 +153,21 @@ def main(
 
     n_workers = workers or min(len(groups_cfg), os.cpu_count() or 4)
     logger.info("Loading %d variables with %d workers", len(groups_cfg), n_workers)
-    loaded: list[_Loaded] = []
-    if n_workers == 1:
-        loaded = [_load_group(g, ref) for g in groups_cfg]
-    else:
-        with ProcessPoolExecutor(max_workers=n_workers) as pool:
-            loaded = list(pool.map(_load_group, groups_cfg, [ref] * len(groups_cfg)))
+    loaded: list[_Loaded]
+    with _timed("read (all variables, parallel)"):
+        if n_workers == 1:
+            loaded = [_load_group(g, ref) for g in groups_cfg]
+        else:
+            with ProcessPoolExecutor(max_workers=n_workers) as pool:
+                loaded = list(
+                    pool.map(_load_group, groups_cfg, [ref] * len(groups_cfg))
+                )
 
-    ds = _assemble_dataset(loaded, ref)
+    bytes_in = sum(lv.array.nbytes for lv in loaded)
+    logger.info("Loaded %.2f GiB across %d vars", bytes_in / 2**30, len(loaded))
+
+    with _timed("assemble xr.Dataset"):
+        ds = _assemble_dataset(loaded, ref)
     encoding = shard_encoding(
         ds,
         chunk=chunk,
@@ -160,22 +177,29 @@ def main(
     )
 
     if pyramid:
-        logger.info("Writing level 0 → %s/0", output)
-        ds.to_zarr(output, group="0", mode="w", consolidated=False, encoding=encoding)
-        logger.info("Building pyramid")
-        levels = build_pyramid(
-            output,
-            min_size=min_pyramid_size,
-            chunk=chunk,
-            shard_factor=shard_factor,
-            compression_name=compression,  # type: ignore[arg-type]
-            compression_level=compression_level,
-        )
-        annotate_store(output, data_group="0", multiscales_levels=levels)
+        with _timed("write level 0"):
+            logger.info("Writing level 0 → %s/0", output)
+            ds.to_zarr(
+                output, group="0", mode="w", consolidated=False, encoding=encoding
+            )
+        with _timed("build pyramid (all levels)"):
+            logger.info("Building pyramid")
+            levels = build_pyramid(
+                output,
+                min_size=min_pyramid_size,
+                chunk=chunk,
+                shard_factor=shard_factor,
+                compression_name=compression,  # type: ignore[arg-type]
+                compression_level=compression_level,
+            )
+        with _timed("annotate_store"):
+            annotate_store(output, data_group="0", multiscales_levels=levels)
     else:
-        logger.info("Writing zarr → %s", output)
-        ds.to_zarr(output, mode="w", consolidated=False, encoding=encoding)
-        annotate_store(output)
+        with _timed("write zarr (flat)"):
+            logger.info("Writing zarr → %s", output)
+            ds.to_zarr(output, mode="w", consolidated=False, encoding=encoding)
+        with _timed("annotate_store"):
+            annotate_store(output)
 
     click.echo(f"Wrote {output} with variables: {sorted(lv.name for lv in loaded)}")
 
@@ -279,8 +303,13 @@ def _load_group(rg: dict, ref: _SpatialRef) -> _Loaded:
         order = sorted(range(len(pairs)), key=lambda i: pairs[i])
         stack = stack[order]
         pairs = [pairs[i] for i in order]
+        # dtype=object (variable-length strings) rather than default `<U21`
+        # fixed-length — the latter has no zarr v3 spec and triggers a loud
+        # UnstableSpecificationWarning on every write. Object maps to zarr's
+        # VLenUTF8 codec, which *is* standardised.
         labels = np.array(
-            [f"{p[0].strftime('%Y-%m-%d')}_{p[1].strftime('%Y-%m-%d')}" for p in pairs]
+            [f"{p[0].strftime('%Y-%m-%d')}_{p[1].strftime('%Y-%m-%d')}" for p in pairs],
+            dtype=object,
         )
         return _Loaded(
             name=name,
