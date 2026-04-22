@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { useAppContext } from '../context/AppContext';
+import { withDataset } from '../hooks/useApi';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
@@ -27,7 +28,7 @@ export default function Histogram() {
     if (!state.currentDataset || state.isPlaying) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ time_index: String(state.currentTimeIndex) });
+      const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
       const res = await fetch(`/histogram/${encodeURIComponent(state.currentDataset)}?${params}`);
       if (res.ok) {
         const data = await res.json();

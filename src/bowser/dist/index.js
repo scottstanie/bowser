@@ -29979,7 +29979,7 @@ function Histogram() {
     if (!state.currentDataset || state.isPlaying) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ time_index: String(state.currentTimeIndex) });
+      const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
       const res = await fetch(`/histogram/${encodeURIComponent(state.currentDataset)}?${params}`);
       if (res.ok) {
         const data = await res.json();
@@ -37326,11 +37326,12 @@ function useThemeVersion() {
   return v2;
 }
 function toIsoDate(xVal) {
-  const dateStr = xVal.includes("_") ? xVal.split("_").pop() : xVal;
+  const s = typeof xVal === "string" ? xVal : String(xVal);
+  const dateStr = s.includes("_") ? s.split("_").pop() : s;
   if (/^\d{8}$/.test(dateStr)) {
     return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
   }
-  return xVal;
+  return s;
 }
 function TimeSeriesChart({ windowId }) {
   const { state, dispatch } = useAppContext();

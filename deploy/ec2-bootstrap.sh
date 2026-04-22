@@ -20,16 +20,27 @@ LOG=/var/log/bowser-bootstrap.log
 exec > >(tee -a "$LOG") 2>&1
 echo "[bootstrap] starting at $(date -Iseconds)"
 
-# 1. Install docker
+# 1. Install docker + awscli.
+#
+# On Ubuntu 24.04 (noble) the `awscli` apt package was removed, so we install
+# AWS CLI v2 from the upstream bundle instead of `apt install awscli`. That's
+# also what AWS recommends — v1 hit end-of-life in 2025.
 if ! command -v docker >/dev/null; then
   if command -v dnf >/dev/null; then
     dnf install -y docker
     systemctl enable --now docker
   else
     apt-get update
-    apt-get install -y docker.io awscli
+    apt-get install -y docker.io unzip curl
     systemctl enable --now docker
   fi
+fi
+if ! command -v aws >/dev/null; then
+  tmp=$(mktemp -d)
+  curl -sSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip \
+      -o "$tmp/awscliv2.zip"
+  (cd "$tmp" && unzip -q awscliv2.zip && ./aws/install)
+  rm -rf "$tmp"
 fi
 
 # 2. Pull the catalog from S3. We mount it into the container so catalog
@@ -60,19 +71,6 @@ REGION=$(curl -sS -H "$H" http://169.254.169.254/latest/meta-data/placement/regi
 docker pull "$IMAGE"
 docker rm -f bowser 2>/dev/null || true
 
-# Grab short-lived IAM role credentials from IMDSv2 and inject them into the
-# container. Reason: aiobotocore (pulled in by s3fs ← zarr) hits a ContextVar
-# conflict when it tries to refresh IMDS creds from zarr's sync-over-async
-# path inside pixi's default env. Passing creds as env vars bypasses the
-# async credential chain entirely. See TECH_DEBT.md for the upstream issue.
-TOKEN=$(curl -sS -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
-ROLE=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/)
-CREDS=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/"$ROLE")
-AK=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['AccessKeyId'])")
-SK=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['SecretAccessKey'])")
-ST=$(echo "$CREDS" | python3 -c "import sys, json; print(json.load(sys.stdin)['Token'])")
-REGION=$(curl -sS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region)
-
 docker run -d --name bowser \
   --restart unless-stopped \
   -p 80:8080 \
@@ -83,6 +81,7 @@ docker run -d --name bowser \
   -e AWS_ACCESS_KEY_ID="$AK" \
   -e AWS_SECRET_ACCESS_KEY="$SK" \
   -e AWS_SESSION_TOKEN="$ST" \
-  "$IMAGE"
+  "$IMAGE" \
+  bowser run --host 0.0.0.0 --port 8080 --workers 4 --log-level info
 
 echo "[bootstrap] done at $(date -Iseconds)"

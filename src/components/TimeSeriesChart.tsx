@@ -61,13 +61,19 @@ function useThemeVersion(): number {
   return v;
 }
 
-/** Convert "YYYYMMDD_YYYYMMDD" or "YYYYMMDD" → "YYYY-MM-DD" (secondary/only date). */
-function toIsoDate(xVal: string): string {
-  const dateStr = xVal.includes('_') ? xVal.split('_').pop()! : xVal;
+/** Convert "YYYYMMDD_YYYYMMDD" or "YYYYMMDD" → "YYYY-MM-DD" (secondary/only date).
+ *
+ * Stringify defensively: some datasets surface numeric x-values (e.g.
+ * integer indices when a dim has no date coord), and Chart.js hands them
+ * straight to us. Without this, `.includes` throws on the numeric branch.
+ */
+function toIsoDate(xVal: string | number): string {
+  const s = typeof xVal === 'string' ? xVal : String(xVal);
+  const dateStr = s.includes('_') ? s.split('_').pop()! : s;
   if (/^\d{8}$/.test(dateStr)) {
     return `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`;
   }
-  return xVal;
+  return s;
 }
 
 interface BufferResult {
