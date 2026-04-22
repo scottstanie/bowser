@@ -5093,8 +5093,8 @@ packages:
   timestamp: 1773797822026
 - pypi: ./
   name: bowser-insar
-  version: 0.3.0.post1.dev79+gd3ee1a8eb.d20260418
-  sha256: 1b930c0af187d40b739931072a200384c4167e59d237b1573ede1ade85c28bf4
+  version: 0.3.0.post1.dev107+g581845fb5.d20260422
+  sha256: 70547714129b8d677a69091a76025f564aca67be934d0329d7f896b44e44fdd3
   requires_dist:
   - titiler-xarray[http,minimal]
   - starlette-cramjam
