@@ -899,9 +899,19 @@ async def get_histogram(
         if nodata is not None:
             arr = arr[arr != nodata]
 
-    valid = arr[np.isfinite(arr) & (arr != 0)]
+    # Previously this also filtered `arr != 0`, but 0 is meaningful for
+    # categorical / mask layers (ps_mask, recommended_mask) — excluding it
+    # could empty the histogram on a tile with no PS pixels in view. NaN is
+    # the correct missing-value sentinel; `isfinite` handles it.
+    valid = arr[np.isfinite(arr)]
     if valid.size == 0:
-        raise HTTPException(status_code=204, detail="No valid data")
+        # An empty view returns an empty histogram at 200 rather than 204 —
+        # HTTP 204 must have an empty body (RFC 7230), which makes clients
+        # that call .json() blow up with "unexpected end of data".
+        return JSONResponse(
+            {k: 0.0 for k in ("min", "max", "p2", "p98", "p16", "p84", "p23", "p977")}
+            | {"bins": [], "counts": []}
+        )
 
     counts, bin_edges = np.histogram(valid, bins=nbins)
     return JSONResponse(
@@ -1574,8 +1584,24 @@ if static_path.exists():
         return RedirectResponse("/static/picker.html")
 
 
-# Serve the SPA as a catch-all under /.
+# In catalog mode, bare `/` has no `?dataset=` to key off of, so the frontend
+# fires `/datasets?` against the stub default state and 500s. Redirect to the
+# picker instead; once the user picks a dataset, the SPA mount below serves
+# index.html for `/?dataset=<id>`.
 dist_path = Path(__file__).parent / "dist"
+
+
+@app.get("/", include_in_schema=False)
+async def root(request: Request):
+    """Serve the SPA, or redirect to the picker in catalog mode."""
+    from starlette.responses import FileResponse, RedirectResponse  # noqa: PLC0415
+
+    if settings.BOWSER_CATALOG_FILE and not request.query_params.get("dataset"):
+        return RedirectResponse("/picker")
+    return FileResponse(dist_path / "index.html")
+
+
+# Serve the SPA as a catch-all under /.
 app.mount("/", StaticFiles(directory=dist_path, html=True))
 print(f"Setup complete: time to load datasets: {time.time() - t0:.1f} sec.")
 logger.info(f"Bowser started in {state.mode.upper()} mode")

@@ -15,7 +15,7 @@ function currentDatasetId(): string | null {
 /**
  * Append `dataset=<id>` to an URLSearchParams when one is set.
  */
-function withDataset(params: URLSearchParams): URLSearchParams {
+export function withDataset(params: URLSearchParams): URLSearchParams {
   const id = currentDatasetId();
   if (id) params.set('dataset', id);
   return params;

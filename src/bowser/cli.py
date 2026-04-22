@@ -427,8 +427,18 @@ def setup_dolphin(dolphin_work_dir, timeseries_mask, output, include_ifgs: bool 
             "file_list": _glob(f"{wd}/interferograms/crlb_2*[0-9].tif"),
         },
         {
+            "name": "Average closure-phase-coherence",
+            "file_list": _glob(
+                f"{wd}/interferograms/closure_phase_coh_average_*[0-9].tif"
+            ),
+        },
+        {
+            "name": "Closure-Coherence",
+            "file_list": _glob(f"{wd}/interferograms/closure_phase_coh_*[0-9].tif"),
+        },
+        {
             "name": "Closure phase",
-            "file_list": _glob(f"{wd}/interferograms/closure_phase_*[0-9].tif"),
+            "file_list": _glob(f"{wd}/interferograms/closure_phase_2[0-9].tif"),
         },
         {
             "name": "Cumulative closure phase",
