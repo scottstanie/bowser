@@ -1,3 +1,17 @@
+export interface LosMetadata {
+  // Satellite ground-track heading, degrees clockwise from north
+  heading_deg: number;
+  // Center-swath incidence angle (degrees). Near/far give the swath extent.
+  incidence_deg: number;
+  incidence_deg_near?: number;
+  incidence_deg_far?: number;
+  // Ground -> satellite ENU unit vectors. Center is the main LOS; near/far
+  // trace the swath and are optional.
+  los_enu_ground_to_sat?: { east: number; north: number; up: number };
+  los_enu_ground_to_sat_near?: { east: number; north: number; up: number };
+  los_enu_ground_to_sat_far?: { east: number; north: number; up: number };
+}
+
 export interface RasterGroup {
   name: string;
   file_list: string[];
@@ -12,6 +26,7 @@ export interface RasterGroup {
   label?: string;
   unit?: string;
   reference_date?: string | null;
+  los_metadata?: LosMetadata;
 }
 
 export interface TimeSeriesPoint {
@@ -93,6 +108,7 @@ export interface AppState {
   dateRangeEnd: string | null;
   viewBounds: [number, number, number, number] | null; // [south, west, north, east]
   showColorbar: boolean;
+  showLosIndicator: boolean;
 }
 
 export type AppAction =
@@ -136,6 +152,7 @@ export type AppAction =
   | { type: 'SET_DATE_RANGE_END'; payload: string | null }
   | { type: 'SET_VIEW_BOUNDS'; payload: [number, number, number, number] | null }
   | { type: 'TOGGLE_COLORBAR' }
+  | { type: 'TOGGLE_LOS_INDICATOR' }
   | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }
   | { type: 'REMOVE_CHART_WINDOW'; payload: string }
   | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } };

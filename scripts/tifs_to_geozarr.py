@@ -83,8 +83,8 @@ def _timed(label: str):
     show_default=True,
     type=click.IntRange(1, 64),
     help=(
-        "Shard shape = chunk × factor on every dim. "
-        "4× bundles 1024×1024 pixel blocks (16 chunks) per shard on y/x and "
+        "Shard shape = chunk x factor on every dim. "
+        "4x bundles 1024x1024 pixel blocks (16 chunks) per shard on y/x and "
         "4 timesteps per shard on non-spatial dims — one HTTP GET per shard. "
         "Set to 1 to disable sharding entirely (fastest local write; more "
         "files on disk)."
@@ -96,7 +96,7 @@ def _timed(label: str):
     show_default=True,
     type=click.Choice(["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]),
     help=(
-        "Blosc sub-codec. lz4 is ~6× faster than zstd at ~10% worse ratio; "
+        "Blosc sub-codec. lz4 is ~6x faster than zstd at ~10% worse ratio; "
         "zstd clevel 3 is a good middle ground."
     ),
 )
@@ -146,6 +146,16 @@ def _timed(label: str):
     help="Write level-0 data to /0 and build coarsened /1, /2, … overview groups.",
 )
 @click.option(
+    "--los-dir",
+    default=None,
+    type=click.Path(exists=True, file_okay=False),
+    help=(
+        "Directory containing ``heading_angle.json`` and ``los_enu.json`` for the "
+        "stack. When provided, the heading/incidence/ENU values are copied into "
+        "the zarr root attrs so the bowser UI can draw the LOS geometry icon."
+    ),
+)
+@click.option(
     "--min-pyramid-size",
     default=256,
     show_default=True,
@@ -165,6 +175,7 @@ def main(
     workers: int,
     pyramid: bool,
     min_pyramid_size: int,
+    los_dir: str | None,
     verbose: int,
 ) -> None:
     """Convert CONFIG (bowser_rasters.json) into OUTPUT (single zarr store)."""
@@ -230,7 +241,48 @@ def main(
         with _timed("annotate_store"):
             annotate_store(output)
 
+    if los_dir:
+        _write_los_attrs(output, Path(los_dir))
+
     click.echo(f"Wrote {output} with variables: {sorted(lv.name for lv in loaded)}")
+
+
+def _write_los_attrs(zarr_path: str, los_dir: Path) -> None:
+    """Merge ``heading_angle.json`` + ``los_enu.json`` from ``los_dir`` into root attrs.
+
+    Keys written match the DISP-S1 JSON schema so the bowser backend can read
+    them verbatim from ``ds.attrs`` (see ``_los_metadata_from_attrs`` in
+    ``bowser/main.py``).
+    """
+    import zarr  # noqa: PLC0415
+
+    attrs: dict[str, Any] = {}
+    heading = los_dir / "heading_angle.json"
+    if heading.exists():
+        attrs["heading_angle_deg"] = json.loads(heading.read_text())[
+            "heading_angle_deg"
+        ]
+    los = los_dir / "los_enu.json"
+    if los.exists():
+        data = json.loads(los.read_text())
+        attrs["incidence_angle_deg"] = data["incidence_angle_deg"]
+        attrs["los_enu_ground_to_satellite"] = data["los_enu_ground_to_satellite"]
+        # azimuth_angle_deg is present but not used by the UI — copy through anyway
+        if "azimuth_angle_deg" in data:
+            attrs["azimuth_angle_deg"] = data["azimuth_angle_deg"]
+
+    if not attrs:
+        logger.warning("No LOS JSON files found in %s", los_dir)
+        return
+
+    root = zarr.open_group(zarr_path, mode="r+")
+    root.attrs.update(attrs)
+    # Pyramid stores are opened by xarray at the data subgroup (e.g. /0); mirror
+    # the attrs there so ds.attrs sees them regardless of how it's opened.
+    for name in list(root.group_keys()):
+        if name.isdigit():
+            root[name].attrs.update(attrs)
+    logger.info("Stashed LOS metadata in %s: %s", zarr_path, sorted(attrs))
 
 
 @dataclass

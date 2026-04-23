@@ -53,6 +53,7 @@ const initialState: AppState = {
   dateRangeEnd: null,
   viewBounds: null,
   showColorbar: false,
+  showLosIndicator: false,
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -239,6 +240,8 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, viewBounds: action.payload };
     case 'TOGGLE_COLORBAR':
       return { ...state, showColorbar: !state.showColorbar };
+    case 'TOGGLE_LOS_INDICATOR':
+      return { ...state, showLosIndicator: !state.showLosIndicator };
     case 'ADD_CHART_WINDOW':
       return { ...state, chartWindows: [...state.chartWindows, action.payload] };
     case 'REMOVE_CHART_WINDOW':

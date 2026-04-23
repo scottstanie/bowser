@@ -51,6 +51,7 @@ def _open_md(uri: str) -> tuple[xr.Dataset, Transformer, list["PyramidLevel"]]:
 
     logger.info(f"Loading MD dataset from {uri}")
     levels: list[PyramidLevel] = []
+    root_attrs: dict = {}
     if uri.endswith(".zarr") or "://" in uri:
         group = data_group_name(uri)
         if group is not None:
@@ -58,10 +59,19 @@ def _open_md(uri: str) -> tuple[xr.Dataset, Transformer, list["PyramidLevel"]]:
             px = [round(lv.pixel_size_m, 3) for lv in levels]
             logger.info(f"Pyramid detected: {len(levels)} level(s), px(m): {px}")
             ds = levels[0].dataset
+            # Pyramid data lives in a subgroup; pull in root attrs so metadata
+            # written to the store root (LOS geometry etc) is still visible.
+            import zarr  # noqa: PLC0415
+
+            root_attrs = dict(zarr.open_group(uri, mode="r").attrs)
         else:
             ds = xr.open_zarr(uri, consolidated=False)
     else:
         ds = xr.open_dataset(uri)
+
+    # Root attrs take lower precedence than any attrs already on the opened group.
+    if root_attrs:
+        ds.attrs = {**root_attrs, **ds.attrs}
 
     crs = resolve_crs(ds)
     if "spatial_ref" in ds.variables and "time" in ds.spatial_ref.dims:

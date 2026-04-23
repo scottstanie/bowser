@@ -7061,7 +7061,8 @@ const initialState = {
   dateRangeStart: null,
   dateRangeEnd: null,
   viewBounds: null,
-  showColorbar: false
+  showColorbar: false,
+  showLosIndicator: false
 };
 function appReducer(state, action) {
   switch (action.type) {
@@ -7230,6 +7231,8 @@ function appReducer(state, action) {
       return { ...state, viewBounds: action.payload };
     case "TOGGLE_COLORBAR":
       return { ...state, showColorbar: !state.showColorbar };
+    case "TOGGLE_LOS_INDICATOR":
+      return { ...state, showLosIndicator: !state.showLosIndicator };
     case "ADD_CHART_WINDOW":
       return { ...state, chartWindows: [...state.chartWindows, action.payload] };
     case "REMOVE_CHART_WINDOW":
@@ -30292,7 +30295,7 @@ function ControlPanel({ title }) {
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Speed" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
               (1e3 / state.animationSpeed).toFixed(1),
-              "×"
+              "x"
             ] })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -30401,6 +30404,17 @@ function ControlPanel({ title }) {
             className: `toggle-pill${state.showColorbar ? " active" : ""}`,
             onClick: () => dispatch({ type: "TOGGLE_COLORBAR" }),
             children: state.showColorbar ? "ON" : "OFF"
+          }
+        )
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", style: { marginTop: 4 }, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "LOS geometry" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: `toggle-pill${state.showLosIndicator ? " active" : ""}`,
+            onClick: () => dispatch({ type: "TOGGLE_LOS_INDICATOR" }),
+            children: state.showLosIndicator ? "ON" : "OFF"
           }
         )
       ] })
@@ -30682,12 +30696,15 @@ function ControlPanel({ title }) {
             onClick: () => {
               const firstDataset = Object.keys(state.datasetInfo)[0];
               const range = datasetRanges[firstDataset];
-              dispatch({ type: "ADD_LAYER_MASK", payload: {
-                id: `mask_${Date.now()}`,
-                dataset: firstDataset,
-                threshold: range ? range.p2 ?? range.min : 0.5,
-                mode: "min"
-              } });
+              dispatch({
+                type: "ADD_LAYER_MASK",
+                payload: {
+                  id: `mask_${Date.now()}`,
+                  dataset: firstDataset,
+                  threshold: range ? range.p2 ?? range.min : 0.5,
+                  mode: "min"
+                }
+              });
             },
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-plus", style: { marginRight: 5 } }),
@@ -38795,6 +38812,525 @@ function ColormapBar() {
     }
   );
 }
+const DEG = Math.PI / 180;
+const LOOK_COLOR = "#2E7FE8";
+const FLIGHT_COLOR = "#F39C12";
+const ENU_ASC = { east: -0.615, north: -0.117 };
+const ENU_DESC = { east: 0.615, north: -0.117 };
+function bearing(east, north) {
+  return (Math.atan2(east, north) / DEG + 360) % 360;
+}
+function deriveDirection(heading) {
+  return Math.cos(heading * DEG) > 0 ? "ascending" : "descending";
+}
+function deriveLooking(heading, lookEast, lookNorth) {
+  const fE = Math.sin(heading * DEG);
+  const fN = Math.cos(heading * DEG);
+  const cross = fE * lookNorth - fN * lookEast;
+  return cross > 0 ? "left" : "right";
+}
+function geometryFromMetadata(m2) {
+  const heading = m2.heading_deg;
+  const direction = deriveDirection(heading);
+  const los = m2.los_enu_ground_to_sat;
+  if (!los) {
+    throw new Error("LosMetadata without los_enu_ground_to_sat is unsupported");
+  }
+  const lookE = -los.east;
+  const lookN = -los.north;
+  return {
+    heading,
+    incidence: m2.incidence_deg,
+    incidenceNear: m2.incidence_deg_near,
+    incidenceFar: m2.incidence_deg_far,
+    direction,
+    look: bearing(lookE, lookN),
+    looking: deriveLooking(heading, lookE, lookN)
+  };
+}
+function geometryFromManual(direction, looking, incidence) {
+  const base = direction === "ascending" ? ENU_ASC : ENU_DESC;
+  const east = looking === "right" ? base.east : -base.east;
+  const look = bearing(-east, -base.north);
+  const heading = (look + (looking === "right" ? -90 : 90) + 360) % 360;
+  return { heading, look, incidence, direction, looking };
+}
+function SatelliteGlyph({
+  cx,
+  cy,
+  scale = 1,
+  rotation = 0,
+  color: color2 = "currentColor"
+}) {
+  const bodyW = 5 * scale;
+  const bodyH = 8 * scale;
+  const panelW = 6 * scale;
+  const panelH = 3 * scale;
+  const gap = 0.5 * scale;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("g", { transform: `translate(${cx} ${cy}) rotate(${rotation})`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "rect",
+      {
+        x: -bodyW / 2 - panelW - gap,
+        y: -panelH / 2,
+        width: panelW,
+        height: panelH,
+        fill: color2,
+        stroke: color2,
+        strokeWidth: 0.3
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "rect",
+      {
+        x: bodyW / 2 + gap,
+        y: -panelH / 2,
+        width: panelW,
+        height: panelH,
+        fill: color2,
+        stroke: color2,
+        strokeWidth: 0.3
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: -bodyW / 2 - panelW / 2 - gap,
+        y1: -panelH / 2,
+        x2: -bodyW / 2 - panelW / 2 - gap,
+        y2: panelH / 2,
+        stroke: "white",
+        strokeWidth: 0.5
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: bodyW / 2 + panelW / 2 + gap,
+        y1: -panelH / 2,
+        x2: bodyW / 2 + panelW / 2 + gap,
+        y2: panelH / 2,
+        stroke: "white",
+        strokeWidth: 0.5
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("rect", { x: -bodyW / 2, y: -bodyH / 2, width: bodyW, height: bodyH, fill: color2 })
+  ] });
+}
+function FlightCompass({ geom }) {
+  const size = 110;
+  const cx = size / 2;
+  const cy = size / 2;
+  const r2 = 36;
+  const arrowLen = r2 * 0.82;
+  const lookX = cx + arrowLen * Math.sin(geom.look * DEG);
+  const lookY = cy - arrowLen * Math.cos(geom.look * DEG);
+  const flightX = cx + arrowLen * Math.sin(geom.heading * DEG);
+  const flightY = cy - arrowLen * Math.cos(geom.heading * DEG);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: size, height: size, viewBox: `0 0 ${size} ${size}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("defs", { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "marker",
+        {
+          id: "losArrowLook",
+          viewBox: "0 0 10 10",
+          refX: "8",
+          refY: "5",
+          markerWidth: "5",
+          markerHeight: "5",
+          orient: "auto-start-reverse",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M0,0 L10,5 L0,10 z", fill: LOOK_COLOR })
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "marker",
+        {
+          id: "losArrowFlight",
+          viewBox: "0 0 10 10",
+          refX: "8",
+          refY: "5",
+          markerWidth: "5",
+          markerHeight: "5",
+          orient: "auto-start-reverse",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: "M0,0 L10,5 L0,10 z", fill: FLIGHT_COLOR })
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx, cy, r: r2, fill: "none", stroke: "currentColor", strokeWidth: 1.2 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: cx, y1: cy - r2, x2: cx, y2: cy - r2 + 4, stroke: "currentColor", strokeWidth: 1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: cx, y1: cy + r2, x2: cx, y2: cy + r2 - 4, stroke: "currentColor", strokeWidth: 1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: cx - r2, y1: cy, x2: cx - r2 + 4, y2: cy, stroke: "currentColor", strokeWidth: 1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("line", { x1: cx + r2, y1: cy, x2: cx + r2 - 4, y2: cy, stroke: "currentColor", strokeWidth: 1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("text", { x: cx, y: cy - r2 - 3, textAnchor: "middle", fontSize: 8, fill: "currentColor", children: "0" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("text", { x: cx + r2 + 3, y: cy + 3, textAnchor: "start", fontSize: 8, fill: "currentColor", children: "90" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("text", { x: cx, y: cy + r2 + 9, textAnchor: "middle", fontSize: 8, fill: "currentColor", children: "180" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("text", { x: cx - r2 - 3, y: cy + 3, textAnchor: "end", fontSize: 8, fill: "currentColor", children: "270" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: cx,
+        y1: cy,
+        x2: flightX,
+        y2: flightY,
+        stroke: FLIGHT_COLOR,
+        strokeWidth: 1.8,
+        markerEnd: "url(#losArrowFlight)"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SatelliteGlyph, { cx, cy, scale: 1.1, rotation: geom.heading }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: cx,
+        y1: cy,
+        x2: lookX,
+        y2: lookY,
+        stroke: LOOK_COLOR,
+        strokeWidth: 1.8,
+        markerEnd: "url(#losArrowLook)"
+      }
+    )
+  ] });
+}
+function SideView({ geom, showPolarity }) {
+  const w2 = 150;
+  const h = 100;
+  const satX = w2 / 2;
+  const groundY = h - 18;
+  const reachBudget = w2 / 2 - 18;
+  const maxInc = Math.max(geom.incidence, geom.incidenceFar ?? 0);
+  const H2 = Math.min(60, reachBudget / Math.tan(maxInc * DEG));
+  const satY = groundY - H2;
+  const sign2 = Math.sin(geom.look * DEG) >= 0 ? 1 : -1;
+  const tipFor = (incDeg) => satX + sign2 * H2 * Math.tan(incDeg * DEG);
+  const centerTipX = tipFor(geom.incidence);
+  const nearTipX = geom.incidenceNear !== void 0 ? tipFor(geom.incidenceNear) : null;
+  const farTipX = geom.incidenceFar !== void 0 ? tipFor(geom.incidenceFar) : null;
+  const extentX = Math.max(
+    Math.abs(centerTipX - satX),
+    nearTipX !== null ? Math.abs(nearTipX - satX) : 0,
+    farTipX !== null ? Math.abs(farTipX - satX) : 0
+  );
+  const gHalf = Math.max(40, extentX + 18);
+  const gLeft = satX - gHalf;
+  const gRight = satX + gHalf;
+  const arcR = 12;
+  const inc = geom.incidence;
+  const arcStart = 90 * DEG;
+  const arcEnd = (90 + sign2 * inc) * DEG;
+  const gax1 = centerTipX + arcR * Math.cos(arcStart);
+  const gay1 = groundY - arcR * Math.sin(arcStart);
+  const gax2 = centerTipX + arcR * Math.cos(arcEnd);
+  const gay2 = groundY - arcR * Math.sin(arcEnd);
+  const sweep = sign2 > 0 ? 0 : 1;
+  const arcPath = `M ${gax1} ${gay1} A ${arcR} ${arcR} 0 0 ${sweep} ${gax2} ${gay2}`;
+  const midA = (90 + sign2 * inc / 2) * DEG;
+  const labR = arcR + 7;
+  const labX = centerTipX + labR * Math.cos(midA);
+  const labY = groundY - labR * Math.sin(midA) + 3;
+  const incLabel = `${Math.round(inc)}°`;
+  const slantDx = centerTipX - satX;
+  const slantDy = groundY - satY;
+  const slantLen = Math.hypot(slantDx, slantDy);
+  const nx = -slantDy / slantLen;
+  const ny = slantDx / slantLen;
+  const off = 8;
+  const plusX = satX + 0.3 * slantDx + sign2 * off * nx;
+  const plusY = satY + 0.3 * slantDy + sign2 * off * ny;
+  const minusX = satX + 0.75 * slantDx + sign2 * off * nx;
+  const minusY = satY + 0.75 * slantDy + sign2 * off * ny;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("svg", { width: w2, height: h, viewBox: `0 0 ${w2} ${h}`, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: gLeft,
+        y1: groundY,
+        x2: gRight,
+        y2: groundY,
+        stroke: "currentColor",
+        strokeWidth: 1.2
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: satX,
+        y1: satY,
+        x2: satX,
+        y2: groundY,
+        stroke: "currentColor",
+        strokeWidth: 0.8,
+        strokeDasharray: "2 2"
+      }
+    ),
+    nearTipX !== null && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: satX,
+        y1: satY,
+        x2: nearTipX,
+        y2: groundY,
+        stroke: LOOK_COLOR,
+        strokeOpacity: 0.55,
+        strokeWidth: 1
+      }
+    ),
+    farTipX !== null && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: satX,
+        y1: satY,
+        x2: farTipX,
+        y2: groundY,
+        stroke: LOOK_COLOR,
+        strokeOpacity: 0.55,
+        strokeWidth: 1
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "line",
+      {
+        x1: satX,
+        y1: satY,
+        x2: centerTipX,
+        y2: groundY,
+        stroke: LOOK_COLOR,
+        strokeWidth: 1.4
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SatelliteGlyph, { cx: satX, cy: satY, scale: 1.2, rotation: 90 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: arcPath, fill: "none", stroke: "currentColor", strokeWidth: 0.8 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("text", { x: labX, y: labY, textAnchor: "middle", fontSize: 9, fill: "currentColor", children: incLabel }),
+    showPolarity && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "text",
+        {
+          x: plusX,
+          y: plusY,
+          textAnchor: "middle",
+          fontSize: 11,
+          fontWeight: "bold",
+          fill: LOOK_COLOR,
+          children: "+"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "text",
+        {
+          x: minusX,
+          y: minusY,
+          textAnchor: "middle",
+          fontSize: 11,
+          fontWeight: "bold",
+          fill: LOOK_COLOR,
+          children: "−"
+        }
+      )
+    ] })
+  ] });
+}
+function LosIndicator() {
+  const { state, dispatch } = useAppContext();
+  const [manualOn, setManualOn] = reactExports.useState(false);
+  const [direction, setDirection] = reactExports.useState("ascending");
+  const [looking, setLooking] = reactExports.useState("right");
+  const [incidence, setIncidence] = reactExports.useState(37);
+  const { panelRef, panelStyle, onDragMouseDown, resizeGrip } = useDraggableResizable({
+    defaultWidth: 280,
+    defaultHeight: 210,
+    initialRight: 400,
+    initialBottom: 40,
+    minWidth: 240,
+    minHeight: 180
+  });
+  const dsInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : void 0;
+  const meta = dsInfo == null ? void 0 : dsInfo.los_metadata;
+  const geom = reactExports.useMemo(() => {
+    if (meta) return geometryFromMetadata(meta);
+    if (manualOn) return geometryFromManual(direction, looking, incidence);
+    return null;
+  }, [meta, manualOn, direction, looking, incidence]);
+  const showPolarity = !!(dsInfo == null ? void 0 : dsInfo.uses_spatial_ref);
+  if (!state.showLosIndicator) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      ref: panelRef,
+      style: {
+        ...panelStyle,
+        position: "fixed",
+        background: "var(--sb-surface)",
+        border: "1px solid var(--sb-border)",
+        borderRadius: 10,
+        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+        backdropFilter: "blur(8px)",
+        zIndex: 3200,
+        display: "flex",
+        flexDirection: "column",
+        userSelect: "none",
+        color: "var(--sb-text)"
+      },
+      onMouseDown: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            onMouseDown: onDragMouseDown,
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "4px 8px",
+              height: 26,
+              cursor: "grab",
+              borderBottom: "1px solid var(--sb-border)",
+              boxSizing: "border-box"
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.72em", color: "var(--sb-muted)" }, children: "LOS geometry" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onMouseDown: (e) => e.stopPropagation(),
+                  onClick: () => dispatch({ type: "TOGGLE_LOS_INDICATOR" }),
+                  title: "Close",
+                  style: {
+                    background: "none",
+                    border: "none",
+                    color: "var(--sb-muted)",
+                    cursor: "pointer",
+                    padding: "1px 5px",
+                    fontSize: "0.85em"
+                  },
+                  children: "✕"
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { padding: 8, display: "flex", flexDirection: "column", gap: 6 }, children: [
+          geom ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 8, justifyContent: "space-around", alignItems: "center" }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", alignItems: "center" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(FlightCompass, { geom }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: "0.7em", marginTop: 2 }, children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: LOOK_COLOR }, children: "Look" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "var(--sb-muted)" }, children: [
+                    " ",
+                    geom.look.toFixed(1),
+                    "°"
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: "var(--sb-muted)" }, children: " · " }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { color: FLIGHT_COLOR }, children: "Flight" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { style: { color: "var(--sb-muted)" }, children: [
+                    " ",
+                    geom.heading.toFixed(1),
+                    "°"
+                  ] })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", flexDirection: "column", alignItems: "center" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(SideView, { geom, showPolarity }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { fontSize: "0.7em", color: "var(--sb-muted)", marginTop: 2 }, children: [
+                  "Incidence ",
+                  geom.incidenceNear !== void 0 && geom.incidenceFar !== void 0 ? `${geom.incidenceNear.toFixed(1)}°–${geom.incidenceFar.toFixed(1)}°` : `${geom.incidence.toFixed(1)}°`
+                ] })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: {
+              fontSize: "0.72em",
+              textAlign: "center",
+              borderTop: "1px solid var(--sb-border)",
+              paddingTop: 4,
+              textTransform: "capitalize"
+            }, children: [
+              geom.direction,
+              " · ",
+              geom.looking,
+              "-looking"
+            ] })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { textAlign: "center", padding: "8px 4px" }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { style: { fontSize: "0.78em", color: "var(--sb-muted)", marginBottom: 8 }, children: "No LOS metadata for this dataset." }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                className: "toggle-pill",
+                style: { fontSize: "0.75em" },
+                onClick: () => setManualOn(true),
+                children: "Enter manually"
+              }
+            )
+          ] }),
+          manualOn && !meta && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { borderTop: "1px solid var(--sb-border)", paddingTop: 6, display: "flex", flexDirection: "column", gap: 4 }, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: `toggle-pill${direction === "ascending" ? " active" : ""}`,
+                  style: { flex: 1, justifyContent: "center", fontSize: "0.75em" },
+                  onClick: () => setDirection("ascending"),
+                  children: "Ascending"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: `toggle-pill${direction === "descending" ? " active" : ""}`,
+                  style: { flex: 1, justifyContent: "center", fontSize: "0.75em" },
+                  onClick: () => setDirection("descending"),
+                  children: "Descending"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 4 }, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: `toggle-pill${looking === "right" ? " active" : ""}`,
+                  style: { flex: 1, justifyContent: "center", fontSize: "0.75em" },
+                  onClick: () => setLooking("right"),
+                  children: "Right-looking"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: `toggle-pill${looking === "left" ? " active" : ""}`,
+                  style: { flex: 1, justifyContent: "center", fontSize: "0.75em" },
+                  onClick: () => setLooking("left"),
+                  children: "Left-looking"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", justifyContent: "space-between", fontSize: "0.72em", color: "var(--sb-muted)" }, children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Incidence" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+                  incidence,
+                  "°"
+                ] })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "range",
+                  min: 15,
+                  max: 60,
+                  step: 1,
+                  value: incidence,
+                  className: "sidebar-range",
+                  onChange: (e) => setIncidence(parseInt(e.target.value)),
+                  onMouseDown: (e) => e.stopPropagation()
+                }
+              )
+            ] })
+          ] })
+        ] }),
+        resizeGrip
+      ]
+    }
+  );
+}
 function AppContent() {
   const { state, dispatch } = useAppContext();
   const { fetchDatasets, fetchDataMode, fetchConfig } = useApi();
@@ -38841,6 +39377,7 @@ function AppContent() {
       /* @__PURE__ */ jsxRuntimeExports.jsx(PointManagerPanel, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(RefPointChart, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(ColormapBar, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(LosIndicator, {}),
       /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileChart, {}),
       state.showChart && state.chartWindows.map((w2) => /* @__PURE__ */ jsxRuntimeExports.jsx(TimeSeriesChart, { windowId: w2.id }, w2.id))
     ] })
