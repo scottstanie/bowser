@@ -621,16 +621,17 @@ img.huechange { filter: hue-rotate(120deg); }
 }
 
 /* ── Point Manager Panel ────────────────────────────────────── */
+/* top offset clears the top-right map toolbar (10 + ~46px + gap) */
 .point-manager-toggle {
   position: fixed;
-  top: 20px;
+  top: 68px;
   right: 20px;
   z-index: 4000;
 }
 
 .point-manager-panel {
   position: fixed;
-  top: 20px;
+  top: 68px;
   right: 20px;
   width: 300px;
   max-height: 60vh;
