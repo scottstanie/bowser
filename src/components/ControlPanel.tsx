@@ -83,7 +83,7 @@ export default function ControlPanel({ title }: { title: string }) {
     const n = parseFloat(draftBounds.n);
     const e = parseFloat(draftBounds.e);
     if ([s, w, n, e].some(isNaN)) return;
-    dispatch({ type: 'SET_VIEW_BOUNDS', payload: [s, w, n, e] });
+    dispatch({ type: 'APPLY_VIEW_BOUNDS', payload: [s, w, n, e] });
   };
 
   useEffect(() => {
@@ -397,7 +397,7 @@ export default function ControlPanel({ title }: { title: string }) {
           {state.currentDataset && state.datasetInfo[state.currentDataset] && (
             <button className="chart-btn" style={{ flex: 1 }} onClick={() => {
               const b = state.datasetInfo[state.currentDataset].latlon_bounds;
-              dispatch({ type: 'SET_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
+              dispatch({ type: 'APPLY_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
             }}>
               <i className="fa-solid fa-arrows-to-circle"></i> Dataset
             </button>

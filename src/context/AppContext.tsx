@@ -52,6 +52,7 @@ const initialState: AppState = {
   dateRangeStart: null,
   dateRangeEnd: null,
   viewBounds: null,
+  viewBoundsApplySeq: 0,
   showColorbar: false,
   showLosIndicator: false,
 };
@@ -238,6 +239,12 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, dateRangeEnd: action.payload };
     case 'SET_VIEW_BOUNDS':
       return { ...state, viewBounds: action.payload };
+    case 'APPLY_VIEW_BOUNDS':
+      return {
+        ...state,
+        viewBounds: action.payload,
+        viewBoundsApplySeq: state.viewBoundsApplySeq + 1,
+      };
     case 'TOGGLE_COLORBAR':
       return { ...state, showColorbar: !state.showColorbar };
     case 'TOGGLE_LOS_INDICATOR':
