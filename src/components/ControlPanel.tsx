@@ -29,7 +29,6 @@ export default function ControlPanel({ title }: { title: string }) {
   const [draftRefLat, setDraftRefLat] = useState(String(state.refMarkerPosition[0]));
   const [draftRefLon, setDraftRefLon] = useState(String(state.refMarkerPosition[1]));
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
-    distribution: true,
     masking: true,
     buffer: true,
   });
@@ -260,11 +259,6 @@ export default function ControlPanel({ title }: { title: string }) {
             min="0" max="1" step="0.01" value={state.opacity}
             onChange={e => dispatch({ type: 'SET_OPACITY', payload: parseFloat(e.target.value) })} />
         </div>
-      </div>
-
-      {/* ── VALUE DISTRIBUTION ── */}
-      <div className="sidebar-section">
-        <SectionHeader icon="fa-chart-bar" label="Distribution" />
         <Histogram />
       </div>
 

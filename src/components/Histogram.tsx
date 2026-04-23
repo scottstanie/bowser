@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { useAppContext } from '../context/AppContext';
@@ -24,24 +24,29 @@ export default function Histogram() {
   const [histData, setHistData] = useState<HistogramData | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const fetchHistogram = useCallback(async () => {
+  // Debounced so that scrubbing the time slider doesn't fire a full-image
+  // stats request per intermediate index (issue #34). Also aborts a stale
+  // request when a new one supersedes it.
+  useEffect(() => {
     if (!state.currentDataset) return;
-    setLoading(true);
-    try {
-      const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
-      const res = await fetch(`/histogram/${encodeURIComponent(state.currentDataset)}?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistData(data);
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
+        const res = await fetch(
+          `/histogram/${encodeURIComponent(state.currentDataset)}?${params}`,
+          { signal: controller.signal },
+        );
+        if (res.ok) setHistData(await res.json());
+      } catch (e) {
+        if ((e as any).name !== 'AbortError') console.error('Error fetching histogram:', e);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-    } catch (e) {
-      console.error('Error fetching histogram:', e);
-    } finally {
-      setLoading(false);
-    }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
   }, [state.currentDataset, state.currentTimeIndex]);
-
-  useEffect(() => { fetchHistogram(); }, [fetchHistogram]);
 
   const handleAutoScale = () => {
     if (!histData) return;
