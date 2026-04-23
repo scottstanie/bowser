@@ -23,12 +23,15 @@ const fontAwesomeIcon = L.divIcon({
   className: 'myDivIcon'
 });
 
-function MapEvents() {
+function MapEvents({ toolActive }: { toolActive: boolean }) {
   const { state, dispatch } = useAppContext();
+  const { active: profileActive } = useProfileContext();
 
   useMapEvents({
     click: (e) => {
-      if (!state.pickingEnabled) return;
+      // Let measure / profile tools consume their own clicks without also
+      // dropping a time-series point.
+      if (toolActive || profileActive) return;
       dispatch({
         type: 'ADD_TIME_SERIES_POINT',
         payload: {
@@ -36,6 +39,9 @@ function MapEvents() {
           name: `Point ${Date.now().toString().slice(-4)}`
         }
       });
+      // Auto-open the chart the first time the user drops a point so they
+      // can actually see the time series without hunting for a toggle.
+      if (!state.showChart) dispatch({ type: 'TOGGLE_CHART' });
     },
   });
 
@@ -535,7 +541,7 @@ export default function MapContainer() {
       <RasterTileLayer />
       <RadiusCircles />
       <MarkerEventHandlers />
-      <MapEvents />
+      <MapEvents toolActive={measureActive || profileActive} />
       <MousePosition />
       <ScaleBar />
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />

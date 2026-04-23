@@ -96,7 +96,6 @@ export interface AppState {
   bufferEnabled: boolean;
   bufferRadius: number;
   bufferSamples: number;
-  pickingEnabled: boolean;
   refEnabled: boolean;
   refBufferEnabled: boolean;
   refBufferRadius: number;
@@ -143,7 +142,6 @@ export type AppAction =
   | { type: 'TOGGLE_BUFFER' }
   | { type: 'SET_BUFFER_RADIUS'; payload: number }
   | { type: 'SET_BUFFER_SAMPLES'; payload: number }
-  | { type: 'TOGGLE_PICKING' }
   | { type: 'TOGGLE_REF_ENABLED' }
   | { type: 'TOGGLE_REF_BUFFER' }
   | { type: 'SET_REF_BUFFER_RADIUS'; payload: number }

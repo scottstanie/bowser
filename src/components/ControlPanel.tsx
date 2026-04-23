@@ -452,15 +452,8 @@ export default function ControlPanel({ title }: { title: string }) {
         )}
       </div>
 
-      {/* ── FOOTER TOGGLES ── */}
+      {/* ── FOOTER ── */}
       <div className="sidebar-footer">
-        <button className={`toggle-pill${state.pickingEnabled ? ' active' : ''}`}
-          style={{ width: '100%', marginBottom: 6, justifyContent: 'center' }}
-          onClick={() => dispatch({ type: 'TOGGLE_PICKING' })}
-          title="Toggle map-click point picking">
-          <i className="fa-solid fa-map-pin" style={{ marginRight: 6 }}></i>
-          Point Picking: {state.pickingEnabled ? 'ON' : 'OFF'}
-        </button>
         <button className="chart-toggle-btn" onClick={() => dispatch({ type: 'TOGGLE_CHART' })}>
           <i className={`fa-solid ${state.showChart ? 'fa-chart-line' : 'fa-wave-square'}`}></i>
           {state.showChart ? 'Hide' : 'Show'} Time Series

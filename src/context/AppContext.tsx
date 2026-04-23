@@ -41,7 +41,6 @@ const initialState: AppState = {
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  pickingEnabled: false,
   refEnabled: true,
   refBufferEnabled: false,
   refBufferRadius: 500,
@@ -213,8 +212,6 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, bufferRadius: action.payload };
     case 'SET_BUFFER_SAMPLES':
       return { ...state, bufferSamples: action.payload };
-    case 'TOGGLE_PICKING':
-      return { ...state, pickingEnabled: !state.pickingEnabled };
     case 'TOGGLE_REF_ENABLED':
       return { ...state, refEnabled: !state.refEnabled };
     case 'TOGGLE_REF_BUFFER':
