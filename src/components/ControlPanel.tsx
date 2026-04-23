@@ -183,20 +183,6 @@ export default function ControlPanel({ title }: { title: string }) {
     ? currentDatasetInfo.x_values[state.currentTimeIndex]
     : '';
 
-  // Animation: auto-advance time index (lives here so it works regardless of chart visibility)
-  const nTimes = currentDatasetInfo?.x_values?.length ?? 0;
-  const timeIndexRef = useRef(state.currentTimeIndex);
-  timeIndexRef.current = state.currentTimeIndex;
-  const nTimesRef = useRef(nTimes);
-  nTimesRef.current = nTimes;
-  useEffect(() => {
-    if (!state.isPlaying || nTimes === 0) return;
-    const id = setInterval(() => {
-      dispatch({ type: 'SET_TIME_INDEX', payload: (timeIndexRef.current + 1) % nTimesRef.current });
-    }, state.animationSpeed);
-    return () => clearInterval(id);
-  }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
-
   const SectionHeader = ({ icon, label, collapseKey }: { icon: string; label: string; collapseKey?: string }) => (
     <div
       className="sidebar-section-label"
@@ -239,27 +225,6 @@ export default function ControlPanel({ title }: { title: string }) {
               value={state.currentTimeIndex}
               onChange={e => dispatch({ type: 'SET_TIME_INDEX', payload: parseInt(e.target.value) })}
             />
-            {currentDatasetInfo.x_values.length > 1 && (
-              <div className="anim-controls">
-                <button
-                  className={`toggle-pill anim-play-btn${state.isPlaying ? ' active' : ''}`}
-                  onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
-                  title={state.isPlaying ? 'Pause animation' : 'Play animation'}
-                >
-                  <i className={`fa-solid ${state.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
-                  {state.isPlaying ? 'Pause' : 'Play'}
-                </button>
-                <div className="slider-label" style={{ marginTop: 4 }}>
-                  <span>Speed</span>
-                  <span className="slider-value">{(1000 / state.animationSpeed).toFixed(1)}x</span>
-                </div>
-                <input type="range" className="sidebar-range"
-                  min="100" max="2000" step="100"
-                  value={2100 - state.animationSpeed}
-                  onChange={e => dispatch({ type: 'SET_ANIMATION_SPEED', payload: 2100 - parseInt(e.target.value) })}
-                />
-              </div>
-            )}
           </div>
         )}
       </div>

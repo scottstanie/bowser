@@ -101,8 +101,6 @@ export interface AppState {
   refBufferEnabled: boolean;
   refBufferRadius: number;
   showRefChart: boolean;
-  isPlaying: boolean;
-  animationSpeed: number;
   markerSize: number;
   dateRangeStart: string | null;
   dateRangeEnd: string | null;
@@ -150,9 +148,6 @@ export type AppAction =
   | { type: 'TOGGLE_REF_BUFFER' }
   | { type: 'SET_REF_BUFFER_RADIUS'; payload: number }
   | { type: 'TOGGLE_REF_CHART' }
-  | { type: 'TOGGLE_PLAYING' }
-  | { type: 'SET_PLAYING'; payload: boolean }
-  | { type: 'SET_ANIMATION_SPEED'; payload: number }
   | { type: 'SET_MARKER_SIZE'; payload: number }
   | { type: 'SET_DATE_RANGE_START'; payload: string | null }
   | { type: 'SET_DATE_RANGE_END'; payload: string | null }

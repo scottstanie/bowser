@@ -46,8 +46,6 @@ const initialState: AppState = {
   refBufferEnabled: false,
   refBufferRadius: 500,
   showRefChart: false,
-  isPlaying: false,
-  animationSpeed: 500,
   markerSize: 4,
   dateRangeStart: null,
   dateRangeEnd: null,
@@ -225,12 +223,6 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, refBufferRadius: action.payload };
     case 'TOGGLE_REF_CHART':
       return { ...state, showRefChart: !state.showRefChart };
-    case 'TOGGLE_PLAYING':
-      return { ...state, isPlaying: !state.isPlaying };
-    case 'SET_PLAYING':
-      return { ...state, isPlaying: action.payload };
-    case 'SET_ANIMATION_SPEED':
-      return { ...state, animationSpeed: action.payload };
     case 'SET_MARKER_SIZE':
       return { ...state, markerSize: action.payload };
     case 'SET_DATE_RANGE_START':
