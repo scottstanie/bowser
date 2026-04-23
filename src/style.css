@@ -803,11 +803,10 @@ img.huechange { filter: hue-rotate(120deg); }
 }
 
 /* ── Map toolbar ────────────────────────────────────────────── */
-.map-toolbar {
+.map-toolbar,
+.map-toolbar-right {
   position: absolute;
   top: 10px;
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 2000;
   display: flex;
   gap: 6px;
@@ -816,6 +815,56 @@ img.huechange { filter: hue-rotate(120deg); }
   border-radius: 8px;
   padding: 6px 8px;
   backdrop-filter: blur(6px);
+}
+
+.map-toolbar { left: 10px; }
+.map-toolbar-right { right: 10px; }
+
+.map-tool-btn[disabled] {
+  opacity: 0.4;
+  cursor: default;
+}
+.map-tool-btn[disabled]:hover {
+  background: var(--sb-surface2);
+  color: var(--sb-muted);
+  border-color: var(--sb-border);
+}
+
+.basemap-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 160px;
+  background: rgba(19, 21, 31, 0.96);
+  border: 1px solid var(--sb-border);
+  border-radius: 8px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  z-index: 2001;
+}
+
+.basemap-option {
+  background: transparent;
+  color: var(--sb-text);
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.basemap-option:hover {
+  background: var(--sb-surface2);
+}
+
+.basemap-option.active {
+  background: var(--sb-accent);
+  color: white;
 }
 
 .map-tool-btn {
