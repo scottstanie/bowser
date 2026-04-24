@@ -37,11 +37,24 @@ export const ProfileContext = createContext<ProfileState>({
 
 export function useProfileContext() { return useContext(ProfileContext); }
 
-const VERTEX_ICON = L.divIcon({
-  className: '',
-  html: '<div style="width:12px;height:12px;border-radius:50%;background:#f0a500;border:2px solid white;box-sizing:border-box;margin-left:-6px;margin-top:-6px;cursor:grab"></div>',
-  iconSize: [0, 0],
-});
+// Direction palette: start green → end red, middle orange. Matches the
+// start→end gradient on the profile chart line so both views agree on which
+// end is which.
+const START_COLOR = '#2ca02c';
+const END_COLOR = '#d62728';
+const MID_COLOR = '#f0a500';
+
+function vertexIcon(index: number, total: number): L.DivIcon {
+  const isStart = index === 0;
+  const isEnd = total > 1 && index === total - 1;
+  const bg = isStart ? START_COLOR : isEnd ? END_COLOR : MID_COLOR;
+  const label = String(index + 1);
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:18px;height:18px;border-radius:50%;background:${bg};color:white;border:2px solid white;box-sizing:border-box;margin-left:-9px;margin-top:-9px;cursor:grab;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;box-shadow:0 0 3px rgba(0,0,0,0.4);user-select:none;">${label}</div>`,
+    iconSize: [0, 0],
+  });
+}
 
 function cssVar(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
@@ -133,7 +146,11 @@ export function ProfileToolMap() {
   const rebuildMarkers = (pts: L.LatLng[]) => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = pts.map((pt, idx) => {
-      const m = L.marker(pt, { icon: VERTEX_ICON, draggable: true }).addTo(map);
+      const m = L.marker(pt, {
+        icon: vertexIcon(idx, pts.length),
+        draggable: true,
+        title: 'Drag to move',
+      }).addTo(map);
       m.on('drag', () => { ptsRef.current[idx] = m.getLatLng(); updatePoly(ptsRef.current); });
       m.on('dragend', () => {
         ptsRef.current[idx] = m.getLatLng();
@@ -215,6 +232,19 @@ export function ProfileToolMap() {
     };
     const onDblClick = (e: L.LeafletMouseEvent) => {
       L.DomEvent.stop(e);
+      // A double-click fires click → click → dblclick, so onClick has
+      // already appended up to two extra vertices at this pixel before we
+      // get here. Collapse any trailing vertices that land on the same
+      // screen pixel so the finish gesture doesn't leave phantom points
+      // stacked at the end.
+      const DUP_PX = 5;
+      while (ptsRef.current.length >= 2) {
+        const n = ptsRef.current.length;
+        const a = map.latLngToContainerPoint(ptsRef.current[n - 1]);
+        const b = map.latLngToContainerPoint(ptsRef.current[n - 2]);
+        if (a.distanceTo(b) <= DUP_PX) ptsRef.current = ptsRef.current.slice(0, -1);
+        else break;
+      }
       if (modeRef.current !== 'drawing' || ptsRef.current.length < 2) return;
       previewRef.current?.remove(); previewRef.current = null;
       updatePoly(ptsRef.current);
@@ -281,6 +311,31 @@ export function ProfileChart() {
   const mutedColor = cssVar('--sb-muted',  '#7880a8');
   const gridColor  = cssVar('--sb-border', '#2c2f4a');
 
+  // Start→end gradient for the main profile line, matching vertex marker colors.
+  // Returns a CanvasGradient spanning the plot area; on the very first render
+  // the chartArea isn't laid out yet, so fall back to the end color.
+  const gradientBorder = (context: any): string | CanvasGradient => {
+    const { ctx: c, chartArea } = context.chart;
+    if (!chartArea) return END_COLOR;
+    const g = c.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+    g.addColorStop(0, START_COLOR);
+    g.addColorStop(1, END_COLOR);
+    return g;
+  };
+  // Endpoint markers on the chart: green dot at the first sample, red at the
+  // last, invisible elsewhere. Reinforces the direction cue when the line is
+  // hidden (binned median) or nearly flat.
+  const endpointColor = (start: string, end: string) => (ctx: any) => {
+    const n = ctx.dataset.data?.length ?? 0;
+    if (ctx.dataIndex === 0) return start;
+    if (ctx.dataIndex === n - 1) return end;
+    return 'transparent';
+  };
+  const endpointRadius = (size: number) => (ctx: any) => {
+    const n = ctx.dataset.data?.length ?? 0;
+    return ctx.dataIndex === 0 || ctx.dataIndex === n - 1 ? size : 0;
+  };
+
   const hasData = profileData && (profileData.centre.length > 0 || (profileData.median && profileData.median.length > 0));
   const isBinned = !!(profileData?.binned && samplingInterval > 0);
   const datasets: any[] = [];
@@ -298,8 +353,17 @@ export function ProfileChart() {
       });
       if (profileData!.median) datasets.push({
         label: 'median', data: profileData!.median.map(p => p.value),
-        borderColor: '#4d9de0', backgroundColor: '#4d9de0', borderWidth: 0, showLine: false,
-        pointStyle: 'circle', pointRadius: 5, pointHoverRadius: 7, fill: false,
+        borderColor: '#4d9de0',
+        backgroundColor: endpointColor('#4d9de0', '#4d9de0'),
+        pointBackgroundColor: endpointColor(START_COLOR, END_COLOR),
+        pointBorderColor: endpointColor(START_COLOR, END_COLOR),
+        borderWidth: 0, showLine: false,
+        pointStyle: 'circle',
+        pointRadius: (ctx: any) => {
+          const n = ctx.dataset.data?.length ?? 0;
+          return ctx.dataIndex === 0 || ctx.dataIndex === n - 1 ? 7 : 5;
+        },
+        pointHoverRadius: 7, fill: false,
       });
     } else {
       if (useBuffer) profileData!.samples.forEach((s, i) => datasets.push({
@@ -310,13 +374,22 @@ export function ProfileChart() {
       datasets.push({
         label: useBuffer ? 'centre' : state.currentDataset,
         data: centre.map(p => p.value),
-        borderColor: useBuffer ? '#4d9de088' : '#4d9de0',
+        borderColor: useBuffer ? '#4d9de088' : gradientBorder,
         backgroundColor: useBuffer ? 'transparent' : 'rgba(77,157,224,0.15)',
-        borderWidth: useBuffer ? 1 : 1.5, pointRadius: 0, fill: !useBuffer, tension: 0.2,
+        borderWidth: useBuffer ? 1 : 1.5,
+        pointRadius: useBuffer ? 0 : endpointRadius(6),
+        pointBackgroundColor: useBuffer ? undefined : endpointColor(START_COLOR, END_COLOR),
+        pointBorderColor: useBuffer ? undefined : endpointColor(START_COLOR, END_COLOR),
+        fill: !useBuffer, tension: 0.2,
       });
       if (useBuffer && profileData!.median) datasets.push({
         label: 'median', data: profileData!.median.map(p => p.value),
-        borderColor: '#4d9de0', backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 0, fill: false, tension: 0.2,
+        borderColor: gradientBorder, backgroundColor: 'transparent',
+        borderWidth: 2.5,
+        pointRadius: endpointRadius(6),
+        pointBackgroundColor: endpointColor(START_COLOR, END_COLOR),
+        pointBorderColor: endpointColor(START_COLOR, END_COLOR),
+        fill: false, tension: 0.2,
       });
     }
   }
@@ -336,7 +409,7 @@ export function ProfileChart() {
       tooltip: { callbacks: { title: (ctx: any) => `${ctx[0]?.label ?? ''} m` } },
     },
     scales: {
-      x: { title: { display: true, text: 'Distance (m)', color: mutedColor }, ticks: { color: mutedColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
+      x: { title: { display: true, text: 'Distance (m) — start → end', color: mutedColor }, ticks: { color: mutedColor, maxTicksLimit: 8 }, grid: { color: gridColor } },
       y: { title: { display: true, text: state.currentDataset, color: mutedColor }, ticks: { color: mutedColor }, grid: { color: gridColor } },
     },
   };
