@@ -148,7 +148,7 @@ automatically from the expected client tile size.
 
 ---
 
-### 8. titiler doesn't pick pyramid levels by zoom — bowser wraps it
+### 9. titiler doesn't pick pyramid levels by zoom — bowser wraps it
 
 **Where:** `src/bowser/main.py` `XarrayPathDependency` (~L1464); level
 picker in `src/bowser/state.py` `BowserState.dataset_for_tile_zoom`.
@@ -183,6 +183,45 @@ config change (point titiler at the new dependency, delete
 `dataset_for_tile_zoom`). Until then the wrapper works fine.
 
 Related: titiler#1071 (Jan 2025 thread, still open).
+
+---
+
+### 10. `src/bowser/dist/index.js` is checked into git
+
+**Where:** `src/bowser/dist/` — built output of `npm run build` against
+the `src/components/*.tsx` + CSS source.
+
+**What's wrong:** Every frontend PR carries a ~1 MB minified-JS diff on
+top of the actual `.tsx` changes, merge conflicts in `dist/` are common
+on parallel frontend work, and there are two sources of truth — someone
+forgetting to run `npm run build` ships stale JS. The `Rebuild frontend
+bundle` commit recurs in history.
+
+**Why it's here anyway:** pip-installable without needing Node.js on the
+user's machine, simpler Docker image, one-step install. The trade-off
+was pragmatic, not accidental.
+
+**Fix options:**
+
+1. **pixi task + CI build-and-commit.** Add nodejs as a conda-forge dep
+   under a pixi feature, define `pixi run build-frontend`, gitignore
+   `src/bowser/dist/`, and have a GitHub Actions workflow rebuild dist/
+   and commit it on release tags.
+   ```toml
+   [tool.pixi.feature.frontend.dependencies]
+   nodejs = ">=20"
+
+   [tool.pixi.feature.frontend.tasks]
+   build-frontend = "npm ci && npm run build"
+   ```
+2. **Build at wheel-packaging time.** Move dist/ out of git; use
+   `hatch-jupyter-builder` or `setuptools-js-build` so `python -m build`
+   runs `npm run build` before assembling the wheel. Publishes clean
+   wheels, keeps source tree clean. More setup up front, but closest to
+   the modern Python-frontend packaging norm.
+
+Revisit when frontend contribution volume increases or when the next
+`Rebuild frontend bundle` merge conflict costs >30 min.
 
 ---
 
