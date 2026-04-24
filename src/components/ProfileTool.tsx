@@ -267,6 +267,24 @@ export function ProfileChart() {
     minWidth: 200, minHeight: 150,
   });
 
+  // Drafts so typing / arrow-key nudges don't fire /profile on every keystroke.
+  // Commit to context (which triggers extraction) only on Enter or blur.
+  const [draftRadius, setDraftRadius] = useState(String(radius));
+  const [draftSampling, setDraftSampling] = useState(String(samplingInterval));
+  useEffect(() => { setDraftRadius(String(radius)); }, [radius]);
+  useEffect(() => { setDraftSampling(String(samplingInterval)); }, [samplingInterval]);
+
+  const commitRadius = () => {
+    const v = Math.max(0, Number(draftRadius));
+    if (!Number.isNaN(v) && v !== radius) setRadius(v);
+    else setDraftRadius(String(radius));
+  };
+  const commitSampling = () => {
+    const v = Math.max(0, Number(draftSampling));
+    if (!Number.isNaN(v) && v !== samplingInterval) setSamplingInterval(v);
+    else setDraftSampling(String(samplingInterval));
+  };
+
   if (!active) return null;
 
   if (loading) return (
@@ -390,12 +408,16 @@ export function ProfileChart() {
         <h4>Profile — {state.currentDataset}</h4>
         <div className="profile-radius-control">
           <label style={{ color: mutedColor, fontSize: '0.8em', marginRight: 4 }}>Sampling (m):</label>
-          <input type="number" min={0} step={50} value={samplingInterval}
-            onChange={e => setSamplingInterval(Math.max(0, Number(e.target.value)))}
+          <input type="text" inputMode="decimal" value={draftSampling}
+            onChange={e => setDraftSampling(e.target.value)}
+            onBlur={commitSampling}
+            onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
             className="profile-radius-input" onMouseDown={e => e.stopPropagation()} />
           <label style={{ color: mutedColor, fontSize: '0.8em', marginLeft: 8, marginRight: 4 }}>Radius (m):</label>
-          <input type="number" min={0} step={100} value={radius}
-            onChange={e => setRadius(Math.max(0, Number(e.target.value)))}
+          <input type="text" inputMode="decimal" value={draftRadius}
+            onChange={e => setDraftRadius(e.target.value)}
+            onBlur={commitRadius}
+            onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
             className="profile-radius-input" onMouseDown={e => e.stopPropagation()} />
         </div>
         <button className="chart-btn" onClick={clearAll} title="Clear profile">

@@ -1,6 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
-import { baseMaps } from '../basemap';
 import { useApi } from '../hooks/useApi';
 import Histogram from './Histogram';
 
@@ -29,10 +28,7 @@ export default function ControlPanel({ title }: { title: string }) {
   const [lightTheme, setLightTheme] = useState(false);
   const [draftRefLat, setDraftRefLat] = useState(String(state.refMarkerPosition[0]));
   const [draftRefLon, setDraftRefLon] = useState(String(state.refMarkerPosition[1]));
-  const [draftBounds, setDraftBounds] = useState({ s: '', w: '', n: '', e: '' });
-  const boundsEditingRef = useRef(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
-    distribution: true,
     masking: true,
     buffer: true,
   });
@@ -69,22 +65,6 @@ export default function ControlPanel({ title }: { title: string }) {
     setDraftRefLat(state.refMarkerPosition[0].toFixed(6));
     setDraftRefLon(state.refMarkerPosition[1].toFixed(6));
   }, [state.refMarkerPosition]);
-
-  // Keep draft bounds in sync when map moves — but not while user is editing a field
-  useEffect(() => {
-    if (!state.viewBounds || boundsEditingRef.current) return;
-    const [s, w, n, e] = state.viewBounds;
-    setDraftBounds({ s: String(s), w: String(w), n: String(n), e: String(e) });
-  }, [state.viewBounds]);
-
-  const applyViewBounds = () => {
-    const s = parseFloat(draftBounds.s);
-    const w = parseFloat(draftBounds.w);
-    const n = parseFloat(draftBounds.n);
-    const e = parseFloat(draftBounds.e);
-    if ([s, w, n, e].some(isNaN)) return;
-    dispatch({ type: 'SET_VIEW_BOUNDS', payload: [s, w, n, e] });
-  };
 
   useEffect(() => {
     const datasetName = state.currentDataset;
@@ -183,20 +163,6 @@ export default function ControlPanel({ title }: { title: string }) {
     ? currentDatasetInfo.x_values[state.currentTimeIndex]
     : '';
 
-  // Animation: auto-advance time index (lives here so it works regardless of chart visibility)
-  const nTimes = currentDatasetInfo?.x_values?.length ?? 0;
-  const timeIndexRef = useRef(state.currentTimeIndex);
-  timeIndexRef.current = state.currentTimeIndex;
-  const nTimesRef = useRef(nTimes);
-  nTimesRef.current = nTimes;
-  useEffect(() => {
-    if (!state.isPlaying || nTimes === 0) return;
-    const id = setInterval(() => {
-      dispatch({ type: 'SET_TIME_INDEX', payload: (timeIndexRef.current + 1) % nTimesRef.current });
-    }, state.animationSpeed);
-    return () => clearInterval(id);
-  }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
-
   const SectionHeader = ({ icon, label, collapseKey }: { icon: string; label: string; collapseKey?: string }) => (
     <div
       className="sidebar-section-label"
@@ -239,27 +205,6 @@ export default function ControlPanel({ title }: { title: string }) {
               value={state.currentTimeIndex}
               onChange={e => dispatch({ type: 'SET_TIME_INDEX', payload: parseInt(e.target.value) })}
             />
-            {currentDatasetInfo.x_values.length > 1 && (
-              <div className="anim-controls">
-                <button
-                  className={`toggle-pill anim-play-btn${state.isPlaying ? ' active' : ''}`}
-                  onClick={() => dispatch({ type: 'TOGGLE_PLAYING' })}
-                  title={state.isPlaying ? 'Pause animation' : 'Play animation'}
-                >
-                  <i className={`fa-solid ${state.isPlaying ? 'fa-pause' : 'fa-play'}`}></i>
-                  {state.isPlaying ? 'Pause' : 'Play'}
-                </button>
-                <div className="slider-label" style={{ marginTop: 4 }}>
-                  <span>Speed</span>
-                  <span className="slider-value">{(1000 / state.animationSpeed).toFixed(1)}x</span>
-                </div>
-                <input type="range" className="sidebar-range"
-                  min="100" max="2000" step="100"
-                  value={2100 - state.animationSpeed}
-                  onChange={e => dispatch({ type: 'SET_ANIMATION_SPEED', payload: 2100 - parseInt(e.target.value) })}
-                />
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -314,95 +259,7 @@ export default function ControlPanel({ title }: { title: string }) {
             min="0" max="1" step="0.01" value={state.opacity}
             onChange={e => dispatch({ type: 'SET_OPACITY', payload: parseFloat(e.target.value) })} />
         </div>
-        <div className="toggle-row" style={{ marginTop: 4 }}>
-          <span style={{ fontSize: '0.82em', color: 'var(--sb-muted)' }}>Colorbar on map</span>
-          <button
-            className={`toggle-pill${state.showColorbar ? ' active' : ''}`}
-            onClick={() => dispatch({ type: 'TOGGLE_COLORBAR' })}
-          >{state.showColorbar ? 'ON' : 'OFF'}</button>
-        </div>
-        <div className="toggle-row" style={{ marginTop: 4 }}>
-          <span style={{ fontSize: '0.82em', color: 'var(--sb-muted)' }}>LOS geometry</span>
-          <button
-            className={`toggle-pill${state.showLosIndicator ? ' active' : ''}`}
-            onClick={() => dispatch({ type: 'TOGGLE_LOS_INDICATOR' })}
-          >{state.showLosIndicator ? 'ON' : 'OFF'}</button>
-        </div>
-      </div>
-
-      {/* ── VALUE DISTRIBUTION ── */}
-      <div className="sidebar-section">
-        <SectionHeader icon="fa-chart-bar" label="Distribution" />
         <Histogram />
-      </div>
-
-      {/* ── BASEMAP ── */}
-      <div className="sidebar-section">
-        <SectionHeader icon="fa-map" label="Basemap" />
-        <select className="sidebar-select" value={state.selectedBasemap}
-          onChange={e => dispatch({ type: 'SET_BASEMAP', payload: e.target.value })}>
-          {Object.keys(baseMaps).map(key => (
-            <option key={key} value={key}>{key}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* ── VIEW EXTENT ── */}
-      <div className="sidebar-section">
-        <SectionHeader icon="fa-expand" label="View Extent" />
-        <div className="minmax-row">
-          <div className="minmax-field">
-            <label className="minmax-label">N</label>
-            <input className="sidebar-input" type="text" inputMode="decimal"
-              value={draftBounds.n}
-              onFocus={() => { boundsEditingRef.current = true; }}
-              onChange={e => setDraftBounds(b => ({ ...b, n: e.target.value }))}
-              onBlur={() => { boundsEditingRef.current = false; }}
-              onKeyDown={e => e.key === 'Enter' && applyViewBounds()} />
-          </div>
-          <div className="minmax-field">
-            <label className="minmax-label">S</label>
-            <input className="sidebar-input" type="text" inputMode="decimal"
-              value={draftBounds.s}
-              onFocus={() => { boundsEditingRef.current = true; }}
-              onChange={e => setDraftBounds(b => ({ ...b, s: e.target.value }))}
-              onBlur={() => { boundsEditingRef.current = false; }}
-              onKeyDown={e => e.key === 'Enter' && applyViewBounds()} />
-          </div>
-        </div>
-        <div className="minmax-row" style={{ marginTop: 4 }}>
-          <div className="minmax-field">
-            <label className="minmax-label">W</label>
-            <input className="sidebar-input" type="text" inputMode="decimal"
-              value={draftBounds.w}
-              onFocus={() => { boundsEditingRef.current = true; }}
-              onChange={e => setDraftBounds(b => ({ ...b, w: e.target.value }))}
-              onBlur={() => { boundsEditingRef.current = false; }}
-              onKeyDown={e => e.key === 'Enter' && applyViewBounds()} />
-          </div>
-          <div className="minmax-field">
-            <label className="minmax-label">E</label>
-            <input className="sidebar-input" type="text" inputMode="decimal"
-              value={draftBounds.e}
-              onFocus={() => { boundsEditingRef.current = true; }}
-              onChange={e => setDraftBounds(b => ({ ...b, e: e.target.value }))}
-              onBlur={() => { boundsEditingRef.current = false; }}
-              onKeyDown={e => e.key === 'Enter' && applyViewBounds()} />
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-          <button className="chart-btn" style={{ flex: 1 }} onClick={applyViewBounds}>
-            <i className="fa-solid fa-location-crosshairs"></i> Apply
-          </button>
-          {state.currentDataset && state.datasetInfo[state.currentDataset] && (
-            <button className="chart-btn" style={{ flex: 1 }} onClick={() => {
-              const b = state.datasetInfo[state.currentDataset].latlon_bounds;
-              dispatch({ type: 'SET_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
-            }}>
-              <i className="fa-solid fa-arrows-to-circle"></i> Dataset
-            </button>
-          )}
-        </div>
       </div>
 
       {/* ── REFERENCE POINT ── */}
@@ -589,22 +446,8 @@ export default function ControlPanel({ title }: { title: string }) {
         )}
       </div>
 
-      {/* ── FOOTER TOGGLES ── */}
+      {/* ── FOOTER ── */}
       <div className="sidebar-footer">
-        <button className={`toggle-pill${state.pickingEnabled ? ' active' : ''}`}
-          style={{ width: '100%', marginBottom: 6, justifyContent: 'center' }}
-          onClick={() => dispatch({ type: 'TOGGLE_PICKING' })}
-          title="Toggle map-click point picking">
-          <i className="fa-solid fa-map-pin" style={{ marginRight: 6 }}></i>
-          Point Picking: {state.pickingEnabled ? 'ON' : 'OFF'}
-        </button>
-        <button className={`toggle-pill${state.refEnabled ? ' active' : ''}`}
-          style={{ width: '100%', marginBottom: 6, justifyContent: 'center' }}
-          onClick={() => dispatch({ type: 'TOGGLE_REF_ENABLED' })}
-          title="Toggle spatial re-referencing">
-          <i className="fa-solid fa-crosshairs" style={{ marginRight: 6 }}></i>
-          Re-referencing: {state.refEnabled ? 'ON' : 'OFF'}
-        </button>
         <button className="chart-toggle-btn" onClick={() => dispatch({ type: 'TOGGLE_CHART' })}>
           <i className={`fa-solid ${state.showChart ? 'fa-chart-line' : 'fa-wave-square'}`}></i>
           {state.showChart ? 'Hide' : 'Show'} Time Series

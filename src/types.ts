@@ -96,17 +96,20 @@ export interface AppState {
   bufferEnabled: boolean;
   bufferRadius: number;
   bufferSamples: number;
-  pickingEnabled: boolean;
   refEnabled: boolean;
   refBufferEnabled: boolean;
   refBufferRadius: number;
   showRefChart: boolean;
-  isPlaying: boolean;
-  animationSpeed: number;
   markerSize: number;
   dateRangeStart: string | null;
   dateRangeEnd: string | null;
   viewBounds: [number, number, number, number] | null; // [south, west, north, east]
+  // Incremented each time the user explicitly applies bounds (sidebar Apply /
+  // Dataset buttons). The map's flyTo effect watches this, not viewBounds
+  // itself — otherwise moveend → SET_VIEW_BOUNDS → effect → setView forms a
+  // loop whose setView re-centers on bounds.getCenter() (arithmetic midpoint
+  // in lat), not the Mercator center, drifting the map toward the equator.
+  viewBoundsApplySeq: number;
   showColorbar: boolean;
   showLosIndicator: boolean;
 }
@@ -139,18 +142,15 @@ export type AppAction =
   | { type: 'TOGGLE_BUFFER' }
   | { type: 'SET_BUFFER_RADIUS'; payload: number }
   | { type: 'SET_BUFFER_SAMPLES'; payload: number }
-  | { type: 'TOGGLE_PICKING' }
   | { type: 'TOGGLE_REF_ENABLED' }
   | { type: 'TOGGLE_REF_BUFFER' }
   | { type: 'SET_REF_BUFFER_RADIUS'; payload: number }
   | { type: 'TOGGLE_REF_CHART' }
-  | { type: 'TOGGLE_PLAYING' }
-  | { type: 'SET_PLAYING'; payload: boolean }
-  | { type: 'SET_ANIMATION_SPEED'; payload: number }
   | { type: 'SET_MARKER_SIZE'; payload: number }
   | { type: 'SET_DATE_RANGE_START'; payload: string | null }
   | { type: 'SET_DATE_RANGE_END'; payload: string | null }
   | { type: 'SET_VIEW_BOUNDS'; payload: [number, number, number, number] | null }
+  | { type: 'APPLY_VIEW_BOUNDS'; payload: [number, number, number, number] }
   | { type: 'TOGGLE_COLORBAR' }
   | { type: 'TOGGLE_LOS_INDICATOR' }
   | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }

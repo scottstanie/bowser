@@ -1,164 +1,148 @@
 # Bowser
 
-## Quickstart
-
-1. Install [`uv`](https://docs.astral.sh/uv/#installation)
-2. Run `uvx --with bowser-insar --stack-file example-stack.zarr`
+Map-based viewer for InSAR time-series outputs — GeoZarr cubes, dolphin
+workflow directories, or loose GeoTIFFs — served through a local FastAPI
+server and rendered by titiler in the browser.
 
 ![](docs/demo-timeseries.jpg)
 
-## Install
+## Quickstart
+
+Zero-install — run the latest release against a GeoZarr cube:
 
 ```bash
-pip install bowser-insar`
+uvx --from bowser-insar bowser run --stack-file example-cube.zarr
 ```
+
+Open the `http://127.0.0.1:8000` link that bowser prints.
+
+> **Heads up — GDAL drivers.** The PyPI wheel is enough for GeoZarr cubes
+> and plain GeoTIFFs. For NetCDF/HDF5 inputs (DISP-S1 `.nc`, the VRT
+> legacy path) install the conda-forge build of GDAL — the `gdal` PyPI
+> package has no wheels and rasterio's bundled GDAL doesn't ship those
+> drivers. `pixi` is the easiest way:
+>
+> ```bash
+> pixi global install bowser-insar
+> ```
+
+## Install in another project
 
 ```bash
-uv add bowser-insar
+# GeoZarr / GeoTIFF only
+pip install bowser-insar       # or: uv add bowser-insar
+
+# Full format support (NetCDF, HDF5, VRT) via conda-forge GDAL
+pixi add bowser-insar
 ```
 
-For local development, clone and create a conda environment:
+## Quickstart: dolphin workflow
+
+`bowser setup-dolphin` scans a dolphin work directory and writes a
+`bowser_rasters.json` describing every raster group it finds. `bowser run`
+then serves them.
+
 ```bash
-git clone git@github.com:opera-adt/bowser.git && cd bowser
-mamba env create
-conda activate bowser-env
-pip install .
+bowser setup-dolphin work/
+bowser run
 ```
 
-## Quickstart for dolphin
-
-- `bowser setup-dolphin` is preconfigured to make a JSON file pointing to the outputs inside `work_directory` of dolphin
-- `bowser run` starts the web server on `localhost`:
-
-```
-$ bowser setup-dolphin work/
-Reading raster metadata: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 236.13it/s]
-Reading raster metadata: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 95.74it/s]
-Reading raster metadata: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 2/2 [00:00<00:00, 266.77it/s]
-Reading raster metadata: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 100.49it/s]
-Reading raster metadata: 100%|█████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 1/1 [00:00<00:00, 94.88it/s]
-
-$ bowser run
-INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
-INFO:     Started parent process [99855]
-...
-```
-
-Click on the `http://127.0.0.1:8000` link to open the map.
-
-
-**Note for running over ssh**: you will need to run an ssh command creating a tunnel from your local computer to wherever the `bowser` server is.
-For example, if you machine is `myserver`, you would run in a local terminal
+If you're running over ssh, tunnel the port back to your laptop:
 
 ```bash
 ssh -N -L 8000:localhost:8000 myserver
 ```
 
-after starting the web server.
+## Quickstart: DISP-S1 → GeoZarr cube
+
+The recommended path for DISP-S1 products is to convert them once into a
+single pyramidal GeoZarr cube, then serve that. The converter handles the
+reference-date bookkeeping for `unwrapped`-style pair indices, builds the
+multiscale pyramid, and writes GeoZarr convention attributes so titiler
+can pick the right overview per tile zoom.
+
+```bash
+# 1. prepare per-band GeoTIFFs and a bowser_rasters.json
+bowser setup-disp-s1 /path/to/disp-s1/outputs
+
+# 2. convert to a single sharded GeoZarr cube with pyramid
+pixi run -e writer python scripts/tifs_to_geozarr.py \
+    --pyramid bowser_rasters.json cube.zarr
+
+# 3. serve
+bowser run --stack-file cube.zarr
+```
+
+For a **multi-dataset catalog** (pick from a map of bounding boxes at
+startup) and an **EC2 deployment** serving cubes from a private S3 bucket,
+see [`deploy/README.md`](deploy/README.md) — it covers the
+`bowser register` CLI, the Docker image, and the EC2 bootstrap script
+end-to-end.
 
 ## Running in Jupyter
 
 ```python
 from bowser._widget import make_bowser_widget
 
-# Automatically starts server and creates widget
 widget = make_bowser_widget(rasters_file="bowser_rasters.json")
 widget
 ```
 
-## Quickstart for DISP-S1 NetCDFs
+## CLI Usage
 
-Until GDAL puts work into the NetCDF driver, reading remote HDF5/NetCDF files has very poor support. Additionally, there is no standard overview format as there is with GeoTIFFs, so `titiler` is very unhappy.
+```
+$ bowser --help
+Commands:
+  prepare-amplitude      Convert complex SLC GeoTIFFs to amplitude-in-dB.
+  prepare-disp-s1        Create VRTs pointing into DISP-S1 NetCDFs.
+  prepare-nisar-gunw     Create VRTs pointing into NISAR GUNW NetCDFs.
+  register               Add a dataset entry to a catalog TOML file.
+  run                    Run the web server.
+  set-data               Specify what raster data to use (interactive).
+  setup-aligned-disp-s1  Write bowser_rasters.json for aligned DISP-S1.
+  setup-disp-s1          Write bowser_rasters.json for DISP-S1 outputs.
+  setup-dolphin          Write bowser_rasters.json for a dolphin run.
+  setup-hyp3             Write bowser_rasters.json for HyP3 Gamma.
+  setup-nisar-gunw       Write bowser_rasters.json for NISAR GUNW.
+```
 
-We can get around this to some degree by creating [VRTs](https://gdal.org/drivers/raster/vrt.html) and [making external overviews](https://gdal.org/programs/gdaladdo.html) pointing at these VRTs.
+## Developer setup
 
-1. Download the NetCDFs (hopefully on some server which has fast access to the S3 bucket).
-2. Run `bowser prepare-disp-s1` to create VRT files pointing in the `.nc` files, one per dataset we wish to browse.
-3. Run `bowser setup-disp-s1` to make a JSON file containing all the file metadata, so the browser knows where to look.
-4. `bowser run`
+```bash
+git clone git@github.com:opera-adt/bowser.git && cd bowser
+pixi install            # default env: runtime deps
+pixi install -e writer  # optional env: includes geozarr-toolkit for the converter
+pixi run bowser run
+```
 
-In detail:
+Frontend (TypeScript + Vite):
 
-1. Download
-I use [`s5cmd`](https://github.com/peak/s5cmd) for faster copying, but the `aws` CLI tool works too:
+```bash
+npm install
+npm run build   # rebuilds src/bowser/dist/ after .tsx / CSS changes
+```
+
+`src/bowser/dist/` is checked in so non-frontend users can `pip install`
+without Node.
+
+## Legacy workflows
+
+### DISP-S1 via VRTs (pre-GeoZarr)
+
+The older path is to make a GDAL VRT per NetCDF variable and let bowser
+read through those. This predates `scripts/tifs_to_geozarr.py` and has
+two drawbacks: remote NetCDF/HDF5 reads are slow (no standard overview
+format), and VRTs require a conda-forge GDAL with the NetCDF driver.
+
+Kept working, but prefer the GeoZarr path above for new setups.
 
 ```bash
 mkdir my_disp_files; cd my_disp-files
-s5cmd --numworkers 4 cp 's3://opera-bucket/OPERA_L3_DISP-S1_IW_F11115*/OPERA_L3_DISP-S1_IW_F11115*.nc' .
-```
-
-2. Extract VRTS
-
-```bash
+s5cmd --numworkers 4 cp 's3://opera-bucket/OPERA_L3_DISP-S1_IW_F11115*/*.nc' .
 bowser prepare-disp-s1 -o vrts *.nc
-```
-
-3. Create `bowser_rasters.json` metadata
-
-```bash
 bowser setup-disp-s1 vrts
-```
-
-4. Run
-
-```bash
 bowser run
 ```
-
-If this is on a server instead of your laptop, you'll need (on your laptop)
-
-```
-ssh -N -L 8000:localhost:8000 myserver
-```
-for whatever port pops up after `bowser run`
-
-
-## CLI Usage
-
-```bash
-$ bowser --help
-Usage: bowser [OPTIONS] COMMAND [ARGS]...
-
-  CLI for bowser.
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  addo           Add compressed GDAL overviews to files.
-  run            Run the web server.
-  set-data       Specify what raster data to use.
-  setup-dolphin  Set up output data configuration for a dolphin workflow.
-```
-
-To manually specify a raster/set of rasters, use the interactive `bowser set-data`
-
-## Developer Setup
-
-`npm` is used to manage javascript dependencies.
-
-`npm install` will install all dependencies.
-
-### Making changes to the UI
-
-After making `.tsx`, HTML or CSS changes, **you must run** `npm run build` to build the project:
-
-```bash
-$ npm run build
-
-> bowser-js@0.0.0 build
-> tsc && vite build
-
-vite v5.4.19 building for production...
-✓ 391 modules transformed.
-src/bowser/dist/index.html      0.85 kB │ gzip:   0.51 kB
-src/bowser/dist/index.css      25.68 kB │ gzip:   9.13 kB
-src/bowser/dist/index.js    1,086.17 kB │ gzip: 241.12 kB
-```
-
-This updates the `dist` directory, which is served when you run `bowser run ...`.
-
-Currently the `dist/` HTML and CSS files are checked in to git for easier deployment for non-javascript users.
 
 ## License
 
