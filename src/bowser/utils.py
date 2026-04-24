@@ -60,9 +60,7 @@ def _parse_x_values(x_values: list[str | int]) -> np.ndarray:
     return datetime_to_float(dates)
 
 
-def calculate_trend(
-    values: np.ndarray, x_values: list[str | int | DateOrDatetimeT]
-) -> dict[str, float]:
+def calculate_trend(values: np.ndarray, x_values: list[str | int]) -> dict[str, float]:
     """Calculate linear trend for time series data.
 
     Parameters
@@ -70,7 +68,9 @@ def calculate_trend(
     values : np.ndarray
         Time series values (e.g., displacement in meters)
     x_values : list[str | int]
-        Time values as strings (datetime format) or integers
+        Time values as strings (datetime format) or integers.
+        Datetime objects aren't supported — ``_parse_x_values`` calls
+        ``parser.parse`` which only accepts strings.
 
     Returns
     -------
