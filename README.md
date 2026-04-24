@@ -8,27 +8,32 @@ server and rendered by titiler in the browser.
 
 ## Quickstart
 
-1. Install [`pixi`](https://pixi.sh).
-2. `pixi global install bowser-insar`
-3. Point it at a GeoZarr cube:
-   ```bash
-   bowser run --stack-file example-cube.zarr
-   ```
+Zero-install — run the latest release against a GeoZarr cube:
+
+```bash
+uvx --from bowser-insar bowser run --stack-file example-cube.zarr
+```
 
 Open the `http://127.0.0.1:8000` link that bowser prints.
 
+> **Heads up — GDAL drivers.** The PyPI wheel is enough for GeoZarr cubes
+> and plain GeoTIFFs. For NetCDF/HDF5 inputs (DISP-S1 `.nc`, the VRT
+> legacy path) install the conda-forge build of GDAL — the `gdal` PyPI
+> package has no wheels and rasterio's bundled GDAL doesn't ship those
+> drivers. `pixi` is the easiest way:
+>
+> ```bash
+> pixi global install bowser-insar
+> ```
+
 ## Install in another project
 
-`pixi` is the supported path because bowser reads a few formats (NetCDF,
-HDF5) that need the conda-forge build of GDAL — the `gdal` PyPI package
-has no wheels, and rasterio's bundled GDAL doesn't include those drivers.
-
 ```bash
-# Recommended: full GDAL via conda-forge
-pixi add bowser-insar
+# GeoZarr / GeoTIFF only
+pip install bowser-insar       # or: uv add bowser-insar
 
-# pip works for the pure GeoZarr / GeoTIFF workflow only
-pip install bowser-insar
+# Full format support (NetCDF, HDF5, VRT) via conda-forge GDAL
+pixi add bowser-insar
 ```
 
 ## Quickstart: dolphin workflow
