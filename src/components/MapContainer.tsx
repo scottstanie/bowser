@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { MapContainer as LeafletMapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -43,33 +43,26 @@ function MapEvents() {
 }
 
 // Syncs map view ↔ state.viewBounds.
-// When viewBounds changes (user edited sidebar), fly to it.
-// When user pans/zooms, update viewBounds in state so sidebar stays in sync.
+// Sidebar Apply / Dataset buttons dispatch APPLY_VIEW_BOUNDS, which bumps
+// viewBoundsApplySeq; this effect flies to the bounds. Plain moveend only
+// dispatches SET_VIEW_BOUNDS (no seq bump), so the map doesn't fly back to
+// itself — that round-trip was drifting the center south on zoom-out because
+// bounds.getCenter() is the arithmetic mean of N/S, not the Mercator center.
 function MapViewController() {
   const { state, dispatch } = useAppContext();
   const map = useMap();
-  const flyingRef = useRef(false);
 
-  // Fly to bounds when state changes (triggered from sidebar "Apply")
   useEffect(() => {
-    if (!state.viewBounds) return;
+    if (!state.viewBounds || state.viewBoundsApplySeq === 0) return;
     const [s, w, n, e] = state.viewBounds;
-    flyingRef.current = true;
     const bounds = L.latLngBounds([[s, w], [n, e]]);
-    const center = bounds.getCenter();
-    // getBoundsZoom with inside=true returns fractional zoom — no integer snapping
     const zoom = map.getBoundsZoom(bounds, true);
-    map.setView(center, zoom, { animate: true });
-    const onEnd = () => { flyingRef.current = false; };
-    map.once('moveend', onEnd);
-    return () => { map.off('moveend', onEnd); };
+    map.setView(bounds.getCenter(), zoom, { animate: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.viewBounds]);
+  }, [state.viewBoundsApplySeq]);
 
-  // Update state when user moves map (throttled to moveend only)
   useMapEvents({
     moveend: () => {
-      if (flyingRef.current) return;
       const b = map.getBounds();
       dispatch({
         type: 'SET_VIEW_BOUNDS',

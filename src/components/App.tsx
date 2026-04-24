@@ -7,6 +7,7 @@ import TimeSeriesChart from './TimeSeriesChart';
 import PointManagerPanel from './PointManagerPanel';
 import RefPointChart from './RefPointChart';
 import ColormapBar from './ColormapBar';
+import LosIndicator from './LosIndicator';
 import { ProfileProvider, ProfileChart } from './ProfileTool';
 import '../style.css';
 
@@ -65,6 +66,7 @@ function AppContent() {
         <PointManagerPanel />
         <RefPointChart />
         <ColormapBar />
+        <LosIndicator />
         <ProfileChart />
         {state.showChart && state.chartWindows.map(w => (
           <TimeSeriesChart key={w.id} windowId={w.id} />

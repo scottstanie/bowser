@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 from enum import Enum
 from glob import glob
@@ -15,6 +17,8 @@ from titiler.core.algorithm import BaseAlgorithm
 
 from .readers import RasterStackReader
 from .utils import list_bucket
+
+logger = logging.getLogger(__name__)
 
 # TODO: Prep COGS with
 #  for f in `ls ig*[0-9].tif`; do
@@ -98,6 +102,120 @@ class Shift(BaseAlgorithm):
         )
 
 
+class LosEnu(BaseModel):
+    """Ground-to-satellite unit vector in local ENU components."""
+
+    east: float
+    north: float
+    up: float
+
+
+class LosMetadata(BaseModel):
+    """Satellite viewing geometry for an InSAR stack.
+
+    Incidence angle and the ground-to-satellite ENU vector each take three
+    samples across the swath (near/center/far). Near and far are optional;
+    ``center`` is the required reference value. The UI draws near↔far as the
+    swath extent in the side-view icon.
+
+    Attributes
+    ----------
+    heading_deg
+        Ground-track heading, degrees clockwise from geographic north.
+    incidence_deg
+        Center-swath incidence angle (degrees).
+    incidence_deg_near, incidence_deg_far
+        Near-range and far-range incidence angles (degrees).
+    los_enu_ground_to_sat
+        Center-swath unit vector from ground to satellite in local ENU.
+    los_enu_ground_to_sat_near, los_enu_ground_to_sat_far
+        Near-range and far-range ENU vectors.
+    """
+
+    heading_deg: float
+    incidence_deg: float
+    incidence_deg_near: float | None = None
+    incidence_deg_far: float | None = None
+    los_enu_ground_to_sat: LosEnu | None = None
+    los_enu_ground_to_sat_near: LosEnu | None = None
+    los_enu_ground_to_sat_far: LosEnu | None = None
+
+
+def _swath_triple(v: Any) -> tuple[Any, Any, Any]:
+    """Normalize either a scalar/flat-dict or a ``{near, center, far}`` dict.
+
+    Returns ``(center, near, far)``. For the old schema (scalar incidence or
+    flat ENU dict like ``{east, north, up}``), near/far are ``None``. For the
+    new swath schema, pulls the three samples out.
+    """
+    if isinstance(v, dict) and "center" in v:
+        return v["center"], v.get("near"), v.get("far")
+    return v, None, None
+
+
+def load_los_metadata(directory: str | Path) -> LosMetadata | None:
+    """Load LOS metadata from ``heading_angle.json`` and ``los_enu.json``.
+
+    Reads the two JSONs from ``directory``. Accepts both the legacy scalar
+    schema and the new per-swath schema (``{near, center, far}`` for
+    incidence and ENU). Returns ``None`` if neither file exists.
+    """
+    d = Path(directory)
+    if not d.is_dir():
+        return None
+
+    heading_path = d / "heading_angle.json"
+    los_path = d / "los_enu.json"
+
+    if not heading_path.exists() and not los_path.exists():
+        return None
+
+    heading_deg: float | None = None
+    if heading_path.exists():
+        with heading_path.open() as f:
+            heading_deg = json.load(f)["heading_angle_deg"]
+
+    incidence_center: float | None = None
+    incidence_near: float | None = None
+    incidence_far: float | None = None
+    los_center: LosEnu | None = None
+    los_near: LosEnu | None = None
+    los_far: LosEnu | None = None
+
+    if los_path.exists():
+        with los_path.open() as f:
+            data = json.load(f)
+
+        inc_c, inc_n, inc_f = _swath_triple(data["incidence_angle_deg"])
+        incidence_center = float(inc_c)
+        incidence_near = float(inc_n) if inc_n is not None else None
+        incidence_far = float(inc_f) if inc_f is not None else None
+
+        los_c, los_n, los_f = _swath_triple(data["los_enu_ground_to_satellite"])
+        los_center = LosEnu(**los_c)
+        los_near = LosEnu(**los_n) if los_n is not None else None
+        los_far = LosEnu(**los_f) if los_f is not None else None
+
+    if heading_deg is None or incidence_center is None:
+        logger.warning(
+            "Incomplete LOS metadata in %s (heading=%s, incidence=%s) — skipping",
+            d,
+            heading_deg,
+            incidence_center,
+        )
+        return None
+
+    return LosMetadata(
+        heading_deg=heading_deg,
+        incidence_deg=incidence_center,
+        incidence_deg_near=incidence_near,
+        incidence_deg_far=incidence_far,
+        los_enu_ground_to_sat=los_center,
+        los_enu_ground_to_sat_near=los_near,
+        los_enu_ground_to_sat_far=los_far,
+    )
+
+
 class RasterGroup(BaseModel):
     """A group of rasters to view."""
 
@@ -109,6 +227,7 @@ class RasterGroup(BaseModel):
     algorithm: str | None = None
     mask_min_value: float = 0.1
     file_date_fmt: str | None = "%Y%m%d"
+    los_metadata: LosMetadata | None = None
     _reader: RasterStackReader
     _disable_tqdm: bool = True
 
@@ -150,7 +269,7 @@ class RasterGroup(BaseModel):
             return np.arange(len(self.file_list)).tolist()
 
         # For time series plotting, use the last date (secondary/end date)
-        x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[misc]
+        x_values = [k[-1].strftime("%Y-%m-%d") for k in dates]  # type: ignore[misc, index]
 
         # If secondary dates have duplicates (e.g., interferograms with varying
         # reference dates), use full "ref_secondary" date pair labels instead.
@@ -165,12 +284,12 @@ class RasterGroup(BaseModel):
 
     @computed_field
     def reference_date(self) -> str | None:
-        """Common reference date if all files share the same first date."""
+        """Return the common reference date when all files share a first date."""
         dates = self._reader.dates
         if not dates or any(not d for d in dates):
             return None
         # Check for multi-date filenames (e.g., interferograms)
-        if not all(len(d) > 1 for d in dates):  # type: ignore[arg-type]
+        if not all(len(d) > 1 for d in dates):  # type: ignore[arg-type, union-attr]
             return None
         first_dates = {d[0] for d in dates}  # type: ignore[index]
         if len(first_dates) == 1:

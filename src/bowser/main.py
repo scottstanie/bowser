@@ -268,6 +268,64 @@ def _reference_date(labels: list[str], dim: str) -> str | None:
     return refs.pop() if len(refs) == 1 else None
 
 
+def _los_metadata_from_attrs(attrs: dict) -> dict | None:
+    """Pull LOS metadata from xarray/zarr attrs, returning a JSON-serializable dict.
+
+    Recognizes both the legacy schema (scalar ``incidence_angle_deg`` + flat
+    ``{east, north, up}`` ENU) and the per-swath schema with
+    ``{near, center, far}`` sub-dicts for incidence and ENU.
+    """
+    heading = attrs.get("heading_angle_deg")
+    incidence = attrs.get("incidence_angle_deg")
+    if heading is None or incidence is None:
+        return None
+
+    def _enu_dict(d: Any) -> dict | None:
+        if isinstance(d, dict) and {"east", "north", "up"}.issubset(d):
+            return {
+                "east": float(d["east"]),
+                "north": float(d["north"]),
+                "up": float(d["up"]),
+            }
+        return None
+
+    # Incidence can be a scalar or a {near, center, far} dict.
+    if isinstance(incidence, dict) and "center" in incidence:
+        inc_center = float(incidence["center"])
+        inc_near = float(incidence["near"]) if "near" in incidence else None
+        inc_far = float(incidence["far"]) if "far" in incidence else None
+    else:
+        inc_center = float(incidence)
+        inc_near = inc_far = None
+
+    result: dict = {
+        "heading_deg": float(heading),
+        "incidence_deg": inc_center,
+    }
+    if inc_near is not None:
+        result["incidence_deg_near"] = inc_near
+    if inc_far is not None:
+        result["incidence_deg_far"] = inc_far
+
+    los = attrs.get("los_enu_ground_to_satellite") or attrs.get("los_enu_ground_to_sat")
+    if isinstance(los, dict):
+        if "center" in los:
+            center = _enu_dict(los.get("center"))
+            near = _enu_dict(los.get("near"))
+            far = _enu_dict(los.get("far"))
+            if center is not None:
+                result["los_enu_ground_to_sat"] = center
+            if near is not None:
+                result["los_enu_ground_to_sat_near"] = near
+            if far is not None:
+                result["los_enu_ground_to_sat_far"] = far
+        else:
+            flat = _enu_dict(los)
+            if flat is not None:
+                result["los_enu_ground_to_sat"] = flat
+    return result
+
+
 def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
     """Create dataset info structure from Xarray Dataset."""
     bounds = ds.rio.bounds()
@@ -283,6 +341,7 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
         f"latlon_bounds: {latlon_bounds}, bounds: {bounds}, ds.rio.crs: {ds.rio.crs}"
     )
 
+    los_metadata = _los_metadata_from_attrs(dict(ds.attrs))
     dataset_info = {}
     skip_spatial_reference = not settings.BOWSER_USE_SPATIAL_REFERENCE_DISP
     for var_name, var in ds.data_vars.items():
@@ -323,6 +382,7 @@ def create_xarray_dataset_info(ds: xr.Dataset) -> dict:
             "available_mask_vars": available_mask_vars,
             "label": attrs.get("long_name", var_name),
             "unit": attrs.get("units", ""),
+            "los_metadata": los_metadata,
         }
 
     return dataset_info
@@ -344,6 +404,9 @@ def create_rastergroup_dataset_info(raster_groups: dict) -> dict:
             "latlon_bounds": list(rg.latlon_bounds),
             "x_values": rg.x_values,
             "reference_date": rg.reference_date,
+            "los_metadata": (
+                rg.los_metadata.model_dump() if rg.los_metadata is not None else None
+            ),
         }
     return dataset_info
 

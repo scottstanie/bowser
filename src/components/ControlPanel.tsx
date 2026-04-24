@@ -83,7 +83,7 @@ export default function ControlPanel({ title }: { title: string }) {
     const n = parseFloat(draftBounds.n);
     const e = parseFloat(draftBounds.e);
     if ([s, w, n, e].some(isNaN)) return;
-    dispatch({ type: 'SET_VIEW_BOUNDS', payload: [s, w, n, e] });
+    dispatch({ type: 'APPLY_VIEW_BOUNDS', payload: [s, w, n, e] });
   };
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export default function ControlPanel({ title }: { title: string }) {
     const info = state.datasetInfo[ds];
     if (!info?.uses_spatial_ref) return;
     setRefValues(ds);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.refBufferEnabled, state.refBufferRadius]);
 
   const commitVmin = useCallback(() => {
@@ -175,7 +175,7 @@ export default function ControlPanel({ title }: { title: string }) {
     dispatch({ type: 'SET_REF_MARKER_POSITION', payload: [lat, lon] });
     const ds = state.currentDataset;
     if (ds && state.datasetInfo[ds]?.uses_spatial_ref) setRefValues(ds);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftRefLat, draftRefLon, state.currentDataset, state.datasetInfo, dispatch]);
 
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
@@ -251,7 +251,7 @@ export default function ControlPanel({ title }: { title: string }) {
                 </button>
                 <div className="slider-label" style={{ marginTop: 4 }}>
                   <span>Speed</span>
-                  <span className="slider-value">{(1000 / state.animationSpeed).toFixed(1)}×</span>
+                  <span className="slider-value">{(1000 / state.animationSpeed).toFixed(1)}x</span>
                 </div>
                 <input type="range" className="sidebar-range"
                   min="100" max="2000" step="100"
@@ -320,6 +320,13 @@ export default function ControlPanel({ title }: { title: string }) {
             className={`toggle-pill${state.showColorbar ? ' active' : ''}`}
             onClick={() => dispatch({ type: 'TOGGLE_COLORBAR' })}
           >{state.showColorbar ? 'ON' : 'OFF'}</button>
+        </div>
+        <div className="toggle-row" style={{ marginTop: 4 }}>
+          <span style={{ fontSize: '0.82em', color: 'var(--sb-muted)' }}>LOS geometry</span>
+          <button
+            className={`toggle-pill${state.showLosIndicator ? ' active' : ''}`}
+            onClick={() => dispatch({ type: 'TOGGLE_LOS_INDICATOR' })}
+          >{state.showLosIndicator ? 'ON' : 'OFF'}</button>
         </div>
       </div>
 
@@ -390,7 +397,7 @@ export default function ControlPanel({ title }: { title: string }) {
           {state.currentDataset && state.datasetInfo[state.currentDataset] && (
             <button className="chart-btn" style={{ flex: 1 }} onClick={() => {
               const b = state.datasetInfo[state.currentDataset].latlon_bounds;
-              dispatch({ type: 'SET_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
+              dispatch({ type: 'APPLY_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
             }}>
               <i className="fa-solid fa-arrows-to-circle"></i> Dataset
             </button>
@@ -442,7 +449,7 @@ export default function ControlPanel({ title }: { title: string }) {
           <>
             {state.layerMasks.map(mask => {
               const range = datasetRanges[mask.dataset];
-              const rMin = range?.p2  ?? range?.min ?? 0;
+              const rMin = range?.p2 ?? range?.min ?? 0;
               const rMax = range?.p98 ?? range?.max ?? 1;
               const step = rMax - rMin > 0 ? parseFloat(((rMax - rMin) / 200).toPrecision(2)) : 0.01;
               return (
@@ -503,10 +510,12 @@ export default function ControlPanel({ title }: { title: string }) {
                 onClick={() => {
                   const firstDataset = Object.keys(state.datasetInfo)[0];
                   const range = datasetRanges[firstDataset];
-                  dispatch({ type: 'ADD_LAYER_MASK', payload: {
-                    id: `mask_${Date.now()}`, dataset: firstDataset,
-                    threshold: range ? (range.p2 ?? range.min) : 0.5, mode: 'min',
-                  }});
+                  dispatch({
+                    type: 'ADD_LAYER_MASK', payload: {
+                      id: `mask_${Date.now()}`, dataset: firstDataset,
+                      threshold: range ? (range.p2 ?? range.min) : 0.5, mode: 'min',
+                    }
+                  });
                 }}>
                 <i className="fa-solid fa-plus" style={{ marginRight: 5 }}></i>Add layer mask
               </button>
