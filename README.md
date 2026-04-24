@@ -125,6 +125,20 @@ npm run build   # rebuilds src/bowser/dist/ after .tsx / CSS changes
 `src/bowser/dist/` is checked in so non-frontend users can `pip install`
 without Node.
 
+For a hot-reload loop on UI/styling changes, run the backend and the
+Vite dev server in two terminals. Vite proxies API calls to the
+backend on port 8000:
+
+```bash
+# Terminal 1 — backend
+pixi run bowser run
+
+# Terminal 2 — frontend with HMR on http://localhost:5173
+npm run dev
+```
+
+Override the backend URL with `VITE_API_URL=http://localhost:8001 npm run dev`.
+
 ## Legacy workflows
 
 ### DISP-S1 via VRTs (pre-GeoZarr)
