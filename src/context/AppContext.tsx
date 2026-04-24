@@ -41,13 +41,10 @@ const initialState: AppState = {
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  pickingEnabled: false,
   refEnabled: true,
   refBufferEnabled: false,
   refBufferRadius: 500,
   showRefChart: false,
-  isPlaying: false,
-  animationSpeed: 500,
   markerSize: 4,
   dateRangeStart: null,
   dateRangeEnd: null,
@@ -215,8 +212,6 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, bufferRadius: action.payload };
     case 'SET_BUFFER_SAMPLES':
       return { ...state, bufferSamples: action.payload };
-    case 'TOGGLE_PICKING':
-      return { ...state, pickingEnabled: !state.pickingEnabled };
     case 'TOGGLE_REF_ENABLED':
       return { ...state, refEnabled: !state.refEnabled };
     case 'TOGGLE_REF_BUFFER':
@@ -225,12 +220,6 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, refBufferRadius: action.payload };
     case 'TOGGLE_REF_CHART':
       return { ...state, showRefChart: !state.showRefChart };
-    case 'TOGGLE_PLAYING':
-      return { ...state, isPlaying: !state.isPlaying };
-    case 'SET_PLAYING':
-      return { ...state, isPlaying: action.payload };
-    case 'SET_ANIMATION_SPEED':
-      return { ...state, animationSpeed: action.payload };
     case 'SET_MARKER_SIZE':
       return { ...state, markerSize: action.payload };
     case 'SET_DATE_RANGE_START':

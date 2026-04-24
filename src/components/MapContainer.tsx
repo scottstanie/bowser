@@ -23,12 +23,15 @@ const fontAwesomeIcon = L.divIcon({
   className: 'myDivIcon'
 });
 
-function MapEvents() {
+function MapEvents({ toolActive }: { toolActive: boolean }) {
   const { state, dispatch } = useAppContext();
+  const { active: profileActive } = useProfileContext();
 
   useMapEvents({
     click: (e) => {
-      if (!state.pickingEnabled) return;
+      // Let measure / profile tools consume their own clicks without also
+      // dropping a time-series point.
+      if (toolActive || profileActive) return;
       dispatch({
         type: 'ADD_TIME_SERIES_POINT',
         payload: {
@@ -36,6 +39,9 @@ function MapEvents() {
           name: `Point ${Date.now().toString().slice(-4)}`
         }
       });
+      // Auto-open the chart the first time the user drops a point so they
+      // can actually see the time series without hunting for a toggle.
+      if (!state.showChart) dispatch({ type: 'TOGGLE_CHART' });
     },
   });
 
@@ -407,6 +413,68 @@ function MarkerEventHandlers() {
   );
 }
 
+function MapTopRightToolbar() {
+  const { state, dispatch } = useAppContext();
+  const [basemapOpen, setBasemapOpen] = useState(false);
+  const info = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+
+  const fitDataset = () => {
+    if (!info) return;
+    const b = info.latlon_bounds; // [w, s, e, n]
+    dispatch({ type: 'APPLY_VIEW_BOUNDS', payload: [b[1], b[0], b[3], b[2]] });
+  };
+
+  // Close basemap popover on outside click
+  useEffect(() => {
+    if (!basemapOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      if (!t.closest('.basemap-popover') && !t.closest('.basemap-trigger')) setBasemapOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [basemapOpen]);
+
+  return (
+    <div className="map-toolbar-right">
+      <button className="map-tool-btn" onClick={fitDataset} title="Fit view to dataset" disabled={!info}>
+        <i className="fa-solid fa-arrows-to-circle"></i>
+      </button>
+      <div style={{ position: 'relative' }}>
+        <button className="map-tool-btn basemap-trigger" onClick={() => setBasemapOpen(v => !v)} title="Basemap">
+          <i className="fa-solid fa-map"></i>
+        </button>
+        {basemapOpen && (
+          <div className="basemap-popover">
+            {Object.keys(baseMaps).map(key => (
+              <button
+                key={key}
+                className={`basemap-option${state.selectedBasemap === key ? ' active' : ''}`}
+                onClick={() => { dispatch({ type: 'SET_BASEMAP', payload: key }); setBasemapOpen(false); }}
+              >{key}</button>
+            ))}
+          </div>
+        )}
+      </div>
+      <button
+        className={`map-tool-btn${state.showColorbar ? ' active' : ''}`}
+        onClick={() => dispatch({ type: 'TOGGLE_COLORBAR' })}
+        title="Toggle colorbar on map"
+      ><i className="fa-solid fa-palette"></i></button>
+      <button
+        className={`map-tool-btn${state.showLosIndicator ? ' active' : ''}`}
+        onClick={() => dispatch({ type: 'TOGGLE_LOS_INDICATOR' })}
+        title="Toggle LOS geometry indicator"
+      ><i className="fa-solid fa-satellite"></i></button>
+      <button
+        className={`map-tool-btn${state.refEnabled ? ' active' : ''}`}
+        onClick={() => dispatch({ type: 'TOGGLE_REF_ENABLED' })}
+        title="Toggle spatial re-referencing"
+      ><i className="fa-solid fa-crosshairs"></i></button>
+    </div>
+  );
+}
+
 export default function MapContainer() {
   const { state } = useAppContext();
 
@@ -456,12 +524,14 @@ export default function MapContainer() {
           <i className="fa-solid fa-chart-area"></i>
         </button>
       </div>
+      <MapTopRightToolbar />
     <LeafletMapContainer
       key={hasDatasets ? 'with-data' : 'no-data'} // Force re-render when data loads
       center={center}
       zoom={9}
       style={{ height: '100%', width: '100%' }}
       doubleClickZoom={false}
+      zoomControl={false}
     >
       <TileLayer
         url={selectedBasemap.url}
@@ -471,7 +541,7 @@ export default function MapContainer() {
       <RasterTileLayer />
       <RadiusCircles />
       <MarkerEventHandlers />
-      <MapEvents />
+      <MapEvents toolActive={measureActive || profileActive} />
       <MousePosition />
       <ScaleBar />
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
