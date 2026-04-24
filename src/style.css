@@ -1,6 +1,16 @@
 /* ── Design tokens ─────────────────────────────────────────── */
+/* Variant C — "Graphite Teal / IBM Plex"
+ * Scientific-tool styling: warm-neutral graphite surfaces (no blue or
+ * purple cast), teal primary (GIS/oceanographic), IBM Plex Sans for UI
+ * with IBM Plex Mono reserved for tabular numerics (lat/lon, MIN/MAX,
+ * percentages, range readouts). Steps away from the Inter/zinc/violet
+ * AI-artifact default look.
+ */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-sans: "IBM Plex Sans", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   font-synthesis: none;
@@ -8,17 +18,24 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  /* Sidebar palette */
-  --sb-bg:        #13151f;
-  --sb-surface:   #1c1f2e;
-  --sb-surface2:  #242840;
-  --sb-border:    #2c2f4a;
-  --sb-text:      #dde0f0;
-  --sb-muted:     #7880a8;
-  --sb-accent:    #4d9de0;
-  --sb-accent2:   #6aaee8;
-  --sb-green:     #3ec97a;
-  --sb-red:       #e05d6a;
+  /* Sidebar palette — warm-neutral graphite */
+  --sb-bg:        #1a1b1e;
+  --sb-surface:   #23252a;
+  --sb-surface2:  #30333a;
+  --sb-border:    #444750;
+  --sb-text:      #e8e6e3;
+  --sb-muted:     #9a9a9e;
+  --sb-accent:    #5bc0be;   /* teal */
+  --sb-accent2:   #85d5d4;
+  --sb-on-accent: #072a2d;
+  --sb-green:     #7cd5a3;
+  --sb-red:       #e07b7b;
+
+  /* Shape scale (M3) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
 
   color: var(--sb-text);
   background-color: var(--sb-bg);
@@ -58,16 +75,18 @@
 
 /* ── Light theme ───────────────────────────────────────────── */
 [data-theme="light"] {
-  --sb-bg:        #f0f2f8;
+  /* Light graphite: warm off-white paper, deep teal accent */
+  --sb-bg:        #f5f4f1;
   --sb-surface:   #ffffff;
-  --sb-surface2:  #e4e7f0;
-  --sb-border:    #c8cce0;
-  --sb-text:      #1a1d2e;
-  --sb-muted:     #6068a0;
-  --sb-accent:    #2478c8;
-  --sb-accent2:   #1a5fa0;
-  --sb-green:     #1e8f50;
-  --sb-red:       #c0303e;
+  --sb-surface2:  #eceae5;
+  --sb-border:    #cbc9c3;
+  --sb-text:      #1d1e20;
+  --sb-muted:     #5c5e62;
+  --sb-accent:    #0a7d7b;
+  --sb-accent2:   #065c5a;
+  --sb-on-accent: #ffffff;
+  --sb-green:     #1a7641;
+  --sb-red:       #b3261e;
   color: var(--sb-text);
   background-color: var(--sb-bg);
 }
@@ -154,12 +173,13 @@ body {
 }
 
 .sidebar-section-label {
-  font-size: 0.68em;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--sb-muted);
-  margin-bottom: 2px;
+  /* M3 Title Medium — sentence case, primary text color */
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--sb-text);
+  text-transform: none;
+  margin-bottom: 4px;
 }
 
 .sidebar-section-label i {
@@ -178,7 +198,7 @@ body {
   font-size: 0.85em;
   cursor: pointer;
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237880a8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239a9a9e' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 10px center;
   padding-right: 28px;
@@ -199,7 +219,8 @@ body {
   border: 1px solid var(--sb-border);
   border-radius: 6px;
   padding: 5px 8px;
-  font-size: 0.85em;
+  font-family: var(--font-mono);
+  font-size: 0.82em;
   text-align: center;
   transition: border-color 0.15s;
 }
@@ -233,8 +254,9 @@ body {
 
 .slider-value {
   color: var(--sb-text);
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 0.9em;
+  font-size: 0.82em;
   word-break: break-all;
   max-width: 60%;
   text-align: right;
@@ -294,7 +316,7 @@ body {
 
 .invert-btn.active {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -324,6 +346,7 @@ body {
 .histogram-range {
   display: flex;
   justify-content: space-between;
+  font-family: var(--font-mono);
   font-size: 0.72em;
   color: var(--sb-muted);
   padding: 0 2px;
@@ -348,7 +371,7 @@ body {
 
 .hist-btn:hover {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -401,7 +424,7 @@ body {
 
 .toggle-pill.active {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -415,12 +438,13 @@ body {
 .chart-toggle-btn {
   width: 100%;
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border: none;
-  border-radius: 8px;
-  padding: 9px 14px;
+  border-radius: 999px;
+  padding: 10px 16px;
   font-size: 0.88em;
   font-weight: 600;
+  letter-spacing: 0.01em;
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
@@ -457,7 +481,7 @@ img.huechange { filter: hue-rotate(120deg); }
   background: var(--sb-surface);
   backdrop-filter: blur(8px);
   z-index: 3000;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
   border: 1px solid var(--sb-border);
   display: flex;
@@ -504,7 +528,7 @@ img.huechange { filter: hue-rotate(120deg); }
 
 .chart-btn:hover {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -637,7 +661,7 @@ img.huechange { filter: hue-rotate(120deg); }
   max-height: 60vh;
   background: rgba(255, 255, 255, 0.97);
   border: 1px solid var(--sb-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   z-index: 4000;
   overflow: hidden;
@@ -790,12 +814,12 @@ img.huechange { filter: hue-rotate(120deg); }
 
 .pure-button:hover {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
 }
 
 .pure-button-primary {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -865,7 +889,7 @@ img.huechange { filter: hue-rotate(120deg); }
 
 .basemap-option.active {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
 }
 
 .map-tool-btn {
@@ -886,7 +910,7 @@ img.huechange { filter: hue-rotate(120deg); }
 .map-tool-btn:hover,
 .map-tool-btn.active {
   background: var(--sb-accent);
-  color: white;
+  color: var(--sb-on-accent);
   border-color: var(--sb-accent);
 }
 
@@ -901,7 +925,7 @@ img.huechange { filter: hue-rotate(120deg); }
   padding: 12px 14px;
   background: var(--sb-surface);
   border: 1px solid var(--sb-border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   z-index: 3500;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   backdrop-filter: blur(8px);
