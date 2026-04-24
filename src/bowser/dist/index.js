@@ -7050,17 +7050,15 @@ const initialState = {
   bufferEnabled: false,
   bufferRadius: 500,
   bufferSamples: 10,
-  pickingEnabled: false,
   refEnabled: true,
   refBufferEnabled: false,
   refBufferRadius: 500,
   showRefChart: false,
-  isPlaying: false,
-  animationSpeed: 500,
   markerSize: 4,
   dateRangeStart: null,
   dateRangeEnd: null,
   viewBounds: null,
+  viewBoundsApplySeq: 0,
   showColorbar: false,
   showLosIndicator: false
 };
@@ -7205,8 +7203,6 @@ function appReducer(state, action) {
       return { ...state, bufferRadius: action.payload };
     case "SET_BUFFER_SAMPLES":
       return { ...state, bufferSamples: action.payload };
-    case "TOGGLE_PICKING":
-      return { ...state, pickingEnabled: !state.pickingEnabled };
     case "TOGGLE_REF_ENABLED":
       return { ...state, refEnabled: !state.refEnabled };
     case "TOGGLE_REF_BUFFER":
@@ -7215,12 +7211,6 @@ function appReducer(state, action) {
       return { ...state, refBufferRadius: action.payload };
     case "TOGGLE_REF_CHART":
       return { ...state, showRefChart: !state.showRefChart };
-    case "TOGGLE_PLAYING":
-      return { ...state, isPlaying: !state.isPlaying };
-    case "SET_PLAYING":
-      return { ...state, isPlaying: action.payload };
-    case "SET_ANIMATION_SPEED":
-      return { ...state, animationSpeed: action.payload };
     case "SET_MARKER_SIZE":
       return { ...state, markerSize: action.payload };
     case "SET_DATE_RANGE_START":
@@ -7229,6 +7219,12 @@ function appReducer(state, action) {
       return { ...state, dateRangeEnd: action.payload };
     case "SET_VIEW_BOUNDS":
       return { ...state, viewBounds: action.payload };
+    case "APPLY_VIEW_BOUNDS":
+      return {
+        ...state,
+        viewBounds: action.payload,
+        viewBoundsApplySeq: state.viewBoundsApplySeq + 1
+      };
     case "TOGGLE_COLORBAR":
       return { ...state, showColorbar: !state.showColorbar };
     case "TOGGLE_LOS_INDICATOR":
@@ -29384,6 +29380,14 @@ function ProfileToolMap() {
     const onDblClick = (e) => {
       var _a2, _b2;
       L$1.DomEvent.stop(e);
+      const DUP_PX = 5;
+      while (ptsRef.current.length >= 2) {
+        const n2 = ptsRef.current.length;
+        const a = map2.latLngToContainerPoint(ptsRef.current[n2 - 1]);
+        const b = map2.latLngToContainerPoint(ptsRef.current[n2 - 2]);
+        if (a.distanceTo(b) <= DUP_PX) ptsRef.current = ptsRef.current.slice(0, -1);
+        else break;
+      }
       if (modeRef.current !== "drawing" || ptsRef.current.length < 2) return;
       (_a2 = previewRef.current) == null ? void 0 : _a2.remove();
       previewRef.current = null;
@@ -29418,6 +29422,24 @@ function ProfileChart() {
     minWidth: 200,
     minHeight: 150
   });
+  const [draftRadius, setDraftRadius] = reactExports.useState(String(radius));
+  const [draftSampling, setDraftSampling] = reactExports.useState(String(samplingInterval));
+  reactExports.useEffect(() => {
+    setDraftRadius(String(radius));
+  }, [radius]);
+  reactExports.useEffect(() => {
+    setDraftSampling(String(samplingInterval));
+  }, [samplingInterval]);
+  const commitRadius = () => {
+    const v2 = Math.max(0, Number(draftRadius));
+    if (!Number.isNaN(v2) && v2 !== radius) setRadius(v2);
+    else setDraftRadius(String(radius));
+  };
+  const commitSampling = () => {
+    const v2 = Math.max(0, Number(draftSampling));
+    if (!Number.isNaN(v2) && v2 !== samplingInterval) setSamplingInterval(v2);
+    else setDraftSampling(String(samplingInterval));
+  };
   if (!active) return null;
   if (loading) return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
@@ -29572,11 +29594,16 @@ function ProfileChart() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "input",
               {
-                type: "number",
-                min: 0,
-                step: 50,
-                value: samplingInterval,
-                onChange: (e) => setSamplingInterval(Math.max(0, Number(e.target.value))),
+                type: "text",
+                inputMode: "decimal",
+                value: draftSampling,
+                onChange: (e) => setDraftSampling(e.target.value),
+                onBlur: commitSampling,
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                },
                 className: "profile-radius-input",
                 onMouseDown: (e) => e.stopPropagation()
               }
@@ -29585,11 +29612,16 @@ function ProfileChart() {
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "input",
               {
-                type: "number",
-                min: 0,
-                step: 100,
-                value: radius,
-                onChange: (e) => setRadius(Math.max(0, Number(e.target.value))),
+                type: "text",
+                inputMode: "decimal",
+                value: draftRadius,
+                onChange: (e) => setDraftRadius(e.target.value),
+                onBlur: commitRadius,
+                onKeyDown: (e) => {
+                  if (e.key === "Enter") {
+                    e.currentTarget.blur();
+                  }
+                },
                 className: "profile-radius-input",
                 onMouseDown: (e) => e.stopPropagation()
               }
@@ -29614,11 +29646,12 @@ const fontAwesomeIcon = L$1.divIcon({
   iconSize: [20, 20],
   className: "myDivIcon"
 });
-function MapEvents() {
+function MapEvents({ toolActive }) {
   const { state, dispatch } = useAppContext();
+  const { active: profileActive } = useProfileContext();
   useMapEvents({
     click: (e) => {
-      if (!state.pickingEnabled) return;
+      if (toolActive || profileActive) return;
       dispatch({
         type: "ADD_TIME_SERIES_POINT",
         payload: {
@@ -29626,6 +29659,7 @@ function MapEvents() {
           name: `Point ${Date.now().toString().slice(-4)}`
         }
       });
+      if (!state.showChart) dispatch({ type: "TOGGLE_CHART" });
     }
   });
   return null;
@@ -29633,26 +29667,15 @@ function MapEvents() {
 function MapViewController() {
   const { state, dispatch } = useAppContext();
   const map2 = useMap();
-  const flyingRef = reactExports.useRef(false);
   reactExports.useEffect(() => {
-    if (!state.viewBounds) return;
+    if (!state.viewBounds || state.viewBoundsApplySeq === 0) return;
     const [s, w2, n2, e] = state.viewBounds;
-    flyingRef.current = true;
     const bounds = L$1.latLngBounds([[s, w2], [n2, e]]);
-    const center = bounds.getCenter();
     const zoom2 = map2.getBoundsZoom(bounds, true);
-    map2.setView(center, zoom2, { animate: true });
-    const onEnd = () => {
-      flyingRef.current = false;
-    };
-    map2.once("moveend", onEnd);
-    return () => {
-      map2.off("moveend", onEnd);
-    };
-  }, [state.viewBounds]);
+    map2.setView(bounds.getCenter(), zoom2, { animate: true });
+  }, [state.viewBoundsApplySeq]);
   useMapEvents({
     moveend: () => {
-      if (flyingRef.current) return;
       const b = map2.getBounds();
       dispatch({
         type: "SET_VIEW_BOUNDS",
@@ -29935,6 +29958,70 @@ function MarkerEventHandlers() {
     )
   ] });
 }
+function MapTopRightToolbar() {
+  const { state, dispatch } = useAppContext();
+  const [basemapOpen, setBasemapOpen] = reactExports.useState(false);
+  const info = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
+  const fitDataset = () => {
+    if (!info) return;
+    const b = info.latlon_bounds;
+    dispatch({ type: "APPLY_VIEW_BOUNDS", payload: [b[1], b[0], b[3], b[2]] });
+  };
+  reactExports.useEffect(() => {
+    if (!basemapOpen) return;
+    const onDown = (e) => {
+      const t2 = e.target;
+      if (!t2.closest(".basemap-popover") && !t2.closest(".basemap-trigger")) setBasemapOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [basemapOpen]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "map-toolbar-right", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "map-tool-btn", onClick: fitDataset, title: "Fit view to dataset", disabled: !info, children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-arrows-to-circle" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { position: "relative" }, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "map-tool-btn basemap-trigger", onClick: () => setBasemapOpen((v2) => !v2), title: "Basemap", children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-map" }) }),
+      basemapOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "basemap-popover", children: Object.keys(baseMaps).map((key) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: `basemap-option${state.selectedBasemap === key ? " active" : ""}`,
+          onClick: () => {
+            dispatch({ type: "SET_BASEMAP", payload: key });
+            setBasemapOpen(false);
+          },
+          children: key
+        },
+        key
+      )) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        className: `map-tool-btn${state.showColorbar ? " active" : ""}`,
+        onClick: () => dispatch({ type: "TOGGLE_COLORBAR" }),
+        title: "Toggle colorbar on map",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-palette" })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        className: `map-tool-btn${state.showLosIndicator ? " active" : ""}`,
+        onClick: () => dispatch({ type: "TOGGLE_LOS_INDICATOR" }),
+        title: "Toggle LOS geometry indicator",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-satellite" })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        className: `map-tool-btn${state.refEnabled ? " active" : ""}`,
+        onClick: () => dispatch({ type: "TOGGLE_REF_ENABLED" }),
+        title: "Toggle spatial re-referencing",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-crosshairs" })
+      }
+    )
+  ] });
+}
 function MapContainer() {
   const { state } = useAppContext();
   const getInitialCenter = () => {
@@ -29985,6 +30072,7 @@ function MapContainer() {
         }
       )
     ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(MapTopRightToolbar, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       MapContainer$1,
       {
@@ -29992,6 +30080,7 @@ function MapContainer() {
         zoom: 9,
         style: { height: "100%", width: "100%" },
         doubleClickZoom: false,
+        zoomControl: false,
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             TileLayer,
@@ -30004,7 +30093,7 @@ function MapContainer() {
           /* @__PURE__ */ jsxRuntimeExports.jsx(RasterTileLayer, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(RadiusCircles, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MarkerEventHandlers, {}),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(MapEvents, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(MapEvents, { toolActive: measureActive || profileActive }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MousePosition, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(ScaleBar, {}),
           /* @__PURE__ */ jsxRuntimeExports.jsx(MeasureTool, { active: measureActive, onDeactivate: () => setMeasureActive(false) }),
@@ -30021,25 +30110,29 @@ function Histogram() {
   const { state, dispatch } = useAppContext();
   const [histData, setHistData] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(false);
-  const fetchHistogram = reactExports.useCallback(async () => {
-    if (!state.currentDataset || state.isPlaying) return;
-    setLoading(true);
-    try {
-      const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
-      const res = await fetch(`/histogram/${encodeURIComponent(state.currentDataset)}?${params}`);
-      if (res.ok) {
-        const data = await res.json();
-        setHistData(data);
-      }
-    } catch (e) {
-      console.error("Error fetching histogram:", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [state.currentDataset, state.currentTimeIndex, state.isPlaying]);
   reactExports.useEffect(() => {
-    fetchHistogram();
-  }, [fetchHistogram]);
+    if (!state.currentDataset) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const params = withDataset(new URLSearchParams({ time_index: String(state.currentTimeIndex) }));
+        const res = await fetch(
+          `/histogram/${encodeURIComponent(state.currentDataset)}?${params}`,
+          { signal: controller.signal }
+        );
+        if (res.ok) setHistData(await res.json());
+      } catch (e) {
+        if (e.name !== "AbortError") console.error("Error fetching histogram:", e);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [state.currentDataset, state.currentTimeIndex]);
   const handleAutoScale = () => {
     if (!histData) return;
     dispatch({ type: "SET_VMIN", payload: parseFloat(histData.p2.toFixed(4)) });
@@ -30127,7 +30220,6 @@ const colormapOptions = [
   { value: "jet", label: "Jet" }
 ];
 function ControlPanel({ title }) {
-  var _a2;
   const { state, dispatch } = useAppContext();
   const { fetchPointTimeSeries, fetchBufferTimeSeries } = useApi();
   const [draftVmin, setDraftVmin] = reactExports.useState(String(state.vmin));
@@ -30135,10 +30227,7 @@ function ControlPanel({ title }) {
   const [lightTheme, setLightTheme] = reactExports.useState(false);
   const [draftRefLat, setDraftRefLat] = reactExports.useState(String(state.refMarkerPosition[0]));
   const [draftRefLon, setDraftRefLon] = reactExports.useState(String(state.refMarkerPosition[1]));
-  const [draftBounds, setDraftBounds] = reactExports.useState({ s: "", w: "", n: "", e: "" });
-  const boundsEditingRef = reactExports.useRef(false);
   const [collapsed, setCollapsed] = reactExports.useState({
-    distribution: true,
     masking: true,
     buffer: true
   });
@@ -30169,19 +30258,6 @@ function ControlPanel({ title }) {
     setDraftRefLat(state.refMarkerPosition[0].toFixed(6));
     setDraftRefLon(state.refMarkerPosition[1].toFixed(6));
   }, [state.refMarkerPosition]);
-  reactExports.useEffect(() => {
-    if (!state.viewBounds || boundsEditingRef.current) return;
-    const [s, w2, n2, e] = state.viewBounds;
-    setDraftBounds({ s: String(s), w: String(w2), n: String(n2), e: String(e) });
-  }, [state.viewBounds]);
-  const applyViewBounds = () => {
-    const s = parseFloat(draftBounds.s);
-    const w2 = parseFloat(draftBounds.w);
-    const n2 = parseFloat(draftBounds.n);
-    const e = parseFloat(draftBounds.e);
-    if ([s, w2, n2, e].some(isNaN)) return;
-    dispatch({ type: "SET_VIEW_BOUNDS", payload: [s, w2, n2, e] });
-  };
   reactExports.useEffect(() => {
     const datasetName = state.currentDataset;
     if (!datasetName) return;
@@ -30233,14 +30309,14 @@ function ControlPanel({ title }) {
     if (!Number.isNaN(v2)) dispatch({ type: "SET_VMAX", payload: v2 });
   }, [draftVmax, dispatch]);
   const setRefValues = async (ds) => {
-    var _a3, _b2, _c;
+    var _a2, _b2, _c;
     const [lat, lng] = state.refMarkerPosition;
     try {
       let values;
       if (state.refBufferEnabled && state.refBufferRadius > 0) {
         const result = await fetchBufferTimeSeries(lng, lat, ds, state.refBufferRadius, 0);
         if (result == null ? void 0 : result.median) {
-          const xValues = ((_b2 = (_a3 = state.datasetInfo[ds]) == null ? void 0 : _a3.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
+          const xValues = ((_b2 = (_a2 = state.datasetInfo[ds]) == null ? void 0 : _a2.x_values) == null ? void 0 : _b2.map(String)) ?? ((_c = result.labels) == null ? void 0 : _c.map(String)) ?? [];
           const byX = Object.fromEntries(result.median.map((pt) => [String(pt.x), pt.y]));
           values = xValues.map((x2) => byX[x2] ?? NaN);
         }
@@ -30254,28 +30330,16 @@ function ControlPanel({ title }) {
     }
   };
   const commitRefPosition = reactExports.useCallback(() => {
-    var _a3;
+    var _a2;
     const lat = parseFloat(draftRefLat);
     const lon = parseFloat(draftRefLon);
     if (isNaN(lat) || isNaN(lon)) return;
     dispatch({ type: "SET_REF_MARKER_POSITION", payload: [lat, lon] });
     const ds = state.currentDataset;
-    if (ds && ((_a3 = state.datasetInfo[ds]) == null ? void 0 : _a3.uses_spatial_ref)) setRefValues(ds);
+    if (ds && ((_a2 = state.datasetInfo[ds]) == null ? void 0 : _a2.uses_spatial_ref)) setRefValues(ds);
   }, [draftRefLat, draftRefLon, state.currentDataset, state.datasetInfo, dispatch]);
   const currentDatasetInfo = state.currentDataset ? state.datasetInfo[state.currentDataset] : null;
   const currentTimeValue = currentDatasetInfo ? currentDatasetInfo.x_values[state.currentTimeIndex] : "";
-  const nTimes = ((_a2 = currentDatasetInfo == null ? void 0 : currentDatasetInfo.x_values) == null ? void 0 : _a2.length) ?? 0;
-  const timeIndexRef = reactExports.useRef(state.currentTimeIndex);
-  timeIndexRef.current = state.currentTimeIndex;
-  const nTimesRef = reactExports.useRef(nTimes);
-  nTimesRef.current = nTimes;
-  reactExports.useEffect(() => {
-    if (!state.isPlaying || nTimes === 0) return;
-    const id2 = setInterval(() => {
-      dispatch({ type: "SET_TIME_INDEX", payload: (timeIndexRef.current + 1) % nTimesRef.current });
-    }, state.animationSpeed);
-    return () => clearInterval(id2);
-  }, [state.isPlaying, state.animationSpeed, nTimes, dispatch]);
   const SectionHeader = ({ icon, label, collapseKey }) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
@@ -30320,40 +30384,7 @@ function ControlPanel({ title }) {
             value: state.currentTimeIndex,
             onChange: (e) => dispatch({ type: "SET_TIME_INDEX", payload: parseInt(e.target.value) })
           }
-        ),
-        currentDatasetInfo.x_values.length > 1 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "anim-controls", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              className: `toggle-pill anim-play-btn${state.isPlaying ? " active" : ""}`,
-              onClick: () => dispatch({ type: "TOGGLE_PLAYING" }),
-              title: state.isPlaying ? "Pause animation" : "Play animation",
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.isPlaying ? "fa-pause" : "fa-play"}` }),
-                state.isPlaying ? "Pause" : "Play"
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "slider-label", style: { marginTop: 4 }, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Speed" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "slider-value", children: [
-              (1e3 / state.animationSpeed).toFixed(1),
-              "x"
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              type: "range",
-              className: "sidebar-range",
-              min: "100",
-              max: "2000",
-              step: "100",
-              value: 2100 - state.animationSpeed,
-              onChange: (e) => dispatch({ type: "SET_ANIMATION_SPEED", payload: 2100 - parseInt(e.target.value) })
-            }
-          )
-        ] })
+        )
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
@@ -30439,144 +30470,7 @@ function ControlPanel({ title }) {
           }
         )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "Colorbar on map" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `toggle-pill${state.showColorbar ? " active" : ""}`,
-            onClick: () => dispatch({ type: "TOGGLE_COLORBAR" }),
-            children: state.showColorbar ? "ON" : "OFF"
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "toggle-row", style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: "0.82em", color: "var(--sb-muted)" }, children: "LOS geometry" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            className: `toggle-pill${state.showLosIndicator ? " active" : ""}`,
-            onClick: () => dispatch({ type: "TOGGLE_LOS_INDICATOR" }),
-            children: state.showLosIndicator ? "ON" : "OFF"
-          }
-        )
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-chart-bar", label: "Distribution" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(Histogram, {})
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-map", label: "Basemap" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "select",
-        {
-          className: "sidebar-select",
-          value: state.selectedBasemap,
-          onChange: (e) => dispatch({ type: "SET_BASEMAP", payload: e.target.value }),
-          children: Object.keys(baseMaps).map((key) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: key, children: key }, key))
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-expand", label: "View Extent" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "N" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "sidebar-input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftBounds.n,
-              onFocus: () => {
-                boundsEditingRef.current = true;
-              },
-              onChange: (e) => setDraftBounds((b) => ({ ...b, n: e.target.value })),
-              onBlur: () => {
-                boundsEditingRef.current = false;
-              },
-              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "S" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "sidebar-input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftBounds.s,
-              onFocus: () => {
-                boundsEditingRef.current = true;
-              },
-              onChange: (e) => setDraftBounds((b) => ({ ...b, s: e.target.value })),
-              onBlur: () => {
-                boundsEditingRef.current = false;
-              },
-              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
-            }
-          )
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-row", style: { marginTop: 4 }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "W" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "sidebar-input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftBounds.w,
-              onFocus: () => {
-                boundsEditingRef.current = true;
-              },
-              onChange: (e) => setDraftBounds((b) => ({ ...b, w: e.target.value })),
-              onBlur: () => {
-                boundsEditingRef.current = false;
-              },
-              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "minmax-field", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "minmax-label", children: "E" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              className: "sidebar-input",
-              type: "text",
-              inputMode: "decimal",
-              value: draftBounds.e,
-              onFocus: () => {
-                boundsEditingRef.current = true;
-              },
-              onChange: (e) => setDraftBounds((b) => ({ ...b, e: e.target.value })),
-              onBlur: () => {
-                boundsEditingRef.current = false;
-              },
-              onKeyDown: (e) => e.key === "Enter" && applyViewBounds()
-            }
-          )
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { style: { display: "flex", gap: 6, marginTop: 6 }, children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", style: { flex: 1 }, onClick: applyViewBounds, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-location-crosshairs" }),
-          " Apply"
-        ] }),
-        state.currentDataset && state.datasetInfo[state.currentDataset] && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-btn", style: { flex: 1 }, onClick: () => {
-          const b = state.datasetInfo[state.currentDataset].latlon_bounds;
-          dispatch({ type: "SET_VIEW_BOUNDS", payload: [b[1], b[0], b[3], b[2]] });
-        }, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-arrows-to-circle" }),
-          " Dataset"
-        ] })
-      ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-section", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SectionHeader, { icon: "fa-crosshairs", label: "Reference Point" }),
@@ -30767,8 +30661,8 @@ function ControlPanel({ title }) {
                   accept: ".tif,.tiff",
                   style: { display: "none" },
                   onChange: async (e) => {
-                    var _a3;
-                    const f2 = (_a3 = e.target.files) == null ? void 0 : _a3[0];
+                    var _a2;
+                    const f2 = (_a2 = e.target.files) == null ? void 0 : _a2[0];
                     if (!f2) return;
                     const form = new FormData();
                     form.append("file", f2);
@@ -30853,34 +30747,6 @@ function ControlPanel({ title }) {
       ] })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sidebar-footer", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: `toggle-pill${state.pickingEnabled ? " active" : ""}`,
-          style: { width: "100%", marginBottom: 6, justifyContent: "center" },
-          onClick: () => dispatch({ type: "TOGGLE_PICKING" }),
-          title: "Toggle map-click point picking",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-map-pin", style: { marginRight: 6 } }),
-            "Point Picking: ",
-            state.pickingEnabled ? "ON" : "OFF"
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          className: `toggle-pill${state.refEnabled ? " active" : ""}`,
-          style: { width: "100%", marginBottom: 6, justifyContent: "center" },
-          onClick: () => dispatch({ type: "TOGGLE_REF_ENABLED" }),
-          title: "Toggle spatial re-referencing",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: "fa-solid fa-crosshairs", style: { marginRight: 6 } }),
-            "Re-referencing: ",
-            state.refEnabled ? "ON" : "OFF"
-          ]
-        }
-      ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "chart-toggle-btn", onClick: () => dispatch({ type: "TOGGLE_CHART" }), children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("i", { className: `fa-solid ${state.showChart ? "fa-chart-line" : "fa-wave-square"}` }),
         state.showChart ? "Hide" : "Show",

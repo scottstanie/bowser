@@ -232,6 +232,19 @@ export function ProfileToolMap() {
     };
     const onDblClick = (e: L.LeafletMouseEvent) => {
       L.DomEvent.stop(e);
+      // A double-click fires click → click → dblclick, so onClick has
+      // already appended up to two extra vertices at this pixel before we
+      // get here. Collapse any trailing vertices that land on the same
+      // screen pixel so the finish gesture doesn't leave phantom points
+      // stacked at the end.
+      const DUP_PX = 5;
+      while (ptsRef.current.length >= 2) {
+        const n = ptsRef.current.length;
+        const a = map.latLngToContainerPoint(ptsRef.current[n - 1]);
+        const b = map.latLngToContainerPoint(ptsRef.current[n - 2]);
+        if (a.distanceTo(b) <= DUP_PX) ptsRef.current = ptsRef.current.slice(0, -1);
+        else break;
+      }
       if (modeRef.current !== 'drawing' || ptsRef.current.length < 2) return;
       previewRef.current?.remove(); previewRef.current = null;
       updatePoly(ptsRef.current);
