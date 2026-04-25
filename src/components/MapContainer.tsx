@@ -101,6 +101,21 @@ function MousePosition() {
   return null;
 }
 
+// Leaflet caches its container size; CSS-driven resizes (sidebar collapse,
+// chart panel open/close) leave it drawing for the old dimensions until
+// invalidateSize() is called. Without this, tiles stop short of the new
+// right edge and the graticule SVG (sized from map.getSize()) doesn't extend.
+function MapResizeWatcher() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
+  return null;
+}
+
 function ScaleBar() {
   const map = useMap();
 
@@ -553,6 +568,7 @@ export default function MapContainer() {
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
       <ProfileToolMap />
       <MapViewController />
+      <MapResizeWatcher />
       <Graticule mode={state.graticuleMode} />
     </LeafletMapContainer>
     </div>
