@@ -64,6 +64,17 @@ writer = ["geozarr-toolkit>=0.1.1"]
 bowser = "bowser.cli:cli_app"
 
 
+[tool.setuptools.packages.find]
+# Without this, setuptools auto-discovery picks up sibling React source dirs
+# under src/ (components/, hooks/, context/) and ships .tsx files in the wheel.
+where = ["src"]
+include = ["bowser*"]
+
+[tool.setuptools.package-data]
+# Frontend bundle is built by `npm run build` (CD workflow) into src/bowser/dist/.
+# Listed explicitly so it ships in the wheel even though it's gitignored.
+bowser = ["dist/index.html", "dist/index.js", "dist/index.css", "static/*"]
+
 [tool.setuptools_scm]
 # https://github.com/pypa/setuptools_scm#configuration-parameters
 write_to = "src/bowser/_version.py"
