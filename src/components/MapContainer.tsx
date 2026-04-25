@@ -8,6 +8,7 @@ import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
 import MeasureTool from './MeasureTool';
 import { ProfileToolMap, useProfileContext } from './ProfileTool';
+import Graticule from './Graticule';
 
 // Fix for default markers in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -471,6 +472,11 @@ function MapTopRightToolbar() {
         onClick={() => dispatch({ type: 'TOGGLE_REF_ENABLED' })}
         title="Toggle spatial re-referencing"
       ><i className="fa-solid fa-crosshairs"></i></button>
+      <button
+        className={`map-tool-btn${state.graticuleMode !== 'off' ? ' active' : ''}`}
+        onClick={() => dispatch({ type: 'CYCLE_GRATICULE' })}
+        title={`Lat/lon grid: ${state.graticuleMode} (click to cycle)`}
+      ><i className="fa-solid fa-border-all"></i></button>
     </div>
   );
 }
@@ -547,6 +553,7 @@ export default function MapContainer() {
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
       <ProfileToolMap />
       <MapViewController />
+      <Graticule mode={state.graticuleMode} />
     </LeafletMapContainer>
     </div>
   );
