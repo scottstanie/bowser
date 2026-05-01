@@ -52,6 +52,7 @@ const initialState: AppState = {
   viewBoundsApplySeq: 0,
   showColorbar: false,
   showLosIndicator: false,
+  graticuleMode: 'off',
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -238,6 +239,12 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
       return { ...state, showColorbar: !state.showColorbar };
     case 'TOGGLE_LOS_INDICATOR':
       return { ...state, showLosIndicator: !state.showLosIndicator };
+    case 'CYCLE_GRATICULE': {
+      const next = state.graticuleMode === 'off' ? 'plain'
+                 : state.graticuleMode === 'plain' ? 'zebra'
+                 : 'off';
+      return { ...state, graticuleMode: next };
+    }
     case 'ADD_CHART_WINDOW':
       return { ...state, chartWindows: [...state.chartWindows, action.payload] };
     case 'REMOVE_CHART_WINDOW':

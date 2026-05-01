@@ -8,6 +8,7 @@ import { baseMaps } from '../basemap';
 import { MousePositionControl } from '../mouse';
 import MeasureTool from './MeasureTool';
 import { ProfileToolMap, useProfileContext } from './ProfileTool';
+import Graticule from './Graticule';
 
 // Fix for default markers in React Leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -97,6 +98,21 @@ function MousePosition() {
     };
   }, [map]);
 
+  return null;
+}
+
+// Leaflet caches its container size; CSS-driven resizes (sidebar collapse,
+// chart panel open/close) leave it drawing for the old dimensions until
+// invalidateSize() is called. Without this, tiles stop short of the new
+// right edge and the graticule SVG (sized from map.getSize()) doesn't extend.
+function MapResizeWatcher() {
+  const map = useMap();
+  useEffect(() => {
+    const el = map.getContainer();
+    const ro = new ResizeObserver(() => map.invalidateSize({ animate: false }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [map]);
   return null;
 }
 
@@ -471,6 +487,11 @@ function MapTopRightToolbar() {
         onClick={() => dispatch({ type: 'TOGGLE_REF_ENABLED' })}
         title="Toggle spatial re-referencing"
       ><i className="fa-solid fa-crosshairs"></i></button>
+      <button
+        className={`map-tool-btn${state.graticuleMode !== 'off' ? ' active' : ''}`}
+        onClick={() => dispatch({ type: 'CYCLE_GRATICULE' })}
+        title={`Lat/lon grid: ${state.graticuleMode} (click to cycle)`}
+      ><i className="fa-solid fa-border-all"></i></button>
     </div>
   );
 }
@@ -547,6 +568,8 @@ export default function MapContainer() {
       <MeasureTool active={measureActive} onDeactivate={() => setMeasureActive(false)} />
       <ProfileToolMap />
       <MapViewController />
+      <MapResizeWatcher />
+      <Graticule mode={state.graticuleMode} />
     </LeafletMapContainer>
     </div>
   );

@@ -112,6 +112,7 @@ export interface AppState {
   viewBoundsApplySeq: number;
   showColorbar: boolean;
   showLosIndicator: boolean;
+  graticuleMode: 'off' | 'plain' | 'zebra';
 }
 
 export type AppAction =
@@ -153,6 +154,7 @@ export type AppAction =
   | { type: 'APPLY_VIEW_BOUNDS'; payload: [number, number, number, number] }
   | { type: 'TOGGLE_COLORBAR' }
   | { type: 'TOGGLE_LOS_INDICATOR' }
+  | { type: 'CYCLE_GRATICULE' }
   | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }
   | { type: 'REMOVE_CHART_WINDOW'; payload: string }
   | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } };
