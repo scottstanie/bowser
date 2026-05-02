@@ -1157,6 +1157,128 @@ def tifs_to_geozarr(
     click.echo(f"Wrote {output} with variables: {written}")
 
 
+# ── prepare-mintpy ────────────────────────────────────────────────────
+# One-step adapter: MintPy .h5 inputs → single GeoZarr (with optional
+# pyramid). No setup-mintpy detour — MintPy stacks already carry the
+# georeferencing in their root attrs, so we go h5py → xarray → existing
+# bowser.geozarr writer machinery directly. See _prepare_mintpy.py.
+@cli_app.command("prepare-mintpy")
+@click.argument(
+    "h5_files",
+    nargs=-1,
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+)
+@click.option(
+    "-o",
+    "--output",
+    required=True,
+    type=click.Path(writable=True),
+    help="Path to the output zarr store.",
+)
+@click.option(
+    "--chunk",
+    default=256,
+    show_default=True,
+    type=int,
+    help="Square chunk edge (pixels) along y and x.",
+)
+@click.option(
+    "--shard-factor",
+    default=4,
+    show_default=True,
+    type=click.IntRange(1, 64),
+    help="Shard shape = chunk x factor on every dim. 1 disables sharding.",
+)
+@click.option(
+    "--compression",
+    default="lz4",
+    show_default=True,
+    type=click.Choice(["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]),
+    help="Blosc sub-codec.",
+)
+@click.option(
+    "--compression-level",
+    default=5,
+    show_default=True,
+    type=click.IntRange(1, 9),
+    help="Compression level (1=fastest, 9=smallest).",
+)
+@click.option(
+    "--quantize-digits",
+    default=0,
+    show_default=True,
+    type=click.IntRange(0, 10),
+    help=(
+        "If > 0, round matching float variables to this many significant "
+        "digits before compression. 0 disables."
+    ),
+)
+@click.option(
+    "--quantize-patterns",
+    default="coherence,similarity,dispersion",
+    show_default=True,
+    help=(
+        "Comma-separated substrings matched against variable names to decide "
+        "which float vars get the quantize filter."
+    ),
+)
+@click.option(
+    "--pyramid/--no-pyramid",
+    default=True,
+    show_default=True,
+    help="Write level-0 data to /0 and build coarsened /1, /2, … overview groups.",
+)
+@click.option(
+    "--min-pyramid-size",
+    default=256,
+    show_default=True,
+    type=int,
+    help="Stop building pyramid when min(y, x) drops below this.",
+)
+@click.option("-v", "--verbose", count=True)
+def prepare_mintpy(
+    h5_files: tuple[str, ...],
+    output: str,
+    chunk: int,
+    shard_factor: int,
+    compression: str,
+    compression_level: int,
+    quantize_digits: int,
+    quantize_patterns: str,
+    pyramid: bool,
+    min_pyramid_size: int,
+    verbose: int,
+) -> None:
+    """Convert MintPy H5_FILES into a single GeoZarr OUTPUT.
+
+    H5_FILES is one or more MintPy ``.h5`` files (timeseries.h5,
+    velocity.h5, geometryGeo.h5, …). Reads MintPy root attrs
+    (X_FIRST/Y_FIRST/X_STEP/Y_STEP/EPSG and /date) directly with h5py,
+    assembles one xarray Dataset, and writes a self-describing GeoZarr
+    (with optional multiscale pyramid) ready for
+    ``bowser run --stack-file <output>``.
+
+    Requires the ``writer`` extras: ``pip install 'bowser-insar[writer]'``.
+    """
+    from . import _prepare_mintpy  # noqa: PLC0415 — lazy: heavy deps
+
+    written = _prepare_mintpy.convert(
+        h5_files=list(h5_files),
+        output=output,
+        chunk=chunk,
+        shard_factor=shard_factor,
+        compression=compression,
+        compression_level=compression_level,
+        quantize_digits=quantize_digits,
+        quantize_patterns=quantize_patterns,
+        pyramid=pyramid,
+        min_pyramid_size=min_pyramid_size,
+        verbose=verbose,
+    )
+    click.echo(f"Wrote {output} with variables: {written}")
+
+
 def _sniff_bbox(uri: str) -> tuple[float, float, float, float]:
     """Open a zarr just long enough to grab its WGS84 bbox."""
     import rioxarray  # noqa: F401, PLC0415  (registers .rio accessor)
