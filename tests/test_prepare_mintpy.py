@@ -216,6 +216,44 @@ def test_grid_mismatch_raises(tmp_path: Path) -> None:
         )
 
 
+def test_mask_name_collision(tmp_path: Path) -> None:
+    """Two files publishing /mask resolve to distinct variables via file stem."""
+    from bowser._prepare_mintpy import convert
+
+    rng = np.random.default_rng(7)
+    _ = rng  # for symmetry with _bundle's signature; unused here
+    a = tmp_path / "maskPS.h5"
+    b = tmp_path / "water_mask.h5"
+    for f, val in ((a, 1.0), (b, 2.0)):
+        with h5py.File(f, "w") as hf:
+            for k, v in {**_common_attrs(), "FILE_TYPE": "mask"}.items():
+                hf.attrs[k] = v
+            hf.create_dataset(
+                "mask", data=np.full((HEIGHT, WIDTH), val, dtype="float32")
+            )
+
+    out = tmp_path / "out.zarr"
+    written = convert(
+        h5_files=[a, b],
+        output=str(out),
+        chunk=4,
+        shard_factor=1,
+        compression="lz4",
+        compression_level=5,
+        quantize_digits=0,
+        quantize_patterns="",
+        pyramid=False,
+        min_pyramid_size=2,
+        verbose=0,
+    )
+    # First file wins the bare name; second uses its stem.
+    assert "mask" in written
+    assert "water_mask" in written
+    ds = xr.open_zarr(out, consolidated=False)
+    assert float(ds["mask"].values[0, 0]) == 1.0
+    assert float(ds["water_mask"].values[0, 0]) == 2.0
+
+
 def test_radarcoded_rejected(tmp_path: Path) -> None:
     """Files without X_FIRST (radarcoded) are rejected with a useful message."""
     from bowser._prepare_mintpy import convert

@@ -218,7 +218,8 @@ def _build_dataset(files: list[Path]) -> tuple[xr.Dataset, _SpatialRef]:
                 shape = node.shape
                 if shape == (ref.height, ref.width):
                     arr = np.asarray(node[...])
-                    data_vars[name] = _wrap_2d(name, arr, attrs)
+                    var_name = _resolve_var_name(name, f, data_vars)
+                    data_vars[var_name] = _wrap_2d(var_name, arr, attrs, src_name=name)
                 elif (
                     len(shape) == 3
                     and shape[1:] == (ref.height, ref.width)
@@ -235,11 +236,19 @@ def _build_dataset(files: list[Path]) -> tuple[xr.Dataset, _SpatialRef]:
                     times = _parse_dates(np.asarray(date_node[...]))
                     coords["time"] = times
                     arr = np.asarray(node[...])
-                    data_vars[name] = _wrap_3d(name, arr, attrs, times)
+                    var_name = _resolve_var_name(name, f, data_vars)
+                    data_vars[var_name] = _wrap_3d(
+                        var_name, arr, attrs, times, src_name=name
+                    )
                 else:
-                    logger.debug(
-                        "Skipping %s/%s: shape %s doesn't match (y, x)=(%d, %d)",
-                        f,
+                    # 3-D arrays that aren't the canonical /timeseries (e.g.
+                    # per-date PS masks in maskPS.h5) are dropped: bowser
+                    # currently only models one time-coord per store, and we
+                    # can't always reuse timeseries.h5's /date here. Surface
+                    # the skip at INFO so it doesn't go unnoticed.
+                    logger.info(
+                        "Skipping %s/%s: shape %s not on the (y, x) grid (%d, %d)",
+                        f.name,
                         name,
                         shape,
                         ref.height,
@@ -380,17 +389,28 @@ def _parse_dates(raw: np.ndarray) -> np.ndarray:
     return pd.to_datetime(strs, format="%Y%m%d").to_numpy()
 
 
-def _wrap_2d(name: str, arr: np.ndarray, file_attrs: dict[str, str]) -> xr.DataArray:
+def _wrap_2d(
+    name: str,
+    arr: np.ndarray,
+    file_attrs: dict[str, str],
+    *,
+    src_name: str | None = None,
+) -> xr.DataArray:
     return xr.DataArray(
         arr,
         dims=("y", "x"),
         name=name,
-        attrs=_var_attrs(name, file_attrs),
+        attrs=_var_attrs(name, file_attrs, src_name=src_name),
     )
 
 
 def _wrap_3d(
-    name: str, arr: np.ndarray, file_attrs: dict[str, str], times: np.ndarray
+    name: str,
+    arr: np.ndarray,
+    file_attrs: dict[str, str],
+    times: np.ndarray,
+    *,
+    src_name: str | None = None,
 ) -> xr.DataArray:
     # Sort by time so chart code that assumes monotonic time still works,
     # mirroring what _tifs_to_geozarr does with date-derived dims.
@@ -401,14 +421,25 @@ def _wrap_3d(
         dims=("time", "y", "x"),
         coords={"time": times[order]},
         name=name,
-        attrs=_var_attrs(name, file_attrs),
+        attrs=_var_attrs(name, file_attrs, src_name=src_name),
     )
 
 
-def _var_attrs(name: str, file_attrs: dict[str, str]) -> dict[str, str]:
-    """Build per-variable attrs (grid_mapping/long_name/units)."""
+def _var_attrs(
+    name: str, file_attrs: dict[str, str], *, src_name: str | None = None
+) -> dict[str, str]:
+    """Build per-variable attrs (grid_mapping/long_name/units).
+
+    ``src_name`` is the original HDF5 dataset name when it differs from
+    the chosen variable name (we rename on collision — see
+    ``_resolve_var_name``). Used to look up the canonical ``_VAR_META``
+    entry so e.g. ``maskPS.h5/mask`` stamped as variable ``maskPS`` still
+    gets the friendly long_name "Persistent scatterer mask" instead of
+    being treated as an unknown variable.
+    """
     attrs: dict[str, str] = {"grid_mapping": "spatial_ref"}
-    long_name, units = _VAR_META.get(name, (name, None))
+    lookup_key = src_name or name
+    long_name, units = _VAR_META.get(lookup_key, _VAR_META.get(name, (name, None)))
     attrs["long_name"] = long_name
     if units is None:
         # Fall back to the file-level UNIT attr (MintPy writes one for
@@ -417,3 +448,44 @@ def _var_attrs(name: str, file_attrs: dict[str, str]) -> dict[str, str]:
     if units:
         attrs["units"] = units
     return attrs
+
+
+def _resolve_var_name(
+    dataset_name: str, file_path: Path, existing: dict[str, xr.DataArray]
+) -> str:
+    """Pick a unique zarr variable name for an HDF5 dataset.
+
+    MintPy stores some semantically distinct rasters under the same
+    HDF5 dataset key but in different files (e.g. ``maskPS.h5``,
+    ``water_mask.h5``, ``recommended_mask_*.h5`` all publish ``/mask``).
+    Naively keying on the dataset name silently overwrites earlier
+    arrays with later ones. Resolve by:
+
+    1. Use the bare dataset name when it doesn't collide.
+    2. On collision, prefer the file stem (``maskPS``, ``water_mask``,
+       …) — that's where the human-meaningful name lives.
+    3. If even the stem collides, retry with ``<stem>_<dataset>``.
+    4. Last-resort suffix counter so we never silently drop data.
+    """
+    if dataset_name not in existing:
+        return dataset_name
+
+    stem = file_path.stem
+    if stem and stem not in existing:
+        logger.info(
+            "Renaming /%s from %s to %r (collision with earlier %s)",
+            dataset_name,
+            file_path.name,
+            stem,
+            dataset_name,
+        )
+        return stem
+
+    candidate = f"{stem}_{dataset_name}"
+    if candidate not in existing:
+        return candidate
+
+    i = 2
+    while f"{candidate}_{i}" in existing:
+        i += 1
+    return f"{candidate}_{i}"
