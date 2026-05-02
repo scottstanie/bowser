@@ -25,6 +25,12 @@ dependencies = [
   "aiobotocore>=2.13.0",
   "python-multipart",
   "starlette>=0.40.0,<1.0.0",
+  # Vector AOI uploads (KML/KMZ/SHP-zip/GeoJSON/GeoPackage). pyogrio is
+  # ~5× lighter than geopandas at the same format coverage; shapely is
+  # already a transitive dep but list it explicitly so polygon_stats
+  # doesn't break if upstream drops it.
+  "pyogrio",
+  "shapely",
 ]
 
 classifiers = [

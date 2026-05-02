@@ -68,6 +68,51 @@ export interface LayerMask {
   mode: 'min' | 'max';  // 'min' = keep pixels >= threshold; 'max' = keep pixels <= threshold
 }
 
+// A vector AOI uploaded by the user (KML/KMZ/SHP-zip/GeoJSON normalised
+// server-side to GeoJSON). Rendered on the map as a Leaflet overlay; can
+// also be passed to /polygon_stats for zonal statistics.
+export interface VectorOverlay {
+  id: string;            // server-assigned overlay_<uuid>
+  name: string;          // original filename
+  url: string;           // /vectors/<id>.geojson on the same origin
+  color: string;         // user-chosen stroke / fill color
+  visible: boolean;
+  bbox: [number, number, number, number]; // lon_min, lat_min, lon_max, lat_max
+  n_features: number;
+  // Selecting a single Feature for stats (Polygon / MultiPolygon only).
+  // Keyed off the GeoJSON feature index. Null = whole collection (we
+  // run stats on each feature in v1; null disables stats).
+  selectedFeatureIdx: number | null;
+}
+
+// Time-series statistics result for one polygon, keyed by dataset name
+// to make follow-up "compare two datasets" easy. Stored on AppState so
+// the chart panel can read it without re-fetching.
+export interface PolygonStats {
+  overlayId: string;
+  featureIdx: number;
+  dataset: string;
+  // 2-D variables: only `summary`; 3-D variables: also `time` + `series`.
+  summary: PolygonStatRow;
+  time?: string[];
+  series?: PolygonStatRow[];
+  n_pixels: number;
+}
+
+export interface PolygonStatRow {
+  mean: number;
+  median: number;
+  std: number;
+  min: number;
+  max: number;
+  p5: number;
+  p25: number;
+  p75: number;
+  p95: number;
+  count_valid: number;
+  count_total: number;
+}
+
 export interface ChartWindow {
   id: string;
   dsNames: string[];  // datasets shown in this window; empty = follow currentDataset
@@ -113,6 +158,11 @@ export interface AppState {
   showColorbar: boolean;
   showLosIndicator: boolean;
   graticuleMode: 'off' | 'plain' | 'zebra';
+  // Uploaded vector AOI overlays. Multiple at once; rendered in order.
+  vectorOverlays: VectorOverlay[];
+  // Last-computed polygon stats, keyed by overlayId+featureIdx+dataset.
+  // Stored as a list rather than a map so iteration is stable.
+  polygonStats: PolygonStats[];
 }
 
 export type AppAction =
@@ -157,7 +207,12 @@ export type AppAction =
   | { type: 'CYCLE_GRATICULE' }
   | { type: 'ADD_CHART_WINDOW'; payload: ChartWindow }
   | { type: 'REMOVE_CHART_WINDOW'; payload: string }
-  | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } };
+  | { type: 'SET_CHART_WINDOW_DS'; payload: { id: string; dsNames: string[] } }
+  | { type: 'ADD_VECTOR_OVERLAY'; payload: VectorOverlay }
+  | { type: 'REMOVE_VECTOR_OVERLAY'; payload: string }
+  | { type: 'UPDATE_VECTOR_OVERLAY'; payload: { id: string; updates: Partial<VectorOverlay> } }
+  | { type: 'SET_POLYGON_STATS'; payload: PolygonStats }
+  | { type: 'CLEAR_POLYGON_STATS'; payload: { overlayId: string } };
 
 // Backward compatibility
 export type LegacyAppAction = { type: 'SET_TS_MARKER_POSITION'; payload: [number, number] };
