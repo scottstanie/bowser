@@ -83,7 +83,12 @@ export default function VectorOverlayPanel() {
 function VectorOverlayRow({ overlay }: { overlay: VectorOverlay }) {
   const { state, dispatch } = useAppContext();
   const [busy, setBusy] = useState(false);
-  const stat = state.polygonStats.find(s => s.overlayId === overlay.id);
+  // Prefer stats for the *current* dataset so switching datasets shows the
+  // matching numbers; fall back to anything we have for this overlay.
+  const stat =
+    state.polygonStats.find(
+      s => s.overlayId === overlay.id && s.dataset === state.currentDataset
+    ) ?? state.polygonStats.find(s => s.overlayId === overlay.id);
 
   const fitToOverlay = () => {
     const [lonMin, latMin, lonMax, latMax] = overlay.bbox;

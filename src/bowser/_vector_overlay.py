@@ -197,6 +197,11 @@ def _build_properties(meta: dict[str, Any], fields: Any) -> list[dict[str, Any]]
                 row[name] = bool(v)
             elif isinstance(v, (bytes, np.bytes_)):
                 row[name] = v.decode("utf-8", errors="replace")
+            elif isinstance(v, np.datetime64):
+                # KML/GeoPackage drivers return timestamp/begin/end columns
+                # as datetime64[ms]; NaT shows up as a non-finite value.
+                # Convert to ISO 8601 strings so the JSON dump survives.
+                row[name] = None if np.isnat(v) else np.datetime_as_string(v)
             else:
                 row[name] = v
         out.append(row)
