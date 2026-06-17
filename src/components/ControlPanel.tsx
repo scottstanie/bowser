@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { useApi } from '../hooks/useApi';
 import Histogram from './Histogram';
+import VectorOverlayPanel from './VectorOverlayPanel';
 
 const colormapOptions = [
   { value: 'rdbu', label: 'Blue–Red' },
@@ -31,6 +32,7 @@ export default function ControlPanel({ title }: { title: string }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({
     masking: true,
     buffer: true,
+    overlays: true,
   });
   const toggleSection = (key: string) => setCollapsed(c => ({ ...c, [key]: !c[key] }));
   // dataset range cache: { [datasetName]: { min, max, p2, p98 } }
@@ -416,6 +418,12 @@ export default function ControlPanel({ title }: { title: string }) {
             </div>
           </>
         )}
+      </div>
+
+      {/* ── VECTOR OVERLAYS (collapsible) ── */}
+      <div className="sidebar-section">
+        <SectionHeader icon="fa-draw-polygon" label="AOI Overlays" collapseKey="overlays" />
+        {!collapsed.overlays && <VectorOverlayPanel />}
       </div>
 
       {/* ── BUFFER SAMPLING (collapsible) ── */}

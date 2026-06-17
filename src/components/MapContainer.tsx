@@ -259,6 +259,100 @@ function RasterTileLayer() {
   );
 }
 
+/** Render uploaded vector AOI overlays as Leaflet GeoJSON layers.
+ *
+ * Imperative L.geoJSON (rather than react-leaflet's <GeoJSON>) to stay
+ * consistent with RadiusCircles / MapEvents / MapViewController which
+ * also drive Leaflet via useEffect + map ref. The GeoJSON is fetched
+ * once per overlay and cached in a ref so flipping color/visibility
+ * doesn't re-hit the network.
+ */
+function VectorOverlayLayers() {
+  const { state, dispatch } = useAppContext();
+  const map = useMap();
+  // Cache parsed GeoJSON across re-renders to avoid re-fetch on color tweaks.
+  const cacheRef = (window as any).__bowserVectorCache as Map<string, any>
+    || ((window as any).__bowserVectorCache = new Map<string, any>());
+
+  useEffect(() => {
+    const layers: L.GeoJSON[] = [];
+    let cancelled = false;
+    const visible = state.vectorOverlays.filter(o => o.visible);
+
+    Promise.all(
+      visible.map(async (o) => {
+        let gj = cacheRef.get(o.url);
+        if (!gj) {
+          const res = await fetch(o.url);
+          if (!res.ok) return null;
+          gj = await res.json();
+          cacheRef.set(o.url, gj);
+        }
+        return { overlay: o, gj };
+      })
+    ).then(results => {
+      if (cancelled) return;
+      results.forEach(r => {
+        if (!r) return;
+        const { overlay: o, gj } = r;
+        const isSelected = (i: number) => o.selectedFeatureIdx === i;
+        let featureIdx = 0;
+        const layer = L.geoJSON(gj, {
+          style: (feat) => {
+            // GeoJSON callback gives us the feature object; track the
+            // running index by closure since Leaflet doesn't expose it.
+            const idx = (feat as any).__bowserIdx as number;
+            const selected = idx !== undefined && isSelected(idx);
+            return {
+              color: o.color,
+              weight: selected ? 3.5 : 2,
+              fillColor: o.color,
+              fillOpacity: selected ? 0.25 : 0.1,
+              dashArray: selected ? undefined : '4 2',
+            };
+          },
+          pointToLayer: (_f, latlng) =>
+            L.circleMarker(latlng, { radius: 6, color: o.color, fillColor: o.color, fillOpacity: 0.6 }),
+          onEachFeature: (feat, lyr) => {
+            // Stash the index onto each feature so the style callback can
+            // see it (Leaflet doesn't pass an index parameter).
+            (feat as any).__bowserIdx = featureIdx;
+            const myIdx = featureIdx;
+            featureIdx += 1;
+            const props = feat.properties ?? {};
+            const propLines = Object.entries(props)
+              .slice(0, 8)
+              .map(([k, v]) => `<b>${k}</b>: ${v}`).join('<br>');
+            const tooltip = propLines || `<i>${o.name}</i>`;
+            lyr.bindTooltip(tooltip, { sticky: true });
+            lyr.on('click', () => {
+              dispatch({
+                type: 'UPDATE_VECTOR_OVERLAY',
+                payload: { id: o.id, updates: { selectedFeatureIdx: myIdx } },
+              });
+            });
+          },
+        }).addTo(map);
+        layers.push(layer);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      layers.forEach(l => l.remove());
+    };
+    // Re-render when any overlay's identity, visibility, color, or
+    // selection changes. URLs are stable per upload so a cache hit is
+    // the common case.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, JSON.stringify(state.vectorOverlays.map(o => ({
+    id: o.id, url: o.url, color: o.color, visible: o.visible, sel: o.selectedFeatureIdx,
+  })))]);
+
+  return null;
+}
+
+
 /** Draw radius circles on the map for buffer-enabled points and reference marker. */
 function RadiusCircles() {
   const { state } = useAppContext();
@@ -560,6 +654,7 @@ export default function MapContainer() {
         maxZoom={22}
       />
       <RasterTileLayer />
+      <VectorOverlayLayers />
       <RadiusCircles />
       <MarkerEventHandlers />
       <MapEvents toolActive={measureActive || profileActive} />

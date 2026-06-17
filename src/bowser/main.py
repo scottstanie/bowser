@@ -1417,6 +1417,12 @@ async def extract_profile(
 _UPLOAD_DIR = Path(os.environ.get("BOWSER_UPLOAD_DIR", "/tmp/bowser_masks"))
 _UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# Upload directory for vector AOIs (KML/KMZ/SHP-zip/GeoJSON normalised to GeoJSON).
+# Served back via the /vectors static mount so the frontend can fetch the
+# normalised GeoJSON without going back through a Python endpoint.
+_VECTOR_DIR = Path(os.environ.get("BOWSER_VECTOR_DIR", "/tmp/bowser_vectors"))
+_VECTOR_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @app.post(
     "/upload_mask",
@@ -1432,6 +1438,152 @@ async def upload_mask(file: UploadFile):
     dest = _UPLOAD_DIR / f"mask_{uuid.uuid4().hex}.tif"
     dest.write_bytes(await file.read())
     return JSONResponse({"path": str(dest)})
+
+
+@app.post(
+    "/upload_vector",
+    response_class=JSONResponse,
+    responses={
+        200: {
+            "description": (
+                "Upload a vector AOI (GeoJSON / KML / KMZ / Shapefile-zip / "
+                "GeoPackage) and return its normalised metadata."
+            )
+        }
+    },
+)
+async def upload_vector(file: UploadFile):
+    """Parse an uploaded vector AOI, store as WGS84 GeoJSON, return metadata.
+
+    The endpoint normalises every input to a single ``FeatureCollection``
+    in EPSG:4326 so the frontend rendering code is single-format. Stores
+    the normalised file under ``BOWSER_VECTOR_DIR`` (default
+    ``/tmp/bowser_vectors``) and returns a stable id the client can use
+    to fetch the GeoJSON via ``/vectors/<id>.geojson`` and to compute
+    zonal statistics via ``/polygon_stats``.
+    """
+    import uuid  # noqa: PLC0415
+
+    from ._vector_overlay import load_geojson  # noqa: PLC0415
+
+    raw = await file.read()
+    try:
+        result = load_geojson(raw, file.filename or "upload")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    overlay_id = f"overlay_{uuid.uuid4().hex}"
+    dest = _VECTOR_DIR / f"{overlay_id}.geojson"
+    dest.write_text(json.dumps(result.geojson))
+
+    return JSONResponse(
+        {
+            "id": overlay_id,
+            "url": f"/vectors/{overlay_id}.geojson",
+            "path": str(dest),
+            "bbox": list(result.bbox),
+            "n_features": result.n_features,
+            "name": file.filename or overlay_id,
+        }
+    )
+
+
+@app.post(
+    "/polygon_stats",
+    response_class=JSONResponse,
+    responses={
+        200: {"description": "Zonal stats inside an AOI polygon (per-timestep if 3-D)"}
+    },
+)
+async def polygon_stats(
+    dataset_name: str = Body(..., description="Variable / dataset name to summarise"),
+    geometry: dict = Body(..., description="GeoJSON Geometry (Polygon / MultiPolygon)"),
+    geometry_crs: str = Body("EPSG:4326", description="Source CRS of the geometry"),
+    layer_masks: list[dict] = Body(
+        [], description="List of {dataset, threshold, mode} mask dicts"
+    ),
+    all_touched: bool = Body(
+        True, description="Include any pixel the polygon touches (vs centre-only)"
+    ),
+    target: BowserState = Depends(TargetState),
+):
+    """Compute zonal stats inside a polygon AOI.
+
+    For 2-D variables returns a single ``summary`` dict. For 3-D
+    variables (timeseries cubes) also returns ``time`` + ``series``
+    arrays so the frontend can draw a time-series of the AOI median.
+    """
+    if target.mode != "md":
+        # COG-mode polygon stats would need to read every per-timestep
+        # geotiff into a window — doable but not v1; gate it loudly so the
+        # frontend can decide what to do.
+        raise HTTPException(
+            status_code=501,
+            detail="polygon_stats currently only supported in MD (zarr) mode",
+        )
+
+    if dataset_name not in target.dataset.data_vars:
+        raise HTTPException(
+            status_code=404, detail=f"Variable {dataset_name} not found"
+        )
+    da = target.dataset[dataset_name]
+    da = _apply_layer_masks_md(da, layer_masks)
+
+    from ._vector_overlay import zonal_stats_md  # noqa: PLC0415
+
+    try:
+        stats = zonal_stats_md(
+            da, geometry, geometry_crs=geometry_crs, all_touched=all_touched
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    stats["dataset"] = dataset_name
+    return JSONResponse(stats)
+
+
+@app.post(
+    "/polygon_stats/csv",
+    responses={200: {"description": "Zonal stats inside an AOI polygon, CSV format"}},
+)
+async def polygon_stats_csv(
+    dataset_name: str = Body(...),
+    geometry: dict = Body(...),
+    geometry_crs: str = Body("EPSG:4326"),
+    layer_masks: list[dict] = Body([]),
+    all_touched: bool = Body(True),
+    target: BowserState = Depends(TargetState),
+):
+    """Render the same payload as ``/polygon_stats``, formatted as CSV."""
+    if target.mode != "md":
+        raise HTTPException(status_code=501, detail="MD mode only")
+
+    if dataset_name not in target.dataset.data_vars:
+        raise HTTPException(
+            status_code=404, detail=f"Variable {dataset_name} not found"
+        )
+    da = target.dataset[dataset_name]
+    da = _apply_layer_masks_md(da, layer_masks)
+
+    from ._vector_overlay import stats_to_csv, zonal_stats_md  # noqa: PLC0415
+
+    try:
+        stats = zonal_stats_md(
+            da, geometry, geometry_crs=geometry_crs, all_touched=all_touched
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    csv_text = stats_to_csv(stats)
+    safe_name = dataset_name.replace("/", "_")
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="polygon_stats_{safe_name}.csv"'
+            )
+        },
+    )
 
 
 # Set up CORS
@@ -1660,6 +1812,13 @@ if static_path.exists():
         from starlette.responses import RedirectResponse  # noqa: PLC0415
 
         return RedirectResponse("/static/picker.html")
+
+
+# Mount the uploaded vector AOIs as static GeoJSON. Same pattern as /static
+# above — the frontend fetches the GeoJSON directly via fetch() rather than
+# going back through a Python endpoint, which keeps the render path single-
+# format and avoids re-serialising the same payload on every redraw.
+app.mount("/vectors", StaticFiles(directory=str(_VECTOR_DIR)), name="vectors")
 
 
 # In catalog mode, bare `/` has no `?dataset=` to key off of, so the frontend

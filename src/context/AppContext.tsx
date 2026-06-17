@@ -53,6 +53,8 @@ const initialState: AppState = {
   showColorbar: false,
   showLosIndicator: false,
   graticuleMode: 'off',
+  vectorOverlays: [],
+  polygonStats: [],
 };
 
 function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppState {
@@ -265,6 +267,35 @@ function appReducer(state: AppState, action: AppAction | LegacyAppAction): AppSt
         chartWindows: opening && state.chartWindows.length === 0 ? [firstWindow] : state.chartWindows,
       };
     }
+    case 'ADD_VECTOR_OVERLAY':
+      return { ...state, vectorOverlays: [...state.vectorOverlays, action.payload] };
+    case 'REMOVE_VECTOR_OVERLAY':
+      return {
+        ...state,
+        vectorOverlays: state.vectorOverlays.filter(o => o.id !== action.payload),
+        // Drop any cached stats tied to this overlay so the panel doesn't
+        // keep showing them after the overlay is gone.
+        polygonStats: state.polygonStats.filter(s => s.overlayId !== action.payload),
+      };
+    case 'UPDATE_VECTOR_OVERLAY':
+      return {
+        ...state,
+        vectorOverlays: state.vectorOverlays.map(o =>
+          o.id === action.payload.id ? { ...o, ...action.payload.updates } : o
+        ),
+      };
+    case 'SET_POLYGON_STATS': {
+      const { overlayId, featureIdx, dataset } = action.payload;
+      const others = state.polygonStats.filter(
+        s => !(s.overlayId === overlayId && s.featureIdx === featureIdx && s.dataset === dataset)
+      );
+      return { ...state, polygonStats: [...others, action.payload] };
+    }
+    case 'CLEAR_POLYGON_STATS':
+      return {
+        ...state,
+        polygonStats: state.polygonStats.filter(s => s.overlayId !== action.payload.overlayId),
+      };
     default:
       return state;
   }
