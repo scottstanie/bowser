@@ -76,12 +76,6 @@ def cli_app():
     help="Don't add a moving spatial reference point for `displacement` ",
 )
 @click.option(
-    "--no-recommended-mask",
-    "--no-mask",
-    is_flag=True,
-    help="Don't use recommended mask for `displacement` ",
-)
-@click.option(
     "--title",
     default="",
     help="Title to display on the map.",
@@ -111,7 +105,6 @@ def run(
     log_level,
     ignore_sidecar_files,
     no_spatial_reference,
-    no_recommended_mask,
     title,
     ssl_certfile,
     ssl_keyfile,
@@ -132,7 +125,6 @@ def run(
     os.environ["BOWSER_USE_SPATIAL_REFERENCE_DISP"] = str(
         not no_spatial_reference
     ).lower()
-    os.environ["BOWSER_USE_RECOMMENDED_MASK"] = str(not no_recommended_mask).lower()
     if title:
         os.environ["BOWSER_TITLE"] = title
     if htpasswd_file:

@@ -1582,15 +1582,11 @@ def XarrayPathDependency(
     else:
         ds = target.dataset_for_tile_zoom(tile_z)
     da = ds[variable]
-    skip_recommended_mask = not settings.BOWSER_USE_RECOMMENDED_MASK
-    if mask_variable is not None:
-        mask_da = ds[mask_variable]
-    elif variable == "displacement" and (
-        "recommended_mask" in ds.data_vars and not skip_recommended_mask
-    ):
-        mask_da = ds["recommended_mask"]
-    else:
-        mask_da = None
+    # Masking is opt-in: nothing is hidden unless the caller asks for it, via
+    # ``mask_variable`` or the ``layer_masks`` the UI's Masking panel sends.
+    # ``recommended_mask`` is offered in ``available_mask_vars`` like any other
+    # mask layer, so the masked view is one click away rather than the default.
+    mask_da = ds[mask_variable] if mask_variable is not None else None
 
     # Resolve the per-variable non-spatial dim (was hardcoded "time")
     if time_idx is not None:
