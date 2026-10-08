@@ -10,7 +10,10 @@ readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 
 dependencies = [
-  "titiler.xarray[minimal,http]",
+  # Keep extras in alphabetical order: pixi writes them sorted into pixi.lock but
+  # compares them in declaration order, so an unsorted list makes the lock look
+  # permanently out of date and `pixi install --locked` fails.
+  "titiler.xarray[http,minimal]",
   "starlette-cramjam",
   "boto3",
   "uvicorn",
@@ -51,7 +54,12 @@ test = ["pytest", "httpx", "ipython", "types-python-dateutil"]
 # Bowser runtime
 # reads back the attrs with plain zarr and never imports this package, so it
 # stays out of the default env to avoid pulling pydantic>=2.12.
-writer = ["geozarr-toolkit>=0.1.1"]
+#
+# rasterio>=1.5.0 is required for the float16 dtype (rasterio #3469), which
+# GDAL 3.7+ writes for correlation layers. Complex dtypes have been mapped for
+# much longer. Scoped to this extra on purpose: rasterio 1.5 needs Python 3.12+,
+# and the bowser runtime itself still supports 3.11.
+writer = ["geozarr-toolkit>=0.1.1", "rasterio>=1.5.0"]
 
 # [project.urls]
 # Homepage = "https://github.com/opera-adt/bowser"
@@ -90,6 +98,12 @@ platforms = ["osx-arm64", "linux-64"]
 bowser-insar = { path = ".", editable = true }
 
 [tool.pixi.dependencies]
+# Cap python below 3.14: cramjam (via starlette-cramjam) ships no py314 wheel,
+# and its sdist fails to build against PyO3 0.24, so an unpinned solve that
+# drifts to 3.14 breaks `pixi install`. The upper bound also keeps the solve
+# groups aligned with the 3.11-3.13 classifiers instead of each drifting to a
+# different interpreter.
+python = ">=3.11,<3.14"
 boto3 = "*"
 uvicorn = "*"
 typing_extensions = "*"
@@ -110,6 +124,12 @@ aiobotocore = ">=2.13.0"
 # in `[tool.pixi.feature.writer.pypi-dependencies]` trips the "already a
 # dependency" error on pixi install --locked.
 pydantic = ">=2.12"
+# rasterio arrives as a conda package (rioxarray/opera-utils/titiler all pull
+# it in), and pixi pins conda-provided versions for the pypi resolver. Without
+# a conda-side spec the conda solve is free to settle on 1.4.x, which turns the
+# `rasterio>=1.5.0` pypi pin in the writer extra into an unsatisfiable
+# requirement instead of steering the solve. Keep the two bounds in sync.
+rasterio = ">=1.5.0"
 
 [tool.pixi.environments]
 default = { solve-group = "default" }
